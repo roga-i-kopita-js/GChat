@@ -1,0 +1,171 @@
+name: local-messenger
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - messenger
+
+  mattermost:
+    platform: linux/amd64
+    image: mattermost/mattermost-team-edition:${MATTERMOST_IMAGE_TAG}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ}
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable&connect_timeout=10
+      MM_BLEVESETTINGS_INDEXDIR: /mattermost/bleve-indexes
+      MM_SERVICESETTINGS_SITEURL: ${MATTERMOST_SITE_URL}
+
+      MM_PLUGINSETTINGS_ENABLE: "true"
+      MM_PLUGINSETTINGS_ENABLEUPLOADS: "true"
+      MM_PLUGINSETTINGS_REQUIREPLUGINSIGNATURE: "false"
+    ports:
+      - "${MATTERMOST_PORT}:8065"
+    volumes:
+      - mattermost-config:/mattermost/config
+      - mattermost-data:/mattermost/data
+      - mattermost-logs:/mattermost/logs
+      - mattermost-plugins:/mattermost/plugins
+      - mattermost-client-plugins:/mattermost/client/plugins
+      - mattermost-bleve:/mattermost/bleve-indexes
+    networks:
+      - messenger
+
+  jitsi-web:
+    image: jitsi/web:${JITSI_IMAGE_VERSION}
+    restart: unless-stopped
+    depends_on:
+      - jitsi-jvb
+    ports:
+      - "${JITSI_HTTP_PORT}:80"
+      - "${JITSI_HTTPS_PORT}:443"
+    environment:
+      TZ: ${TZ}
+      PUBLIC_URL: ${JITSI_PUBLIC_URL}
+      ENABLE_AUTH: "1"
+      ENABLE_GUESTS: "0"
+      ENABLE_XMPP_WEBSOCKET: "1"
+      ENABLE_WELCOME_PAGE: "1"
+      ENABLE_PREJOIN_PAGE: "1"
+      DISABLE_HTTPS: "0"
+      XMPP_DOMAIN: ${XMPP_DOMAIN}
+      XMPP_AUTH_DOMAIN: ${XMPP_AUTH_DOMAIN}
+      XMPP_BOSH_URL_BASE: http://xmpp.${XMPP_DOMAIN}:5280
+      XMPP_GUEST_DOMAIN: ${XMPP_GUEST_DOMAIN}
+      XMPP_MUC_DOMAIN: ${XMPP_MUC_DOMAIN}
+      XMPP_INTERNAL_MUC_DOMAIN: ${XMPP_INTERNAL_MUC_DOMAIN}
+      XMPP_HIDDEN_DOMAIN: ${XMPP_HIDDEN_DOMAIN}
+    volumes:
+      - jitsi-web-config:/config
+      - jitsi-transcripts:/usr/share/jitsi-meet/transcripts
+    networks:
+      jitsi:
+        aliases:
+          - web.${XMPP_DOMAIN}
+
+  jitsi-prosody:
+    image: jitsi/prosody:${JITSI_IMAGE_VERSION}
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ}
+      ENABLE_AUTH: "1"
+      ENABLE_GUESTS: "0"
+      AUTH_TYPE: jwt
+
+      JWT_APP_ID: ${JITSI_JWT_APP_ID}
+      JWT_APP_SECRET: ${JITSI_JWT_APP_SECRET}
+      JWT_ALLOW_EMPTY: "0"
+      ENABLE_XMPP_WEBSOCKET: "1"
+      XMPP_DOMAIN: ${XMPP_DOMAIN}
+      XMPP_AUTH_DOMAIN: ${XMPP_AUTH_DOMAIN}
+      XMPP_GUEST_DOMAIN: ${XMPP_GUEST_DOMAIN}
+      XMPP_MUC_DOMAIN: ${XMPP_MUC_DOMAIN}
+      XMPP_INTERNAL_MUC_DOMAIN: ${XMPP_INTERNAL_MUC_DOMAIN}
+      XMPP_HIDDEN_DOMAIN: ${XMPP_HIDDEN_DOMAIN}
+      XMPP_SERVER: xmpp.${XMPP_DOMAIN}
+      JICOFO_AUTH_PASSWORD: ${JICOFO_AUTH_PASSWORD}
+      JVB_AUTH_PASSWORD: ${JVB_AUTH_PASSWORD}
+    volumes:
+      - jitsi-prosody-config:/config
+      - jitsi-prosody-custom-plugins:/prosody-plugins-custom
+    networks:
+      jitsi:
+        aliases:
+          - xmpp.${XMPP_DOMAIN}
+
+  jitsi-jicofo:
+    image: jitsi/jicofo:${JITSI_IMAGE_VERSION}
+    restart: unless-stopped
+    depends_on:
+      - jitsi-prosody
+    environment:
+      TZ: ${TZ}
+      ENABLE_AUTH: "1"
+      AUTH_TYPE: jwt
+      XMPP_DOMAIN: ${XMPP_DOMAIN}
+      XMPP_AUTH_DOMAIN: ${XMPP_AUTH_DOMAIN}
+      XMPP_INTERNAL_MUC_DOMAIN: ${XMPP_INTERNAL_MUC_DOMAIN}
+      XMPP_MUC_DOMAIN: ${XMPP_MUC_DOMAIN}
+      XMPP_SERVER: xmpp.${XMPP_DOMAIN}
+      JICOFO_AUTH_PASSWORD: ${JICOFO_AUTH_PASSWORD}
+    volumes:
+      - jitsi-jicofo-config:/config
+    networks:
+      - jitsi
+
+  jitsi-jvb:
+    image: jitsi/jvb:${JITSI_IMAGE_VERSION}
+    restart: unless-stopped
+    depends_on:
+      - jitsi-prosody
+    ports:
+      - "${JVB_PORT}:${JVB_PORT}/udp"
+    environment:
+      TZ: ${TZ}
+      PUBLIC_URL: ${JITSI_PUBLIC_URL}
+      XMPP_AUTH_DOMAIN: ${XMPP_AUTH_DOMAIN}
+      XMPP_INTERNAL_MUC_DOMAIN: ${XMPP_INTERNAL_MUC_DOMAIN}
+      XMPP_SERVER: xmpp.${XMPP_DOMAIN}
+      JVB_AUTH_PASSWORD: ${JVB_AUTH_PASSWORD}
+      JVB_PORT: ${JVB_PORT}
+      JVB_ADVERTISE_IPS: ${JVB_ADVERTISE_IPS}
+    volumes:
+      - jitsi-jvb-config:/config
+    networks:
+      - jitsi
+
+volumes:
+  postgres-data:
+  mattermost-config:
+  mattermost-data:
+  mattermost-logs:
+  mattermost-plugins:
+  mattermost-client-plugins:
+  mattermost-bleve:
+  jitsi-web-config:
+  jitsi-transcripts:
+  jitsi-prosody-config:
+  jitsi-prosody-custom-plugins:
+  jitsi-jicofo-config:
+  jitsi-jvb-config:
+
+networks:
+  messenger:
+  jitsi:
