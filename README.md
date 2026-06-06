@@ -1,61 +1,153 @@
-# Local Mattermost + Jitsi
+Собрал отдельный пользовательский `README.md`. В нём нет технических деталей развёртывания: только ссылки на приложения, регистрация по приглашению, адрес сервера, голосовые звонки и видеокомнаты.
 
-Local test stand for macOS or Linux.
+Официальная страница Mattermost содержит загрузки для Windows, macOS, iOS и Android. После установки приложение просит указать адрес сервера и затем войти с учётными данными. Инвайт-ссылка используется для регистрации и вступления в команду, но в поле сервера нужно вводить корневой адрес Mattermost. ([Mattermost.com][1])
 
-## Start
+[Скачать `README-users.md`](sandbox:/mnt/data/README-users.md)
 
-```bash
-chmod +x setup.sh
-./setup.sh
+# GChat Family — инструкция по подключению
+
+GChat Family — закрытый семейный мессенджер на базе Mattermost.
+
+Адрес сервера:
+
+```text
+https://chat.гчат-фамили-рф.спб.рф
 ```
 
-Open:
+Для входа потребуется персональная ссылка-приглашение от администратора.
 
-- Mattermost: http://localhost:8065
-- Jitsi Meet: https://localhost:8443
+---
 
-Jitsi uses a self-signed local certificate. Accept the browser warning for local testing.
+## 1. Установите приложение Mattermost
 
-## Stop
+### iPhone и iPad
 
-```bash
-docker compose down
+Установите приложение **Mattermost** из App Store:
+
+[https://apps.apple.com/us/app/mattermost/id1257222717](https://apps.apple.com/us/app/mattermost/id1257222717)
+
+После установки разрешите уведомления.
+
+### Android
+
+Установите приложение **Mattermost** из Google Play:
+
+[https://play.google.com/store/apps/details?id=com.mattermost.rn](https://play.google.com/store/apps/details?id=com.mattermost.rn)
+
+После установки разрешите уведомления.
+
+### macOS
+
+Установите приложение **Mattermost Desktop** из App Store:
+
+[https://apps.apple.com/us/app/mattermost-desktop/id1614666244](https://apps.apple.com/us/app/mattermost-desktop/id1614666244)
+
+### Windows
+
+Скачайте официальное приложение Mattermost Desktop:
+
+[https://mattermost.com/apps/](https://mattermost.com/apps/)
+
+На странице выберите **Windows → Download**.
+
+### Вход через браузер
+
+Устанавливать приложение необязательно. Можно пользоваться мессенджером через браузер:
+
+[https://chat.гчат-фамили-рф.спб.рф](https://chat.гчат-фамили-рф.спб.рф)
+
+---
+
+## 2. Зарегистрируйтесь по ссылке-приглашению
+
+1. Получите ссылку-приглашение от администратора.
+2. Откройте ссылку в браузере: Safari, Chrome или другом браузере.
+3. Создайте учётную запись:
+
+    * укажите email;
+    * придумайте имя пользователя;
+    * придумайте пароль.
+4. После регистрации войдите в созданную учётную запись.
+
+Не пересылайте ссылку-приглашение посторонним.
+
+---
+
+## 3. Подключите приложение Mattermost
+
+После регистрации откройте установленное приложение Mattermost.
+
+Когда приложение запросит адрес сервера, укажите:
+
+```text
+https://chat.гчат-фамили-рф.спб.рф
 ```
 
-## Remove all local data
+В поле названия сервера можно указать:
 
-```bash
-docker compose down -v
-rm -f .env
+```text
+GChat Family
 ```
 
-## Logs
+Затем нажмите **Connect / Подключиться** и войдите с логином и паролем, созданными при регистрации.
 
-```bash
-docker compose ps
-docker compose logs -f
+Важно: в приложение нужно вводить адрес сервера, а не ссылку-приглашение.
+
+---
+
+## 4. Личные сообщения и группы
+
+После входа вы сможете:
+
+* писать личные сообщения;
+* общаться в групповых каналах;
+* отправлять фотографии, видео и файлы;
+* получать уведомления о новых сообщениях.
+
+Если после входа не видны каналы или другие пользователи, обратитесь к администратору: возможно, ваш аккаунт ещё не добавлен в общую команду.
+
+---
+
+## 5. Голосовые звонки
+
+Для голосового звонка откройте личный диалог или групповой канал и нажмите кнопку:
+
+```text
+Start call
 ```
 
-## Test from another device in the same Wi-Fi network
+Разрешите приложению доступ к микрофону.
 
-1. Find the laptop IP address:
+---
 
-```bash
-ipconfig getifaddr en0
+## 6. Видеокомнаты Jitsi
+
+Для видеозвонков используются комнаты Jitsi.
+
+Когда в чате появляется сообщение **Jitsi Meeting**:
+
+1. Нажмите **Join Meeting**.
+2. Разрешите доступ к микрофону и камере.
+3. Подключитесь к комнате.
+
+Отдельное приложение Jitsi устанавливать не требуется: видеокомната откроется в браузере.
+
+---
+
+## 7. Если вход не работает
+
+Проверьте:
+
+1. В поле сервера указан адрес:
+
+```text
+https://chat.гчат-фамили-рф.спб.рф
 ```
 
-2. Edit `.env`:
+2. Вы вводите логин и пароль от своей учётной записи.
+3. Устройство подключено к интернету.
+4. Приложению разрешены уведомления, доступ к микрофону и камере.
 
-```env
-JITSI_PUBLIC_URL=https://192.168.1.42:8443
-JVB_ADVERTISE_IPS=192.168.1.42
-```
+Если проблема сохраняется, отправьте администратору скриншот ошибки.
 
-3. Restart:
-
-```bash
-docker compose down
-docker compose up -d
-```
-
-A self-signed certificate may prevent mobile browsers from using camera and microphone. For the first test, use two desktop browsers. Later configure a trusted local certificate or a public HTTPS domain.
+[1]: https://mattermost.com/apps/ "Download Mattermost Mobile and Desktop Apps Here | Mattermost"
