@@ -98,7 +98,7 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     userId = randomUUID();
     login = `user-${randomUUID().slice(0, 8)}`;
     await database.query(
-      'INSERT INTO users (id, login, display_name, password_hash) VALUES ($1, $2, $3, $4)',
+      'INSERT INTO gchat_users (id, login, display_name, password_hash) VALUES ($1, $2, $3, $4)',
       [userId, login, 'Тест', passwordHash],
     );
   });
@@ -257,7 +257,7 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       .post('/auth/refresh')
       .send({ refresh_token: first.refresh_token, request_id })
       .expect(200);
-    await database.query('UPDATE users SET disabled_at = now() WHERE id = $1', [userId]);
+    await database.query('UPDATE gchat_users SET disabled_at = now() WHERE id = $1', [userId]);
     await request(app.getHttpServer())
       .get('/private')
       .auth(first.access_token, { type: 'bearer' })

@@ -4,8 +4,8 @@
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.users": {
-      "name": "users",
+    "public.gchat_users": {
+      "name": "gchat_users",
       "schema": "",
       "columns": {
         "id": {
@@ -58,8 +58,8 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "users_login_unique": {
-          "name": "users_login_unique",
+        "gchat_users_login_unique": {
+          "name": "gchat_users_login_unique",
           "nullsNotDistinct": false,
           "columns": ["login"]
         }

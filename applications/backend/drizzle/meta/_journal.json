@@ -8,6 +8,13 @@
       "when": 1793652250552,
       "tag": "0000_auth_users",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793657425914,
+      "tag": "0001_add_groups",
+      "breakpoints": true
     }
   ]
 }
