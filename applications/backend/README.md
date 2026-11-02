@@ -117,7 +117,7 @@ Redis доступен только на `127.0.0.1:6379`, порт меняет
 
 Redis использует постоянный volume `redis-data`, AOF с `appendfsync always` и политику `noeviction`. Лимит `REDIS_MAXMEMORY` по умолчанию равен `256mb`; это лимит данных Redis, а не всей памяти контейнера. Healthcheck проверяет авторизованный PING. Команды `db:up`, `db:down`, `db:ps` и `db:logs` обслуживают обе зависимости; `db:up` ждёт готовности обеих.
 
-Настройки `REDIS_*` используются RedisModule; `REDLOCK_*` используются RedlockModule. RedLock работает внутри backend и может использоваться CLI, отдельный контейнер ему не нужен. См. [RedisModule](../../docs/backend/modules/redis.md) и [RedlockModule](../../docs/backend/modules/redlock.md).
+Настройки `REDIS_*` используются RedisModule; `REDLOCK_*` используются RedlockModule. RedlockModule реализован как библиотечный модуль backend, но HTTP Auth его не подключает. Возможное использование в будущем CLI требует отдельного протокола; отдельный контейнер ему не нужен. См. [RedisModule](../../docs/backend/modules/redis.md) и [RedlockModule](../../docs/backend/modules/redlock.md).
 
 Проверка Redis без вывода пароля (из корня репозитория):
 

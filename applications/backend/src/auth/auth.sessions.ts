@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 
 import { ErrorService } from '../error/error.service.js';
 import { RedisService } from '../redis/redis.service.js';
-import type { LockContext } from '../redlock/redlock.service.js';
 
 export interface Session {
   userId: string;
@@ -19,33 +18,34 @@ export interface Rotation {
 
 // All type and state checks precede writes: Redis Lua does not roll back runtime errors.
 export const MUTATE_SESSION = `
-if redis.call('get', KEYS[1]) ~= ARGV[1] then return -1 end
-local mode = ARGV[2]
-local current = redis.call('get', KEYS[2])
-local rotation = redis.call('get', KEYS[3])
-local indexType = redis.call('type', KEYS[4]).ok
+local mode = ARGV[1]
+local current = redis.call('get', KEYS[1])
+local rotation = redis.call('get', KEYS[2])
+local indexType = redis.call('type', KEYS[3]).ok
 if indexType ~= 'none' and indexType ~= 'set' then return redis.error_reply('Invalid session index') end
 if mode == 'create' then
   if current or rotation then return 0 end
-else
-  if not current or current ~= ARGV[3] then return 0 end
-  if (rotation or '') ~= ARGV[4] then
-    -- Expiration is expected; a different live result is a conflicting mutation.
-    if rotation then return 0 end
-    -- An expired previous token no longer authorizes logout.
-    if mode == 'delete' and cjson.decode(current).hash ~= ARGV[8] then return 2 end
-  end
-end
-if mode == 'delete' then
-  redis.call('del', KEYS[2], KEYS[3])
-  redis.call('srem', KEYS[4], ARGV[5])
-elseif mode == 'create' then
-  redis.call('set', KEYS[2], ARGV[6])
-  redis.call('sadd', KEYS[4], ARGV[5])
+elseif mode == 'delete' then
+  if not current then return 1 end
+  local session = cjson.decode(current)
+  if session.userId ~= ARGV[7] then return 0 end
+  local recognized = session.hash == ARGV[6]
+  if not recognized and rotation then recognized = cjson.decode(rotation).hash == ARGV[6] end
+  if not recognized then return 1 end
 elseif mode == 'rotate' then
-  redis.call('set', KEYS[2], ARGV[6])
-  redis.call('set', KEYS[3], ARGV[7], 'PX', 30000)
+  if not current or current ~= ARGV[2] then return 0 end
+  if rotation and rotation ~= ARGV[3] then return 0 end
 else return redis.error_reply('Invalid mutation') end
+if mode == 'delete' then
+  redis.call('del', KEYS[1], KEYS[2])
+  redis.call('srem', KEYS[3], ARGV[4])
+elseif mode == 'create' then
+  redis.call('set', KEYS[1], ARGV[5])
+  redis.call('sadd', KEYS[3], ARGV[4])
+else
+  redis.call('set', KEYS[1], ARGV[5])
+  redis.call('set', KEYS[2], ARGV[8], 'PX', 30000)
+end
 return 1`;
 
 export interface SessionState {
@@ -100,40 +100,35 @@ export class AuthSessions {
     mode: 'create' | 'rotate' | 'delete',
     sid: string,
     userId: string,
-    ctx: LockContext,
     previous?: SessionState,
     next?: Session,
     rotation?: Rotation,
     presentedHash?: string,
-  ): Promise<void> {
-    ctx.assertHeld();
+  ): Promise<boolean> {
     let result;
 
     try {
       result = await this.redis.client.eval(MUTATE_SESSION, {
         keys: [
-          ctx.redisOwnership.key,
           this.redis.key(`auth:session:${sid}`),
           this.redis.key(`auth:rotation:${sid}`),
           this.redis.key(`auth:user-sessions:${userId}`),
         ],
         arguments: [
-          ctx.redisOwnership.owner,
           mode,
           previous?.raw ?? '',
           previous?.rotationRaw ?? '',
           sid,
           next ? JSON.stringify(next) : '',
-          rotation ? JSON.stringify(rotation) : '',
           presentedHash ?? '',
+          userId,
+          rotation ? JSON.stringify(rotation) : '',
         ],
       });
     } catch (cause) {
       throw this.error.serviceUnavailable({ cause });
     }
 
-    if (result !== 1 && !(mode === 'delete' && result === 2)) throw this.error.serviceUnavailable();
-
-    ctx.assertHeld();
+    return result === 1;
   }
 }

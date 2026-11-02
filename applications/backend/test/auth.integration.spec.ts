@@ -21,7 +21,6 @@ import { ErrorModule } from '../src/error/error.module.js';
 import { LoggerModule } from '../src/logger/logger.module.js';
 import { RedisModule } from '../src/redis/redis.module.js';
 import { RedisService } from '../src/redis/redis.service.js';
-import { RedlockService } from '../src/redlock/redlock.service.js';
 
 @Controller('private')
 class PrivateController {
@@ -120,7 +119,7 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
 
     if (admin) {
       try {
-        await admin.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);
+        await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
       } finally {
         await admin.end();
       }
@@ -343,10 +342,9 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     ).body as TokensDto;
     const sid = sessionId(current.refresh_token)!;
     const sessions = app.get(AuthSessions);
-    const locks = app.get(RedlockService);
     const rotationKey = `${prefix}auth:rotation:${sid}`;
 
-    await locks.withLock(`auth:user:${userId}`, async (ctx): Promise<void> => {
+    await (async (): Promise<void> => {
       const before = (await sessions.read(sid))!;
 
       await redis.pExpire(rotationKey, 1);
@@ -361,17 +359,17 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
         encrypted: 'test-result',
       };
 
-      await sessions.mutate('rotate', sid, userId, ctx, before, next, rotation);
+      await sessions.mutate('rotate', sid, userId, before, next, rotation);
       expect((await sessions.read(sid))?.session.hash).toBe(next.hash);
       // A different live rotation must still fail the comparison without writing anything.
       const snapshot = (await sessions.read(sid))!;
 
       await redis.set(rotationKey, JSON.stringify({ ...rotation, requestId: randomUUID() }));
-      await expect(
-        sessions.mutate('rotate', sid, userId, ctx, snapshot, before.session, rotation),
-      ).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
+      expect(await sessions.mutate('rotate', sid, userId, snapshot, before.session, rotation)).toBe(
+        false,
+      );
       expect((await sessions.read(sid))?.session.hash).toBe(next.hash);
-    });
+    })();
   });
   it.each(['current', 'previous'])(
     'handles expired rotation during logout with the %s token',
@@ -386,7 +384,7 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       const sid = sessionId(current.refresh_token)!;
       const sessions = app.get(AuthSessions);
 
-      await app.get(RedlockService).withLock(`auth:user:${userId}`, async (ctx): Promise<void> => {
+      await (async (): Promise<void> => {
         const before = (await sessions.read(sid))!;
 
         await redis.pExpire(`${prefix}auth:rotation:${sid}`, 1);
@@ -396,12 +394,12 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
         expect(await redis.get(`${prefix}auth:rotation:${sid}`)).toBeNull();
         const hash = tokenHash(which === 'current' ? current.refresh_token : first.refresh_token);
 
-        await sessions.mutate('delete', sid, userId, ctx, before, undefined, undefined, hash);
+        await sessions.mutate('delete', sid, userId, before, undefined, undefined, hash);
         expect(Boolean(await sessions.read(sid))).toBe(which === 'previous');
         expect(Boolean(await redis.sIsMember(`${prefix}auth:user-sessions:${userId}`, sid))).toBe(
           which === 'previous',
         );
-      });
+      })();
     },
   );
   it.each(['session', 'rotation'])(
@@ -447,30 +445,6 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
         .expect(200);
     },
   );
-  it('rejects a stale lock owner inside Redis without writing a session', async (): Promise<void> => {
-    const sessions = app.get(AuthSessions);
-    const sid = randomUUID();
-    const key = `${prefix}lock:auth:user:${userId}`;
-
-    await redis.set(key, 'new-owner', { PX: 10000 });
-    await expect(
-      sessions.mutate(
-        'create',
-        sid,
-        userId,
-        {
-          signal: new AbortController().signal,
-          assertHeld(): void {},
-          redisOwnership: { key, owner: 'old-owner' },
-        },
-        undefined,
-        { userId, hash: 'test', createdAt: Date.now(), updatedAt: Date.now() },
-      ),
-    ).rejects.toMatchObject({ code: 'SERVICE_UNAVAILABLE' });
-    expect(await redis.get(`${prefix}auth:session:${sid}`)).toBeNull();
-    expect(await redis.get(key)).toBe('new-owner');
-    await redis.del(key);
-  });
   it('keeps tokens valid through Redis unavailability and recovers without a new login', async (): Promise<void> => {
     const tokens = await signIn();
     const client = app.get(RedisService).client;
@@ -499,15 +473,50 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       .auth(tokens.access_token, { type: 'bearer' })
       .expect(200);
   });
-  it('fails closed on lock contention and on a broken session index', async (): Promise<void> => {
-    const key = `${prefix}lock:auth:user:${userId}`;
-
-    await redis.set(key, 'other-owner', { PX: 10000 });
-    await request(app.getHttpServer()).post('/auth/login').send({ login, password }).expect(503);
-    expect(await redis.sCard(`${prefix}auth:user-sessions:${userId}`)).toBe(0);
-    await redis.del(key);
+  it('fails closed on a broken session index', async (): Promise<void> => {
     await redis.set(`${prefix}auth:user-sessions:${userId}`, 'wrong-type');
     await request(app.getHttpServer()).post('/auth/login').send({ login, password }).expect(503);
     expect(await redis.get(`${prefix}auth:user-sessions:${userId}`)).toBe('wrong-type');
-  }, 10000);
+  });
+  it('allows only one of two different refresh operations with the same token', async (): Promise<void> => {
+    const tokens = await signIn();
+    const responses = await Promise.all(
+      [randomUUID(), randomUUID()].map((request_id): PromiseLike<request.Response> =>
+        request(app.getHttpServer())
+          .post('/auth/refresh')
+          .send({ refresh_token: tokens.refresh_token, request_id }),
+      ),
+    );
+
+    expect(responses.map((response): number => response.status).sort()).toEqual([200, 401]);
+    const winner = responses.find((response): boolean => response.status === 200)!;
+
+    await request(app.getHttpServer())
+      .get('/private')
+      .auth(winner.body.access_token, { type: 'bearer' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refresh_token: winner.body.refresh_token, request_id: randomUUID() })
+      .expect(200);
+  });
+  it('does not resurrect a session when refresh races logout', async (): Promise<void> => {
+    const tokens = await signIn();
+    const [refresh] = await Promise.all([
+      request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refresh_token: tokens.refresh_token, request_id: randomUUID() }),
+      request(app.getHttpServer())
+        .post('/auth/logout')
+        .send({ refresh_token: tokens.refresh_token })
+        .expect(204),
+    ]);
+
+    expect([200, 401]).toContain(refresh.status);
+    expect(await redis.get(`${prefix}auth:session:${sessionId(tokens.refresh_token)}`)).toBeNull();
+    await request(app.getHttpServer())
+      .get('/private')
+      .auth(tokens.access_token, { type: 'bearer' })
+      .expect(401);
+  });
 });

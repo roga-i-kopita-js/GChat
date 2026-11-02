@@ -3,9 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { jest } from '@jest/globals';
 
 import { ErrorService } from '../error/error.service.js';
-import { LockError } from '../redlock/redlock.errors.js';
-import type { LockContext } from '../redlock/redlock.service.js';
-import { RedlockService } from '../redlock/redlock.service.js';
 import { AuthCrypto, tokenHash } from './auth.crypto.js';
 import type { TokensDto } from './auth.dto.js';
 import { AuthLimits } from './auth.limits.js';
@@ -22,11 +19,6 @@ interface Fixture {
     Pick<AuthCrypto, 'verifyPassword' | 'issue' | 'decrypt' | 'encrypt' | 'verifyAccess'>
   >;
   sessions: jest.Mocked<Pick<AuthSessions, 'read' | 'mutate'>>;
-  locks: {
-    withLock: jest.Mock<
-      (resource: string, action: (ctx: LockContext) => Promise<unknown>) => Promise<unknown>
-    >;
-  };
   limits: jest.Mocked<Pick<AuthLimits, 'check'>>;
   token: string;
   state: SessionState;
@@ -69,32 +61,21 @@ function fixture(): Fixture {
   };
   const sessions = {
     read: jest.fn<AuthSessions['read']>().mockResolvedValue(state),
-    mutate: jest.fn<AuthSessions['mutate']>().mockResolvedValue(undefined),
-  };
-  const locks = {
-    withLock: jest.fn(
-      async (_resource: string, action: (ctx: LockContext) => Promise<unknown>): Promise<unknown> =>
-        action({
-          signal: new AbortController().signal,
-          assertHeld(): void {},
-          redisOwnership: { key: 'lock', owner: 'owner' },
-        }),
-    ),
+    mutate: jest.fn<AuthSessions['mutate']>().mockResolvedValue(true),
   };
   const limits = { check: jest.fn<AuthLimits['check']>() };
   const service = new AuthService(
     accounts as unknown as AuthRepository,
     crypto as unknown as AuthCrypto,
     sessions as unknown as AuthSessions,
-    locks as unknown as RedlockService,
     limits as unknown as AuthLimits,
     new ErrorService(),
   );
 
-  return { service, account, accounts, crypto, sessions, locks, limits, token, state, tokens };
+  return { service, account, accounts, crypto, sessions, limits, token, state, tokens };
 }
 describe('Auth orchestration', (): void => {
-  it('does not issue credentials if the password or account changes while waiting for the lock', async (): Promise<void> => {
+  it('does not issue credentials if the password or account changes during password verification', async (): Promise<void> => {
     const f = fixture();
 
     f.accounts.byId.mockResolvedValue({ ...f.account, passwordHash: 'new-hash' });
@@ -120,7 +101,6 @@ describe('Auth orchestration', (): void => {
       f.service.login({ login: ' UNKNOWN ', password: 'password' }),
     ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
     expect(f.crypto.verifyPassword).toHaveBeenCalledWith('password', undefined);
-    expect(f.locks.withLock).not.toHaveBeenCalled();
   });
   it('rechecks session existence before returning a cached rotation', async (): Promise<void> => {
     const f = fixture();
@@ -139,16 +119,23 @@ describe('Auth orchestration', (): void => {
       code: 'SESSION_INVALID',
     });
   });
-  it('maps a lock failure to 503 and preserves unexpected programming errors', async (): Promise<void> => {
+  it('reads the winning rotation after a compare-and-set conflict', async (): Promise<void> => {
     const f = fixture();
+    const request_id = randomUUID();
 
-    f.locks.withLock.mockRejectedValueOnce(new LockError('LOCK_LOST', true));
-    await expect(f.service.login({ login: 'test', password: 'password' })).rejects.toMatchObject({
-      code: 'SERVICE_UNAVAILABLE',
-    });
-    const unexpected = new TypeError('programming error');
-
-    f.locks.withLock.mockRejectedValueOnce(unexpected);
-    await expect(f.service.login({ login: 'test', password: 'password' })).rejects.toBe(unexpected);
+    f.sessions.mutate.mockResolvedValueOnce(false);
+    f.sessions.read
+      .mockResolvedValueOnce(f.state)
+      .mockResolvedValueOnce(f.state)
+      .mockResolvedValueOnce({
+        ...f.state,
+        session: { ...f.state.session, hash: 'winner' },
+        rotation: { requestId: request_id, hash: f.state.session.hash, encrypted: 'winner' },
+      });
+    await expect(f.service.refresh({ refresh_token: f.token, request_id })).resolves.toEqual(
+      f.tokens,
+    );
+    expect(f.sessions.mutate).toHaveBeenCalledTimes(1);
+    expect(f.crypto.decrypt).toHaveBeenCalledWith('winner', expect.any(String), request_id);
   });
 });
