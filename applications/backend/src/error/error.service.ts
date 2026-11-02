@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { AppError } from './app.error.js';
+
 import type { AppErrorOptions, ErrorField, ErrorPayload } from './app.error.js';
+import { AppError } from './app.error.js';
 
 @Injectable()
 export class ErrorService {
@@ -8,25 +9,42 @@ export class ErrorService {
     return new AppError(options);
   }
 
-  private make(status: number, code: string, message: string, payload: ErrorPayload = {}): AppError {
+  private make(
+    status: number,
+    code: string,
+    message: string,
+    payload: ErrorPayload = {},
+  ): AppError {
     return this.create({ status, code, message: payload.message ?? message, cause: payload.cause });
   }
 
   rateLimited(payload: ErrorPayload & { retryAfterSeconds: number }): AppError {
     return this.create({
-      status: 429, code: 'RATE_LIMITED',
+      status: 429,
+      code: 'RATE_LIMITED',
       message: payload.message ?? 'Слишком много попыток. Попробуйте позже.',
-      retryAfterSeconds: payload.retryAfterSeconds, cause: payload.cause,
+      retryAfterSeconds: payload.retryAfterSeconds,
+      cause: payload.cause,
     });
   }
 
   validation(payload: ErrorPayload & { fields?: readonly ErrorField[] } = {}): AppError {
-    return this.create({ status: 400, code: 'VALIDATION_ERROR',
-      message: payload.message ?? 'Проверьте введённые данные.', fields: payload.fields, cause: payload.cause });
+    return this.create({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      message: payload.message ?? 'Проверьте введённые данные.',
+      fields: payload.fields,
+      cause: payload.cause,
+    });
   }
 
   invalidCredentials(payload: ErrorPayload = {}): AppError {
-    return this.make(401, 'INVALID_CREDENTIALS', 'Не удалось войти. Проверьте логин и пароль.', payload);
+    return this.make(
+      401,
+      'INVALID_CREDENTIALS',
+      'Не удалось войти. Проверьте логин и пароль.',
+      payload,
+    );
   }
 
   accessTokenExpired(payload: ErrorPayload = {}): AppError {

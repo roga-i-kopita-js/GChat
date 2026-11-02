@@ -4,9 +4,7 @@
     "moduleResolution": "NodeNext",
     "isolatedModules": true,
     "target": "ES2023",
-    "lib": [
-      "ES2023"
-    ],
+    "lib": ["ES2023"],
     "outDir": "./dist",
     "sourceMap": true,
     "experimentalDecorators": true,
@@ -16,9 +14,5 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": [
-    "src/**/*.ts",
-    "test/**/*.ts",
-    "drizzle.config.ts"
-  ]
+  "include": ["src/**/*.ts", "test/**/*.ts", "drizzle.config.ts"]
 }

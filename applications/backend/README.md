@@ -10,10 +10,39 @@
 pnpm install
 cp applications/backend/.env.example applications/backend/.env
 pnpm --filter @gchat/backend db:up
+# Перед первым запуском настройте ключи Auth и примените миграции (см. ниже).
 pnpm --filter @gchat/backend start:dev
 ```
 
 Если `.env` уже существует, пропустите команду копирования и добавьте нужные переменные из примера. `db:up` запускает локальные PostgreSQL и Redis и ждёт готовности обеих зависимостей. Приложение читает `applications/backend/.env` при запуске через команды пакета. Переменные процесса имеют приоритет.
+
+## Настройка HTTP Auth
+
+До запуска HTTP заполните обязательные ключи из `.env.example`. Для локальной разработки команда ниже генерирует новый комплект и печатает строки для ручного переноса в `.env`. Вывод содержит секреты; не сохраняйте его в Git или обычные логи. В production используйте защищённую конфигурацию и отдельные ключи окружения.
+
+```sh
+node --input-type=module <<'JS'
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
+const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+const kid = 'local-1';
+console.log(`AUTH_JWT_ACTIVE_KID=${kid}`);
+console.log('AUTH_JWT_PRIVATE_KEY=' + JSON.stringify(privateKey.export({ type: 'pkcs8', format: 'pem' })));
+console.log('AUTH_JWT_PUBLIC_KEYS=' + JSON.stringify({ [kid]: publicKey.export({ type: 'spki', format: 'pem' }) }));
+console.log(`AUTH_ROTATION_ACTIVE_KID=${kid}`);
+console.log('AUTH_ROTATION_KEYS=' + JSON.stringify({ [kid]: randomBytes(32).toString('base64') }));
+JS
+```
+
+Перед первым запуском примените схему аккаунтов отдельной командой:
+
+```sh
+pnpm --filter @gchat/backend build
+pnpm --filter @gchat/backend db:migrate
+```
+
+CLI создания и изменения пользователей пока не реализован. HTTP Auth предоставляет вход, обновление и выход для существующих аккаунтов; административных HTTP endpoints нет. Параметры токенов, лимиты и правила смены ключей — в [контракте Auth](../../docs/backend/modules/auth.md). HTTP Guard экспортируется из AuthModule и подключается к защищённым контроллерам через `@UseGuards(AuthGuard)`; проверенная личность доступна в `request.user`.
+
+Интеграционные тесты Auth включаются только при одновременном задании `AUTH_INTEGRATION_DATABASE_URL` и `AUTH_INTEGRATION_REDIS_URL`. PostgreSQL-пользователю нужны права создавать и удалять тестовую БД. Тест создаёт отдельную случайную БД, применяет миграции и удаляет её после проверки; Redis использует отдельный случайный префикс и удаляет только свои ключи. Используйте выделенные тестовые зависимости.
 
 ## Сборка и проверки
 
@@ -26,6 +55,23 @@ pnpm --filter @gchat/backend test --watchman=false
 ```
 
 start собирает и запускает один раз; start:dev пересобирает при изменениях, start:prod запускает dist после build. Обычные тесты используют подменённые зависимости. Интеграционные тесты включаются отдельными переменными, описанными в контрактах миграций и RedLock.
+
+## Форматирование
+
+Настройки Prettier обязательны. Общая проверка кода и конфигурации — `pnpm lint`: Oxlint проверяет правила, затем Prettier проверяет соответствие `.prettierrc.json`. Любое нарушение завершает команду с ошибкой. `pnpm lint:fix` применяет Prettier, исправления Oxlint и повторно Prettier. Markdown, HTML и CSS проверяются отдельно через `pnpm format:check <пути>` либо lint-staged.
+
+Пустая строка обязательна перед `return` и `throw`, вокруг `if`, `switch`, циклов и `try`, а также после объявлений переменных перед следующей операцией. Последовательные объявления переменных могут оставаться вместе. Смысловые границы между однотипными действиями отделяются вручную; Prettier сохраняет одну пустую строку.
+
+Для выбранных файлов из корня запускайте готовые CLI напрямую: `pnpm style:fix <файлы кода>` сортирует импорты и добавляет пустые строки между методами, вокруг классов и экспортируемых объявлений; `pnpm format <файлы>` применяет Prettier. Проверки без изменения файлов — `pnpm style:check <файлы кода>` и `pnpm format:check <файлы>`. Конфигурация — `.oxlintrc.json` и `.prettierrc.json`.
+
+В TypeScript-коде приложения обязательны возвращаемые типы у функций и методов, включая callbacks; запрещены явный `any` и утверждения типов (`as Type`, включая `as unknown as Type`, и `<Type>value`). Возвращаемые типы обязательны и в тестах. В тестах (`*.spec.ts`, `*.test.ts`, каталоги `test` и `tests`) разрешены явный `any` и касты, включая `as unknown as Type`. Сортировка импортов действует везде.
+
+```sh
+pnpm format applications/backend/src/auth/auth.service.ts
+pnpm style:fix applications/backend/src/auth/auth.service.ts
+```
+
+`pnpm format:staged` запускает lint-staged для файлов, уже добавленных в индекс Git. Для кода выполняются Prettier → Oxlint → Prettier: сначала нормализуется раскладка кода, затем применяются правила и сортируются импорты, после чего выравнивается результат автоисправлений; для Markdown, JSON, YAML, CSS и HTML — Prettier. Исправления включаются в индекс стандартным механизмом lint-staged. Незакоммиченные файлы вне индекса эта команда не выбирает; новые файлы нужно сначала добавить через `git add`. Git hooks автоматически не устанавливаются.
 
 ## Проверка приложения
 

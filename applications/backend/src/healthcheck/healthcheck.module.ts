@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+
 import { DatabaseModule } from '../database/database.module.js';
 import { HealthcheckController } from './healthcheck.controller.js';
 

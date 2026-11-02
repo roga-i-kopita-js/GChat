@@ -3,3 +3,9 @@ packages:
   - applications/ios
 
 sharedWorkspaceLockfile: true
+
+# These rule packages are hosted by Oxlint, so their ESLint peers are unnecessary.
+overrides:
+  '@stylistic/eslint-plugin>eslint': '-'
+  '@eslint-community/eslint-utils>eslint': '-'
+  'eslint-plugin-simple-import-sort>eslint': '-'

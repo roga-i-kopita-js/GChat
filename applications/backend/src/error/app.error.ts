@@ -29,10 +29,12 @@ export class AppError extends Error {
     this.status = options.status;
     this.code = options.code;
     this.fields = options.fields;
+
     if (options.retryAfterSeconds !== undefined) {
       if (!Number.isSafeInteger(options.retryAfterSeconds) || options.retryAfterSeconds < 0) {
         throw new RangeError('retryAfterSeconds must be a non-negative integer');
       }
+
       this.retryAfterSeconds = options.retryAfterSeconds;
     }
   }

@@ -1,13 +1,17 @@
-import { Injectable, Module } from '@nestjs/common';
 import type { DynamicModule, OnModuleInit } from '@nestjs/common';
+import { Injectable, Module } from '@nestjs/common';
+
 import { LoggerService } from './logger.service.js';
-import { LoggerSettings } from './logger-settings.js';
 import { LoggerContext } from './logger-context.js';
+import { LoggerSettings } from './logger-settings.js';
 
 @Injectable()
 class LoggerInitializer implements OnModuleInit {
   constructor(private readonly registry: LoggerContext) {}
-  onModuleInit(): void { this.registry.bindConsumers(LoggerService); }
+
+  onModuleInit(): void {
+    this.registry.bindConsumers(LoggerService);
+  }
 }
 
 @Module({})

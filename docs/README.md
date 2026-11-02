@@ -2,31 +2,31 @@
 
 Начните с строки нужной задачи. Не требуется читать все документы перед каждой правкой.
 
-| Задача | Читать по порядку |
-| --- | --- |
-| Подготовить окружение | [Разработка](development.md) → [Запуск backend](../applications/backend/README.md) |
-| Понять продукт | [Требования](product/requirements.md) → [Сценарии](product/overview.md) → [Дизайн](design/README.md) |
-| Изменить архитектуру | [Система](architecture/system.md) → [Решения](architecture/decisions/README.md) → контракт владельца |
-| Добавить HTTP endpoint | [Соглашения](backend/conventions.md) → [OpenAPI](backend/openapi.md) → [Error](backend/modules/errors.md) → контракт модуля |
-| Реализовать Auth | [Auth](backend/modules/auth.md) → [Redis](backend/modules/redis.md) → [RedLock](backend/modules/redlock.md) → [Error](backend/modules/errors.md) |
-| Изменить PostgreSQL или схему | [Database](backend/modules/database.md) → [Миграции](backend/operations/migrations.md) → схема бизнес-модуля |
-| Изменить Redis или блокировки | [Redis](backend/modules/redis.md) → [RedLock](backend/modules/redlock.md) → [Восстановление](backend/operations/recovery.md) |
-| Изменить логирование | [Logger](backend/modules/logger.md) → его исходники и тесты |
-| Изменить проверки готовности | [Healthcheck](backend/modules/healthcheck.md) → [Database](backend/modules/database.md) и [Redis](backend/modules/redis.md) |
-| Восстановить доступ после сбоя | [Ограничения восстановления](backend/operations/recovery.md) → контракт владельца данных |
-| Работать над iOS | [Каталог iOS](../applications/ios/README.md) → [Требования](product/requirements.md) → [HTML-прототип](design/index.html) |
-| Обслуживать Mattermost | [Legacy-инструкция](legacy/mattermost.md) |
+| Задача                         | Читать по порядку                                                                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Подготовить окружение          | [Разработка](development.md) → [Запуск backend](../applications/backend/README.md)                                                               |
+| Понять продукт                 | [Требования](product/requirements.md) → [Сценарии](product/overview.md) → [Дизайн](design/README.md)                                             |
+| Изменить архитектуру           | [Система](architecture/system.md) → [Решения](architecture/decisions/README.md) → контракт владельца                                             |
+| Добавить HTTP endpoint         | [Соглашения](backend/conventions.md) → [OpenAPI](backend/openapi.md) → [Error](backend/modules/errors.md) → контракт модуля                      |
+| Реализовать Auth               | [Auth](backend/modules/auth.md) → [Redis](backend/modules/redis.md) → [RedLock](backend/modules/redlock.md) → [Error](backend/modules/errors.md) |
+| Изменить PostgreSQL или схему  | [Database](backend/modules/database.md) → [Миграции](backend/operations/migrations.md) → схема бизнес-модуля                                     |
+| Изменить Redis или блокировки  | [Redis](backend/modules/redis.md) → [RedLock](backend/modules/redlock.md) → [Восстановление](backend/operations/recovery.md)                     |
+| Изменить логирование           | [Logger](backend/modules/logger.md) → его исходники и тесты                                                                                      |
+| Изменить проверки готовности   | [Healthcheck](backend/modules/healthcheck.md) → [Database](backend/modules/database.md) и [Redis](backend/modules/redis.md)                      |
+| Восстановить доступ после сбоя | [Ограничения восстановления](backend/operations/recovery.md) → контракт владельца данных                                                         |
+| Работать над iOS               | [Каталог iOS](../applications/ios/README.md) → [Требования](product/requirements.md) → [HTML-прототип](design/index.html)                        |
+| Обслуживать Mattermost         | [Legacy-инструкция](legacy/mattermost.md)                                                                                                        |
 
 ## Источники истины
 
-| Вопрос | Источник |
-| --- | --- |
-| Что должен уметь продукт | Требования продукта |
-| Какой контракт принят | Профильный документ модуля со статусом accepted |
-| Что реально работает | Код и относящиеся тесты; implementation_status — указатель для навигации |
-| Версии, команды, значения окружения | Манифесты, lock-файл, .env.example и конфигурация |
-| Реализованный HTTP-контракт | Генерируемый OpenAPI и контроллеры; спецификация будущего Auth не означает наличия маршрутов |
-| Почему принято решение | Записи решений, ссылающиеся на действующие контракты |
+| Вопрос                              | Источник                                                                                      |
+| ----------------------------------- | --------------------------------------------------------------------------------------------- |
+| Что должен уметь продукт            | Требования продукта                                                                           |
+| Какой контракт принят               | Профильный документ модуля со статусом accepted                                               |
+| Что реально работает                | Код и относящиеся тесты; implementation_status — указатель для навигации                      |
+| Версии, команды, значения окружения | Манифесты, lock-файл, .env.example и конфигурация                                             |
+| Реализованный HTTP-контракт         | Генерируемый OpenAPI и контроллеры; описание будущих маршрутов не означает наличия реализации |
+| Почему принято решение              | Записи решений, ссылающиеся на действующие контракты                                          |
 
 При противоречии сообщить о расхождении. Не считать незавершённый код автоматическим согласованием контракта и не считать принятый будущий контракт существующей реализацией.
 

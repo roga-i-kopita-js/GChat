@@ -1,5 +1,7 @@
 import { Global, Module, ValidationPipe } from '@nestjs/common';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
+
+import type { AppError } from './app.error.js';
 import { ErrorFilter } from './error.filter.js';
 import { ErrorService } from './error.service.js';
 import { validationFields } from './validation-fields.js';
@@ -12,13 +14,15 @@ import { validationFields } from './validation-fields.js';
     {
       provide: APP_PIPE,
       inject: [ErrorService],
-      useFactory: (error: ErrorService) => new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        validationError: { target: false, value: false },
-        exceptionFactory: (errors) => error.validation({ fields: validationFields(errors) }),
-      }),
+      useFactory: (error: ErrorService): ValidationPipe =>
+        new ValidationPipe({
+          transform: true,
+          whitelist: true,
+          forbidNonWhitelisted: true,
+          validationError: { target: false, value: false },
+          exceptionFactory: (errors): AppError =>
+            error.validation({ fields: validationFields(errors) }),
+        }),
     },
   ],
   exports: [ErrorService],

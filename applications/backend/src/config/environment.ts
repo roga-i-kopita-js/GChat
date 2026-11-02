@@ -1,7 +1,11 @@
+import { parseAuthKeys } from '../auth/auth.crypto.js';
 import { validateDatabaseUrl } from '../database/database-url.js';
 import { parseLogRedaction } from '../logger/logger-settings.js';
 
-export function validateEnvironment(env: Record<string, unknown>) {
+export function validateEnvironment(
+  env: Record<string, unknown>,
+): Record<string, unknown> & { LOG_REDACTION_ENABLED: boolean; PORT: number; HOST: string } {
+  parseAuthKeys(env);
   const redaction = parseLogRedaction(env.LOG_REDACTION_ENABLED);
   const rawPort = String(env.PORT ?? '3000');
   const port = Number(rawPort);
@@ -11,6 +15,7 @@ export function validateEnvironment(env: Record<string, unknown>) {
   }
 
   const host = env.HOST ?? '127.0.0.1';
+
   if (typeof host !== 'string' || host.trim().length === 0) {
     throw new Error('HOST must be a non-empty string');
   }
@@ -19,8 +24,14 @@ export function validateEnvironment(env: Record<string, unknown>) {
 
   try {
     const url = new URL(String(env.REDIS_URL ?? ''));
-    if (!['redis:', 'rediss:'].includes(url.protocol) || !url.hostname
-      || (url.pathname && !/^\/\d*$/.test(url.pathname)) || url.search || url.hash) {
+
+    if (
+      !['redis:', 'rediss:'].includes(url.protocol) ||
+      !url.hostname ||
+      (url.pathname && !/^\/\d*$/.test(url.pathname)) ||
+      url.search ||
+      url.hash
+    ) {
       throw new Error();
     }
   } catch {
@@ -28,12 +39,18 @@ export function validateEnvironment(env: Record<string, unknown>) {
   }
 
   const prefix = env.REDIS_KEY_PREFIX;
+
   if (typeof prefix !== 'string' || !/^[a-zA-Z0-9:_-]+:$/.test(prefix)) {
     throw new Error('REDIS_KEY_PREFIX must be a namespace ending with a colon');
   }
 
   const timeouts: Record<string, number> = {};
+
   for (const [name, fallback] of Object.entries({
+    AUTH_LOGIN_WINDOW_MS: 300000,
+    AUTH_LOGIN_MAX_FAILURES: 5,
+    AUTH_REFRESH_WINDOW_MS: 60000,
+    AUTH_REFRESH_MAX_OPERATIONS: 10,
     REDIS_CONNECT_TIMEOUT_MS: 3000,
     REDIS_COMMAND_TIMEOUT_MS: 1000,
     REDIS_STARTUP_TIMEOUT_MS: 10000,
@@ -46,16 +63,28 @@ export function validateEnvironment(env: Record<string, unknown>) {
   })) {
     const raw = String(env[name] ?? fallback);
     const value = Number(raw);
-    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < (name === 'REDLOCK_RETRY_JITTER_MS' ? 0 : 1) || value > 2147483647) {
+
+    if (
+      !/^\d+$/.test(raw) ||
+      !Number.isSafeInteger(value) ||
+      value < (name === 'REDLOCK_RETRY_JITTER_MS' ? 0 : 1) ||
+      value > 2147483647
+    ) {
       throw new Error(`${name} must be a positive integer up to 2147483647`);
     }
+
     timeouts[name] = value;
   }
 
   const drift = Math.ceil(timeouts.REDLOCK_LEASE_MS! * 0.01) + 2;
-  if (timeouts.REDLOCK_EXTEND_THRESHOLD_MS! <= timeouts.REDIS_COMMAND_TIMEOUT_MS! + drift
-    || timeouts.REDLOCK_LEASE_MS! <= timeouts.REDLOCK_EXTEND_THRESHOLD_MS! + drift) {
-    throw new Error('Redlock lease and extension threshold must cover command timeout and clock drift');
+
+  if (
+    timeouts.REDLOCK_EXTEND_THRESHOLD_MS! <= timeouts.REDIS_COMMAND_TIMEOUT_MS! + drift ||
+    timeouts.REDLOCK_LEASE_MS! <= timeouts.REDLOCK_EXTEND_THRESHOLD_MS! + drift
+  ) {
+    throw new Error(
+      'Redlock lease and extension threshold must cover command timeout and clock drift',
+    );
   }
 
   return { ...env, ...timeouts, LOG_REDACTION_ENABLED: redaction, PORT: port, HOST: host };

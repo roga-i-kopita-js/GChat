@@ -12,7 +12,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
       interval: 5s
       timeout: 5s
       retries: 20
@@ -33,11 +33,11 @@ services:
       MM_BLEVESETTINGS_INDEXDIR: /mattermost/bleve-indexes
       MM_SERVICESETTINGS_SITEURL: ${MATTERMOST_SITE_URL}
 
-      MM_PLUGINSETTINGS_ENABLE: "true"
-      MM_PLUGINSETTINGS_ENABLEUPLOADS: "true"
-      MM_PLUGINSETTINGS_REQUIREPLUGINSIGNATURE: "false"
+      MM_PLUGINSETTINGS_ENABLE: 'true'
+      MM_PLUGINSETTINGS_ENABLEUPLOADS: 'true'
+      MM_PLUGINSETTINGS_REQUIREPLUGINSIGNATURE: 'false'
     ports:
-      - "${MATTERMOST_PORT}:8065"
+      - '${MATTERMOST_PORT}:8065'
     volumes:
       - mattermost-config:/mattermost/config
       - mattermost-data:/mattermost/data
@@ -54,17 +54,17 @@ services:
     depends_on:
       - jitsi-jvb
     ports:
-      - "${JITSI_HTTP_PORT}:80"
-      - "${JITSI_HTTPS_PORT}:443"
+      - '${JITSI_HTTP_PORT}:80'
+      - '${JITSI_HTTPS_PORT}:443'
     environment:
       TZ: ${TZ}
       PUBLIC_URL: ${JITSI_PUBLIC_URL}
-      ENABLE_AUTH: "1"
-      ENABLE_GUESTS: "0"
-      ENABLE_XMPP_WEBSOCKET: "1"
-      ENABLE_WELCOME_PAGE: "1"
-      ENABLE_PREJOIN_PAGE: "1"
-      DISABLE_HTTPS: "0"
+      ENABLE_AUTH: '1'
+      ENABLE_GUESTS: '0'
+      ENABLE_XMPP_WEBSOCKET: '1'
+      ENABLE_WELCOME_PAGE: '1'
+      ENABLE_PREJOIN_PAGE: '1'
+      DISABLE_HTTPS: '0'
       XMPP_DOMAIN: ${XMPP_DOMAIN}
       XMPP_AUTH_DOMAIN: ${XMPP_AUTH_DOMAIN}
       XMPP_BOSH_URL_BASE: http://xmpp.${XMPP_DOMAIN}:5280
@@ -85,14 +85,14 @@ services:
     restart: unless-stopped
     environment:
       TZ: ${TZ}
-      ENABLE_AUTH: "1"
-      ENABLE_GUESTS: "0"
+      ENABLE_AUTH: '1'
+      ENABLE_GUESTS: '0'
       AUTH_TYPE: jwt
 
       JWT_APP_ID: ${JITSI_JWT_APP_ID}
       JWT_APP_SECRET: ${JITSI_JWT_APP_SECRET}
-      JWT_ALLOW_EMPTY: "0"
-      ENABLE_XMPP_WEBSOCKET: "1"
+      JWT_ALLOW_EMPTY: '0'
+      ENABLE_XMPP_WEBSOCKET: '1'
       XMPP_DOMAIN: ${XMPP_DOMAIN}
       XMPP_AUTH_DOMAIN: ${XMPP_AUTH_DOMAIN}
       XMPP_GUEST_DOMAIN: ${XMPP_GUEST_DOMAIN}
@@ -117,7 +117,7 @@ services:
       - jitsi-prosody
     environment:
       TZ: ${TZ}
-      ENABLE_AUTH: "1"
+      ENABLE_AUTH: '1'
       AUTH_TYPE: jwt
       XMPP_DOMAIN: ${XMPP_DOMAIN}
       XMPP_AUTH_DOMAIN: ${XMPP_AUTH_DOMAIN}
@@ -136,7 +136,7 @@ services:
     depends_on:
       - jitsi-prosody
     ports:
-      - "${JVB_PORT}:${JVB_PORT}/udp"
+      - '${JVB_PORT}:${JVB_PORT}/udp'
     environment:
       TZ: ${TZ}
       PUBLIC_URL: ${JITSI_PUBLIC_URL}

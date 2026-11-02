@@ -9,6 +9,28 @@
   },
   "scripts": {
     "projects": "pnpm --recursive list --depth -1",
-    "docs:check": "node scripts/check-docs.mjs"
+    "docs:check": "node scripts/check-docs.mjs",
+    "format": "prettier --write --ignore-unknown",
+    "format:check": "prettier --check --ignore-unknown",
+    "style:check": "oxlint --deny-warnings",
+    "style:fix": "oxlint --fix --deny-warnings",
+    "format:staged": "lint-staged",
+    "lint": "pnpm style:check . && pnpm format:check \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\"",
+    "lint:fix": "pnpm format \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\" && pnpm style:fix . && pnpm format \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\""
+  },
+  "devDependencies": {
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "eslint-plugin-simple-import-sort": "^14.0.0",
+    "lint-staged": "^17.6.0",
+    "oxlint": "^1.90.0",
+    "prettier": "^3.9.10"
+  },
+  "lint-staged": {
+    "*.{js,cjs,mjs,jsx,ts,cts,mts,tsx}": [
+      "prettier --write",
+      "oxlint --fix --deny-warnings",
+      "prettier --write"
+    ],
+    "*.{json,jsonc,md,yaml,yml,css,scss,html}": "prettier --write"
   }
 }
