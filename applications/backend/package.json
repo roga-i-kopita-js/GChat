@@ -13,7 +13,7 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand",
     "db:up": "docker compose --env-file .env -f docker-compose.yml up -d --wait",
     "db:down": "docker compose --env-file .env -f docker-compose.yml down",
-    "db:logs": "docker compose --env-file .env -f docker-compose.yml logs -f postgres",
+    "db:logs": "docker compose --env-file .env -f docker-compose.yml logs -f postgres redis",
     "db:ps": "docker compose --env-file .env -f docker-compose.yml ps"
   },
   "dependencies": {
@@ -23,6 +23,7 @@
     "@nestjs/platform-express": "12.3.2",
     "drizzle-orm": "^0.45.4",
     "pg": "^8.23.1",
+    "redis": "^5.12.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },

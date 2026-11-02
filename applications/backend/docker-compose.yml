@@ -19,5 +19,34 @@ services:
       retries: 10
       start_period: 10s
 
+  redis:
+    image: redis:8.2-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in applications/backend/.env}
+      REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-256mb}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        exec /usr/local/bin/docker-entrypoint.sh redis-server \
+          --requirepass "$$REDIS_PASSWORD" \
+          --appendonly yes \
+          --appendfsync always \
+          --no-appendfsync-on-rewrite no \
+          --maxmemory "$$REDIS_MAXMEMORY" \
+          --maxmemory-policy noeviction
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -qx PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
 volumes:
   postgres-data:
+  redis-data:

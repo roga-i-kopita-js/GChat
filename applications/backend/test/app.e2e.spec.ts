@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { jest } from '@jest/globals';
 import { AppModule } from '../src/app.module.js';
+import { REDIS_CLIENT } from '../src/redis/redis.constants.js';
 import { DATABASE_POOL } from '../src/database/database.constants.js';
 
 describe('Backend HTTP', () => {
@@ -12,10 +13,20 @@ describe('Backend HTTP', () => {
     end: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
   };
 
+  const redis = {
+    isOpen: true,
+    connect: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    ping: jest.fn<() => Promise<string>>().mockResolvedValue('PONG'),
+    close: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    destroy: jest.fn(),
+  };
+
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(DATABASE_POOL)
       .useValue(pool)
+      .overrideProvider(REDIS_CLIENT)
+      .useValue(redis)
       .compile();
     app = module.createNestApplication();
     await app.init();
@@ -24,9 +35,11 @@ describe('Backend HTTP', () => {
   afterAll(async () => {
     await app?.close();
     expect(pool.end).toHaveBeenCalledTimes(1);
+    expect(redis.close).toHaveBeenCalledTimes(1);
   });
 
   beforeEach(() => {
+    redis.ping.mockReset().mockResolvedValue('PONG');
     pool.query.mockReset();
     pool.query.mockResolvedValue({ rows: [{ '?column?': 1 }] });
   });
@@ -44,7 +57,7 @@ describe('Backend HTTP', () => {
       await request(app.getHttpServer()).get('/ready').expect(200).expect({
         status: 'ok',
         service: 'gchat-backend',
-        checks: { database: 'up' },
+        checks: { database: 'up', redis: 'up' },
       });
     }
     expect(pool.query).toHaveBeenCalledTimes(2);
@@ -56,10 +69,20 @@ describe('Backend HTTP', () => {
     await request(app.getHttpServer()).get('/ready').expect(503).expect({
       status: 'error',
       service: 'gchat-backend',
-      checks: { database: 'down' },
+      checks: { database: 'down', redis: 'up' },
     });
     await request(app.getHttpServer()).get('/health').expect(200);
     expect(pool.query).toHaveBeenCalledTimes(1);
+    await request(app.getHttpServer()).get('/ready').expect(200);
+  });
+
+  it('reports Redis failure without secrets and recovers', async () => {
+    redis.ping.mockRejectedValueOnce(new Error('private-redis-password'));
+    await request(app.getHttpServer()).get('/ready').expect(503).expect({
+      status: 'error', service: 'gchat-backend',
+      checks: { database: 'up', redis: 'down' },
+    });
+    await request(app.getHttpServer()).get('/health').expect(200);
     await request(app.getHttpServer()).get('/ready').expect(200);
   });
 
