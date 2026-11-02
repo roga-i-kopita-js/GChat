@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { LoggerService } from '../logger/logger.service.js';
+import { Injectable } from '@nestjs/common';
 import type { BeforeApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -31,7 +32,7 @@ export class RedlockService implements BeforeApplicationShutdown {
   private readonly scope = new AsyncLocalStorage<boolean>();
   private readonly active = new Map<AbortController, Promise<unknown>>();
 
-  constructor(private readonly redis: RedisService, private readonly config: ConfigService) {}
+  constructor(private readonly redis: RedisService, private readonly config: ConfigService, private readonly logger: LoggerService) {}
 
   withLock<T>(resource: string, action: (context: LockContext) => Promise<T>): Promise<T> {
     if (this.stopping) return Promise.reject(new LockError('LOCK_SHUTTING_DOWN', false));
@@ -132,7 +133,7 @@ export class RedlockService implements BeforeApplicationShutdown {
       clearTimeout(expiryTimer);
     }, { once: true });
     const maxTimer = setTimeout(() => {
-      Logger.warn('Lock callback exceeded maximum hold time', 'Redlock');
+      this.logger.warn('Lock callback exceeded maximum hold time');
       lost();
     }, this.ms('REDLOCK_MAX_HOLD_MS'));
     let failed = false;
@@ -157,7 +158,7 @@ export class RedlockService implements BeforeApplicationShutdown {
         const released = await this.redis.client.eval(RELEASE_LOCK, { keys: [key], arguments: [owner] });
         if (released !== 1) throw new Error('Ownership not confirmed');
       } catch {
-        Logger.warn('Lock release not confirmed', 'Redlock');
+        this.logger.warn('Lock release not confirmed');
         if (!failed) throw new LockError('LOCK_RELEASE_FAILED', true);
       }
       if (!failed) controller.signal.throwIfAborted();

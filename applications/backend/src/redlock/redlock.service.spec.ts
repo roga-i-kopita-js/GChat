@@ -1,8 +1,9 @@
+import { LoggerService } from '../logger/logger.service.js';
 import { ConfigService } from '@nestjs/config';
 import { jest } from '@jest/globals';
-import { RedlockService } from '../src/redlock/redlock.service.js';
-import type { RedisService } from '../src/redis/redis.service.js';
-import { validateEnvironment } from '../src/config/environment.js';
+import { RedlockService } from './redlock.service.js';
+import type { RedisService } from '../redis/redis.service.js';
+import { validateEnvironment } from '../config/environment.js';
 
 function fixture(overrides = {}) {
   const client = {
@@ -18,7 +19,7 @@ function fixture(overrides = {}) {
     REDLOCK_MAX_HOLD_MS: 100, ...overrides,
   });
   const redis = { client, key: (key: string) => `test:${key}` };
-  return { client, service: new RedlockService(redis as unknown as RedisService, config) };
+  return { client, service: new RedlockService(redis as unknown as RedisService, config, new LoggerService()) };
 }
 
 describe('RedlockService', () => {

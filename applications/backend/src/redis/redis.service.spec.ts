@@ -1,8 +1,8 @@
 import { ConfigService } from '@nestjs/config';
 import { jest } from '@jest/globals';
-import { RedisService } from '../src/redis/redis.service.js';
-import type { RedisClient } from '../src/redis/redis.service.js';
-import { validateEnvironment } from '../src/config/environment.js';
+import { RedisService } from './redis.service.js';
+import type { RedisClient } from './redis.service.js';
+import { validateEnvironment } from '../config/environment.js';
 
 const config = new ConfigService({
   REDIS_KEY_PREFIX: 'gchat:test:',

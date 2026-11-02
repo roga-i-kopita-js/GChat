@@ -1,4 +1,5 @@
-import { Logger, Module } from '@nestjs/common';
+import { LoggerService } from '../logger/logger.service.js';
+import { Module } from '@nestjs/common';
 import type { DynamicModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { createClient } from 'redis';
@@ -15,8 +16,8 @@ export class RedisModule {
       providers: [
         {
           provide: REDIS_CLIENT,
-          inject: [ConfigService],
-          useFactory: (config: ConfigService) => {
+          inject: [ConfigService, LoggerService],
+          useFactory: (config: ConfigService, logger: LoggerService) => {
             const client = createClient({
               url: config.getOrThrow<string>('REDIS_URL'),
               disableOfflineQueue: true,
@@ -31,7 +32,7 @@ export class RedisModule {
               },
             });
             // Never log the original error: connection details may contain credentials.
-            client.on('error', () => Logger.warn('Redis connection failed', 'Redis'));
+            client.on('error', () => logger.warn('Redis connection failed'));
             return client;
           },
         },

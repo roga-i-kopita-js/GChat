@@ -1,7 +1,7 @@
 module.exports = {
   testEnvironment: 'node',
   setupFiles: ['<rootDir>/test/setup-env.cjs'],
-  roots: ['<rootDir>/test'],
+  roots: ['<rootDir>/src', '<rootDir>/test'],
   testMatch: ['**/*.spec.ts'],
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {

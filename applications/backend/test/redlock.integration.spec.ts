@@ -1,3 +1,4 @@
+import { LoggerService } from '../src/logger/logger.service.js';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -20,7 +21,7 @@ integration('Redlock with real Redis', () => {
     disableOfflineQueue: true, commandOptions: { timeout: 100 },
     socket: { reconnectStrategy: false, connectTimeout: 1000 },
   }).on('error', () => {}));
-  const services = clients.map((client) => new RedlockService(new RedisService(client, config), config));
+  const services = clients.map((client) => new RedlockService(new RedisService(client, config), config, new LoggerService()));
   beforeAll(async () => { await Promise.all(clients.map((client) => client.connect())); });
   afterAll(async () => {
     await Promise.all(services.map((service) => service.beforeApplicationShutdown()));

@@ -53,7 +53,7 @@ pnpm install
 pnpm projects
 ```
 
-В выводе списка проектов должны присутствовать `@gchat/backend` и `@gchat/ios`. Backend — базовое NestJS-приложение с внешними зависимостями, сборкой, проверкой типов и HTTP-тестами. iOS пока содержит каркас пакета без нативного проекта. У backend также есть команды `db:up`, `db:down`, `db:logs` и `db:ps` для локальной PostgreSQL.
+В выводе списка проектов должны присутствовать `@gchat/backend` и `@gchat/ios`. Backend — базовое NestJS-приложение с внешними зависимостями, сборкой, проверкой типов и HTTP-тестами. iOS пока содержит каркас пакета без нативного проекта. У backend также есть команды `db:up`, `db:down`, `db:logs` и `db:ps` для локальных PostgreSQL и Redis.
 
 Команды backend из корня:
 
@@ -67,16 +67,16 @@ pnpm --filter @gchat/backend start:prod
 
 Перед `start:prod` выполните `build`. Детали конфигурации, `GET /health`, `GET /ready` и текущие ограничения — в [README backend](../../applications/backend/README.md#запуск-приложения).
 
-## Локальная база backend
+## Локальные PostgreSQL и Redis backend
 
-Отдельный `applications/backend/docker-compose.yml` запускает только PostgreSQL 17, по умолчанию на `127.0.0.1:5433`. Требуются Docker и Docker Compose v2. Из корня:
+Отдельный `applications/backend/docker-compose.yml` запускает PostgreSQL 17 и Redis 8.2, по умолчанию на `127.0.0.1:5433` и `127.0.0.1:6379` соответственно. Требуются Docker и Docker Compose v2. Из корня:
 
 ```sh
 cp applications/backend/.env.example applications/backend/.env
 pnpm --filter @gchat/backend db:up
 ```
 
-Параметры подключения, команды и правила сохранения данных описаны в [README backend](../../applications/backend/README.md#локальная-postgresql). Корневой Compose с Mattermost / Jitsi этой командой не запускается.
+Параметры подключения, команды и правила сохранения данных описаны в [README backend](../../applications/backend/README.md#локальные-postgresql-и-redis). Корневой Compose с Mattermost / Jitsi этой командой не запускается.
 
 ## Зависимости и команды
 

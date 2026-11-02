@@ -1,4 +1,7 @@
+import { parseLogRedaction } from '../logger/logger-settings.js';
+
 export function validateEnvironment(env: Record<string, unknown>) {
+  const redaction = parseLogRedaction(env.LOG_REDACTION_ENABLED);
   const rawPort = String(env.PORT ?? '3000');
   const port = Number(rawPort);
 
@@ -61,5 +64,5 @@ export function validateEnvironment(env: Record<string, unknown>) {
     throw new Error('Redlock lease and extension threshold must cover command timeout and clock drift');
   }
 
-  return { ...env, ...timeouts, PORT: port, HOST: host };
+  return { ...env, ...timeouts, LOG_REDACTION_ENABLED: redaction, PORT: port, HOST: host };
 }

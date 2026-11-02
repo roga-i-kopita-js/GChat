@@ -10,15 +10,16 @@ Workspace-проект `@gchat/backend`: базовое NestJS 12-приложе
 
 ## Запуск приложения
 
-Требуются Node.js 24.15+ (ветка 24.x) и pnpm 10.33.0. Из корня монорепозитория:
+Требуются Node.js 24.15+ (ветка 24.x), pnpm 10.33.0 и запущенный Docker Engine / Docker Desktop с Docker Compose v2 с поддержкой `--wait`. Из корня монорепозитория:
 
 ```sh
 pnpm install
 cp applications/backend/.env.example applications/backend/.env
+pnpm --filter @gchat/backend db:up
 pnpm --filter @gchat/backend start:dev
 ```
 
-Если `.env` уже существует, сохраните его и добавьте нужные переменные из примера. Приложение читает `applications/backend/.env` при запуске через команды пакета. Переменные процесса имеют приоритет.
+Если `.env` уже существует, пропустите команду копирования и добавьте нужные переменные из примера. `db:up` запускает локальные PostgreSQL и Redis и ждёт готовности обеих зависимостей. Приложение читает `applications/backend/.env` при запуске через команды пакета. Переменные процесса имеют приоритет.
 
 По умолчанию сервер слушает `127.0.0.1:3000`. Параметры `HOST` и `PORT` переопределяют адрес и порт; некорректный `PORT` останавливает запуск. `DATABASE_URL` обязателен и проверяется при старте; его отсутствие или неверный формат останавливают приложение. `REDIS_URL` и `REDIS_KEY_PREFIX` также обязательны и проверяются при старте. Redis подключается при инициализации с PING; если подключение не установлено за `REDIS_STARTUP_TIMEOUT_MS`, запуск завершается ошибкой без вывода секретов. Соединения с PostgreSQL создаются по запросу, поэтому недоступная БД не мешает запуску HTTP-сервера. Для доступа извне, например с телефона в локальной сети, можно задать `HOST=0.0.0.0`.
 
@@ -61,10 +62,16 @@ src/
   database/                  # Пул PostgreSQL, Drizzle и управление подключением
   redis/                     # RedisModule, клиент, namespace ключей и жизненный цикл
   redlock/                   # RedlockModule, аренда ресурса и отмена при потере
+  logger/                    # Глобальный JSON-логгер, DI-контекст и маскирование
+  error/                     # Глобальная фабрика ошибок, HTTP-фильтр и ValidationPipe
   healthcheck/               # HealthcheckModule, GET /health и GET /ready
 test/
   app.e2e.spec.ts             # HTTP smoke-тесты
+  error.e2e.spec.ts           # HTTP-контракт ошибок
+  redlock.integration.spec.ts # Интеграция с настоящим Redis
 ```
+
+Юнит-тесты `*.spec.ts` располагаются рядом с исходниками соответствующих модулей в `src`. HTTP- и интеграционные тесты находятся в `test`. При production-сборке тесты из `src` исключаются.
 
 Авторизация, контакты, звонки, схема БД, Drizzle Kit / миграции, WebSocket и push ещё не реализованы. `DatabaseModule` экспортирует `DatabaseService` с Drizzle-клиентом для следующих модулей.
 
@@ -148,3 +155,22 @@ await this.redlock.withLock(`auth:user:${userId}`, async (context) => {
 Настройки `REDLOCK_*` валидируются при старте. Запас продления должен превышать таймаут команды плюс поправку на дрейф, а срок аренды — запас продления плюс поправку. Используется односерверный протокол `SET NX PX` и Lua с проверкой владельца поверх существующего node-redis; дополнительного клиента и кворума нет. Подробнее: [контракт и ограничения](../../docs/backend/redlock.md).
 
 Интеграционные тесты Redlock включаются отдельно переменной `REDLOCK_INTEGRATION_URL` с URL тестового Redis. Запуск: `pnpm --filter @gchat/backend test --watchman=false`. Без этой переменной интеграционные тесты пропускаются. Они используют уникальный префикс ключей и не очищают общую базу.
+
+## Использование ErrorModule
+
+[ErrorModule](../../docs/backend/errors.md) зарегистрирован глобально в AppModule. Фабрика внедряется через конструктор без повторного импорта модуля:
+
+```ts
+constructor(private readonly error: ErrorService) {}
+
+// В методе сервиса:
+throw this.error.rateLimited({ retryAfterSeconds: 60 });
+```
+
+`ErrorService` импортируется из `src/error/error.service.ts`. Глобальный фильтр возвращает `{ "error": { "code": "RATE_LIMITED", "message": "…" } }` с HTTP 429 и `Retry-After`. DTO проверяются глобальным ValidationPipe с class-validator и class-transformer; неизвестные свойства отклоняются. Для ошибок валидации используется HTTP 400 и дополнительный список `error.fields`. Контракты `/health` и `/ready` сохранены.
+
+## Использование LoggerModule
+
+[LoggerModule](../../docs/backend/logger.md) зарегистрирован глобально через `LoggerModule.forRoot()` один раз в AppModule. Обычный импорт LoggerModule не создаёт провайдеры. Внедрите `LoggerService` из `src/logger/logger.service.ts` через конструктор и вызывайте `this.logger.log('Event', { callId })`. Поля `module` и `context` добавляются автоматически для внедрённого провайдера; Nest и bootstrap без владельца получают `module: null`.
+
+`LOG_REDACTION_ENABLED=true` включает маскирование по умолчанию. При `false` чувствительные данные не скрываются; обработка циклов, ограничение размеров и защита от ошибок сериализации сохраняются. Неверное значение останавливает запуск. Вывод — JSON в stdout/stderr, без автоматической корреляции запросов.

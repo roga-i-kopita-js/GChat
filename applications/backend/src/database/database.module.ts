@@ -1,4 +1,5 @@
-import { Logger, Module } from '@nestjs/common';
+import { LoggerService } from '../logger/logger.service.js';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import pg from 'pg';
 import { DATABASE_POOL } from './database.constants.js';
@@ -9,8 +10,8 @@ import { DatabaseService } from './database.service.js';
   providers: [
     {
       provide: DATABASE_POOL,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
+      inject: [ConfigService, LoggerService],
+      useFactory: (config: ConfigService, logger: LoggerService) => {
         const pool = new pg.Pool({
           connectionString: config.getOrThrow<string>('DATABASE_URL'),
           max: 5,
@@ -20,7 +21,7 @@ import { DatabaseService } from './database.service.js';
         });
         // Idle-client errors must not become unhandled EventEmitter errors.
         pool.on('error', () => {
-          Logger.warn('Idle PostgreSQL connection failed', 'Database');
+          logger.warn('Idle PostgreSQL connection failed');
         });
         return pool;
       },

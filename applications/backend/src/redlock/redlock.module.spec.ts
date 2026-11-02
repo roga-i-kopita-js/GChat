@@ -1,11 +1,12 @@
+import { LoggerModule } from '../logger/logger.module.js';
 import { Injectable, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { RedlockModule } from '../src/redlock/redlock.module.js';
-import { RedlockService } from '../src/redlock/redlock.service.js';
-import { RedisService } from '../src/redis/redis.service.js';
-import { RedisModule } from '../src/redis/redis.module.js';
-import { REDIS_CLIENT } from '../src/redis/redis.constants.js';
+import { RedlockModule } from './redlock.module.js';
+import { RedlockService } from './redlock.service.js';
+import { RedisService } from '../redis/redis.service.js';
+import { RedisModule } from '../redis/redis.module.js';
+import { REDIS_CLIENT } from '../redis/redis.constants.js';
 
 @Injectable()
 class ConsumerService {
@@ -20,7 +21,7 @@ class ConsumerModule {}
 
 describe('RedlockModule registration', () => {
   it('exports the service to a consumer using forFeature', async () => {
-    const module = await Test.createTestingModule({ imports: [RedisModule.forRoot(), ConsumerModule] })
+    const module = await Test.createTestingModule({ imports: [LoggerModule.forRoot(), RedisModule.forRoot(), ConsumerModule] })
       .overrideProvider(ConfigService)
       .useValue(new ConfigService({ REDIS_COMMAND_TIMEOUT_MS: 1000 }))
       .overrideProvider(REDIS_CLIENT)

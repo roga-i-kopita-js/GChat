@@ -1,4 +1,5 @@
-import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { ReadinessError } from '../error/readiness.error.js';
+import { Controller, Get } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service.js';
 import { DatabaseService } from '../database/database.service.js';
 
@@ -23,7 +24,7 @@ export class HealthcheckController {
     };
     const healthy = results.every((result) => result.status === 'fulfilled');
     const response = { status: healthy ? 'ok' : 'error', service: 'gchat-backend', checks };
-    if (!healthy) throw new ServiceUnavailableException(response);
+    if (!healthy) throw new ReadinessError(response);
     return response;
   }
 }
