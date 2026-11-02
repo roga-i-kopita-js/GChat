@@ -1,0 +1,5 @@
+packages:
+  - applications/backend
+  - applications/ios
+
+sharedWorkspaceLockfile: true

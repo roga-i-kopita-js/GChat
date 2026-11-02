@@ -1,0 +1,6 @@
+{
+  "name": "@gchat/ios",
+  "version": "0.0.0",
+  "private": true,
+  "description": "GChat native iOS project workspace; Xcode project creation is pending"
+}

@@ -1,8 +1,21 @@
-Собрал отдельный пользовательский `README.md`. В нём нет технических деталей развёртывания: только ссылки на приложения, регистрация по приглашению, адрес сервера, голосовые звонки и видеокомнаты.
+# GChat
 
-Официальная страница Mattermost содержит загрузки для Windows, macOS, iOS и Android. После установки приложение просит указать адрес сервера и затем войти с учётными данными. Инвайт-ссылка используется для регистрации и вступления в команду, но в поле сервера нужно вводить корневой адрес Mattermost. ([Mattermost.com][1])
+Монорепозиторий приложения для голосовых звонков на pnpm: [backend](applications/backend/README.md) и [нативное iOS-приложение](applications/ios/README.md). Backend содержит базовое NestJS-приложение с `/health`, `/ready`, подключением PostgreSQL через Drizzle и Compose для PostgreSQL. iOS пока представлен каркасом пакета; бизнес-функции ещё не реализованы.
 
-[Скачать `README-users.md`](sandbox:/mnt/data/README-users.md)
+[Настройки репозитория](docs/repository-settings/README.md) — структура, версии инструментов и работа с зависимостями. Требуются Node.js 24.15+ (ветка 24.x) и pnpm 10.33.0.
+
+```sh
+pnpm install
+pnpm projects
+```
+
+Запуск backend: `pnpm --filter @gchat/backend start:dev`. Подробности окружения, базы, сборки и тестов — в [README backend](applications/backend/README.md).
+
+[Документация](docs/README.md): [обзор приложения](docs/application-overview.md), [бизнес-требования](docs/business-requirements.md), [базовый дизайн](docs/design/README.md), [HTML-макет](docs/design/index.html) и [стек backend](docs/backend/README.md).
+
+Ниже сохранена инструкция для существующего семейного мессенджера на Mattermost. Его конфигурация Docker Compose остаётся в корне репозитория.
+
+---
 
 # GChat Family — инструкция по подключению
 
