@@ -1,3 +1,4 @@
+import { setupSwagger } from './swagger/setup-swagger.js';
 import 'reflect-metadata';
 import { LoggerService } from './logger/logger.service.js';
 
@@ -14,6 +15,7 @@ async function bootstrap() {
   app.useLogger(logger);
   const config = app.get(ConfigService);
 
+  setupSwagger(app);
   app.enableShutdownHooks();
   await app.listen(config.getOrThrow<number>('PORT'), config.getOrThrow<string>('HOST'));
   logger.log('HTTP server started', { host: config.getOrThrow<string>('HOST'), port: config.getOrThrow<number>('PORT') }, 'Bootstrap');

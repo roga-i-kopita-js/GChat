@@ -1,3 +1,4 @@
+import { setupSwagger } from '../src/swagger/setup-swagger.js';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -29,6 +30,7 @@ describe('Backend HTTP', () => {
       .useValue(redis)
       .compile();
     app = module.createNestApplication();
+    setupSwagger(app);
     await app.init();
   });
 
@@ -42,6 +44,19 @@ describe('Backend HTTP', () => {
     redis.ping.mockReset().mockResolvedValue('PONG');
     pool.query.mockReset();
     pool.query.mockResolvedValue({ rows: [{ '?column?': 1 }] });
+  });
+
+  it('serves Swagger UI and controller-generated OpenAPI', async () => {
+    await request(app.getHttpServer()).get('/docs').redirects(1).expect(200).expect(/swagger-ui/);
+    const response = await request(app.getHttpServer()).get('/docs-json').expect(200);
+    expect(response.body.info.title).toBe('GChat API');
+    expect(Object.keys(response.body.paths).sort()).toEqual(['/health', '/ready']);
+    expect(response.body.paths['/health'].get).toBeDefined();
+    expect(response.body.paths['/ready'].get.responses['503'].content['application/json'].schema)
+      .toEqual({ $ref: '#/components/schemas/ReadinessResponseDto' });
+    expect(response.body.components.securitySchemes.bearer.scheme).toBe('bearer');
+    expect(response.body.paths['/health'].get.security).toBeUndefined();
+    expect(pool.query).not.toHaveBeenCalled();
   });
 
   it('exposes a liveness endpoint without a database dependency', async () => {

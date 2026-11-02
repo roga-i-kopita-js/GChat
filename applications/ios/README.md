@@ -4,7 +4,7 @@
 
 Пакет `@gchat/ios` включает каталог в pnpm workspace для общей структуры и будущих команд автоматизации. Наличие `package.json` не означает использование React Native или JavaScript для интерфейса. Нативная сборка выполняется инструментами Xcode; pnpm не устанавливает Xcode и не управляет Swift-зависимостями.
 
-- [Настройки репозитория](../../docs/repository-settings/README.md).
-- [Обзор приложения](../../docs/application-overview.md).
-- [Бизнес-требования](../../docs/business-requirements.md).
+- [Настройки репозитория](../../docs/development.md).
+- [Обзор приложения](../../docs/product/overview.md).
+- [Бизнес-требования](../../docs/product/requirements.md).
 - [Базовый дизайн](../../docs/design/README.md).
