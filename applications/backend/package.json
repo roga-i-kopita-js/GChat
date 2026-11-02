@@ -14,7 +14,9 @@
     "db:up": "docker compose --env-file .env -f docker-compose.yml up -d --wait",
     "db:down": "docker compose --env-file .env -f docker-compose.yml down",
     "db:logs": "docker compose --env-file .env -f docker-compose.yml logs -f postgres redis",
-    "db:ps": "docker compose --env-file .env -f docker-compose.yml ps"
+    "db:ps": "docker compose --env-file .env -f docker-compose.yml ps",
+    "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
+    "db:migrate": "node --env-file-if-exists=.env dist/database/migrate.js"
   },
   "dependencies": {
     "@nestjs/common": "12.3.2",
@@ -37,6 +39,7 @@
     "@types/node": "^24.0.0",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^6.0.3",
+    "drizzle-kit": "^0.31.11",
     "jest": "^29.7.0",
     "supertest": "^7.1.4",
     "ts-jest": "^29.4.5",

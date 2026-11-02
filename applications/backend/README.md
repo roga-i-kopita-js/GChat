@@ -73,7 +73,7 @@ test/
 
 Юнит-тесты `*.spec.ts` располагаются рядом с исходниками соответствующих модулей в `src`. HTTP- и интеграционные тесты находятся в `test`. При production-сборке тесты из `src` исключаются.
 
-Авторизация, контакты, звонки, схема БД, Drizzle Kit / миграции, WebSocket и push ещё не реализованы. `DatabaseModule` экспортирует `DatabaseService` с Drizzle-клиентом для следующих модулей.
+Авторизация, контакты, звонки, бизнес-схема БД, WebSocket и push ещё не реализованы. `DatabaseModule` экспортирует `DatabaseService` с Drizzle-клиентом для следующих модулей.
 
 ## Локальные PostgreSQL и Redis
 
@@ -174,3 +174,21 @@ throw this.error.rateLimited({ retryAfterSeconds: 60 });
 [LoggerModule](../../docs/backend/logger.md) зарегистрирован глобально через `LoggerModule.forRoot()` один раз в AppModule. Обычный импорт LoggerModule не создаёт провайдеры. Внедрите `LoggerService` из `src/logger/logger.service.ts` через конструктор и вызывайте `this.logger.log('Event', { callId })`. Поля `module` и `context` добавляются автоматически для внедрённого провайдера; Nest и bootstrap без владельца получают `module: null`.
 
 `LOG_REDACTION_ENABLED=true` включает маскирование по умолчанию. При `false` чувствительные данные не скрываются; обработка циклов, ограничение размеров и защита от ошибок сериализации сохраняются. Неверное значение останавливает запуск. Вывод — JSON в stdout/stderr, без автоматической корреляции запросов.
+
+## Миграции PostgreSQL
+
+[Контракт миграций](../../docs/backend/migrations.md). Схемы размещаются в `src/<module>/<module>.schema.ts`, SQL и метаданные хранятся в `drizzle/` и коммитятся вместе с кодом. Генерация не требует БД:
+
+```sh
+pnpm --filter @gchat/backend db:generate --name=add_users
+```
+
+Проверьте сгенерированный SQL. Перед запуском новой версии соберите backend и отдельно примените миграции:
+
+```sh
+pnpm --filter @gchat/backend build
+pnpm --filter @gchat/backend db:migrate
+pnpm --filter @gchat/backend start:prod
+```
+
+`db:migrate` читает `.env` приложения, переменные процесса имеют приоритет. Требуется PostgreSQL по DATABASE_URL; Redis и HTTP-приложение не запускаются. При пустой истории команда завершается без подключения, при ошибке — с ненулевым кодом и безопасным сообщением. В production-артефакт включайте каталог `drizzle/` рядом с `dist/`. Миграции не запускаются автоматически вместе с backend, параллельные запуски на одну БД не допускаются. Уже применённый SQL не редактируется; исправление оформляется новой миграцией.
