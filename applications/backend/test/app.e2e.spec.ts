@@ -4,8 +4,14 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { AppModule } from '../src/app.module.js';
+import { AuthService } from '../src/auth/auth.service.js';
 import { DATABASE_POOL } from '../src/database/database.constants.js';
+import { DirectCallsWorker } from '../src/direct-calls/direct-calls.worker.js';
+import { PushClient } from '../src/push/push.client.js';
+import { PushWorker } from '../src/push/push.worker.js';
 import { REDIS_CLIENT } from '../src/redis/redis.constants.js';
+import { SignalingAdapter } from '../src/signaling/signaling.adapter.js';
+import { SignalingWorker } from '../src/signaling/signaling.worker.js';
 import { setupSwagger } from '../src/swagger/setup-swagger.js';
 
 describe('Backend HTTP', (): void => {
@@ -25,6 +31,14 @@ describe('Backend HTTP', (): void => {
 
   beforeAll(async (): Promise<void> => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(DirectCallsWorker)
+      .useValue({})
+      .overrideProvider(SignalingWorker)
+      .useValue({})
+      .overrideProvider(PushWorker)
+      .useValue({})
+      .overrideProvider(PushClient)
+      .useValue({})
       .overrideProvider(DATABASE_POOL)
       .useValue(pool)
       .overrideProvider(REDIS_CLIENT)
@@ -32,6 +46,7 @@ describe('Backend HTTP', (): void => {
       .compile();
 
     app = module.createNestApplication();
+    app.useWebSocketAdapter(new SignalingAdapter(app, module.get(AuthService)));
     setupSwagger(app);
     await app.init();
   });
@@ -61,6 +76,9 @@ describe('Backend HTTP', (): void => {
       '/auth/login',
       '/auth/logout',
       '/auth/refresh',
+      '/auth/ws-ticket',
+      '/groups',
+      '/groups/{group_id}/members',
       '/health',
       '/ready',
     ]);

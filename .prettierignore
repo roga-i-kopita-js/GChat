@@ -2,3 +2,7 @@ node_modules/
 .pnpm-store/
 **/dist/
 pnpm-lock.yaml
+
+applications/web/.local/
+applications/web/test-results/
+applications/web/playwright-report/

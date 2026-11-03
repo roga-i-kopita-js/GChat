@@ -33,3 +33,10 @@ export class TokensDto {
   refresh_token!: string;
   token_type!: 'Bearer';
 }
+
+export class WsTicketRequestDto {}
+
+export class WsTicketResponseDto {
+  ticket!: string;
+  expires_at!: string;
+}

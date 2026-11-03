@@ -2,6 +2,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 
+import type { DatabaseTransaction } from '../database/database.service.js';
 import { ErrorService } from '../error/error.service.js';
 import { AuthCrypto, sessionId, tokenHash } from './auth.crypto.js';
 import type { LoginDto, RefreshDto, TokensDto } from './auth.dto.js';
@@ -133,6 +134,23 @@ export class AuthService {
       undefined,
       hash,
     );
+  }
+
+  async checkSession(
+    userId: string,
+    sid: string,
+  ): Promise<{ accountActive: boolean; sessionActive: boolean }> {
+    const account = await this.accounts.byId(userId);
+    const state = await this.sessions.read(sid);
+
+    return {
+      accountActive: !!account && !account.disabledAt,
+      sessionActive: state?.session.userId === userId,
+    };
+  }
+
+  lockActiveAccounts(tx: DatabaseTransaction, userIds: string[]): Promise<string[]> {
+    return this.accounts.lockActiveAccounts(tx, userIds);
   }
 
   async authenticate(token: string): Promise<AuthIdentity> {

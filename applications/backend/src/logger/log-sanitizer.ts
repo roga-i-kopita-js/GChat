@@ -1,14 +1,15 @@
 const sensitiveKey =
-  /password|passwd|secret|token|authorization|cookie|credential|databaseurl|redisurl|connectionstring|privatekey|sdp|body|headers|apikey/i;
+  /password|passwd|secret|token|ticket|secwebsocketprotocol|authorization|cookie|credential|databaseurl|redisurl|connectionstring|privatekey|sdp|body|headers|apikey/i;
 
 /** Defense in depth. Callers must still pass only safe events and metadata. */
 export function redactText(value: string): string {
   return value
     .replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, '[REDACTED_URL]')
+    .replace(/\bticket\.[A-Za-z0-9_-]{43}\b/g, 'ticket.[REDACTED]')
     .replace(/\bBearer\s+[^\s"',}]+/gi, 'Bearer [REDACTED]')
     .replace(/\beyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED_TOKEN]')
     .replace(
-      /\b(password|passwd|secret|token|authorization|cookie|credential|api[_-]?key)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+      /\b(password|passwd|secret|token|ticket|authorization|cookie|credential|api[_-]?key)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
       '$1=[REDACTED]',
     )
     .slice(0, 4096);

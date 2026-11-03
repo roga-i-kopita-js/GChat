@@ -4,8 +4,10 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module.js';
+import { AuthService } from './auth/auth.service.js';
 import { LoggerService } from './logger/logger.service.js';
 import { LoggerSettings } from './logger/logger-settings.js';
+import { SignalingAdapter } from './signaling/signaling.adapter.js';
 import { setupSwagger } from './swagger/setup-swagger.js';
 
 const bootstrapLogger = new LoggerService();
@@ -17,6 +19,7 @@ async function bootstrap(): Promise<void> {
   app.useLogger(logger);
   const config = app.get(ConfigService);
 
+  app.useWebSocketAdapter(new SignalingAdapter(app, app.get(AuthService)));
   setupSwagger(app);
   app.enableShutdownHooks();
   await app.listen(config.getOrThrow<number>('PORT'), config.getOrThrow<string>('HOST'));

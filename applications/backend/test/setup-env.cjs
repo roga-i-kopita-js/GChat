@@ -17,3 +17,13 @@ process.env.AUTH_JWT_PUBLIC_KEYS = JSON.stringify({
 });
 process.env.AUTH_ROTATION_ACTIVE_KID = 'test';
 process.env.AUTH_ROTATION_KEYS = JSON.stringify({ test: randomBytes(32).toString('base64') });
+
+process.env.DIRECT_CALLS_TURN_URLS = '["turn:example.invalid:3478"]';
+process.env.DIRECT_CALLS_TURN_SHARED_SECRET = 'test-only-turn-secret';
+process.env.APNS_TEAM_ID = 'test';
+process.env.APNS_KEY_ID = 'test';
+process.env.APNS_PRIVATE_KEY_FILE = '/nonexistent/test-only-apns-key.p8';
+process.env.APNS_BUNDLE_ID = 'invalid.test.gchat';
+process.env.APNS_ENVIRONMENT = 'sandbox';
+
+process.env.SIGNALING_BROWSER_ORIGINS = '["http://localhost:5173","http://127.0.0.1:5173"]';

@@ -1,0 +1,3 @@
+ALTER TABLE "gchat_device_sessions" ADD COLUMN "inactive_since" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "gchat_direct_calls" ADD CONSTRAINT "gchat_calls_ended_fields" CHECK (("gchat_direct_calls"."state" = 'ended') = ("gchat_direct_calls"."ended_at" is not null) and ("gchat_direct_calls"."state" = 'ended') = ("gchat_direct_calls"."end_reason" is not null));--> statement-breakpoint
+ALTER TABLE "gchat_direct_calls" ADD CONSTRAINT "gchat_calls_deadlines" CHECK (("gchat_direct_calls"."state" = 'ringing') = ("gchat_direct_calls"."ringing_deadline" is not null) and ("gchat_direct_calls"."state" = 'connecting') = ("gchat_direct_calls"."connecting_deadline" is not null));

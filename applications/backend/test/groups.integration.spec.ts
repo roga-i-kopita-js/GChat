@@ -96,6 +96,20 @@ integration('Groups with isolated PostgreSQL data', (): void => {
     ).rejects.toMatchObject({ code: '23503' });
   });
 
+  it('lists only accessible groups and excludes disabled accounts from participants', async (): Promise<void> => {
+    expect((await service.list(first)).map((item): string => item.id)).toContain(group);
+    expect(await service.list(third)).toEqual([]);
+    await expect(service.members(third, group)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(service.members(first, randomUUID())).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await database!.query('UPDATE gchat_users SET disabled_at=now() WHERE id=$1', [second]);
+
+    try {
+      expect((await service.members(first, group)).map((item): string => item.id)).toEqual([first]);
+    } finally {
+      await database!.query('UPDATE gchat_users SET disabled_at=null WHERE id=$1', [second]);
+    }
+  });
+
   it('retains access until the last shared group is removed', async (): Promise<void> => {
     const otherGroup = (
       await database!.query<{ id: string }>(

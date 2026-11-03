@@ -22,3 +22,7 @@ export class DatabaseService implements OnModuleDestroy {
     await this.pool.end();
   }
 }
+
+export type DatabaseTransaction = Parameters<
+  Parameters<DatabaseService['db']['transaction']>[0]
+>[0];

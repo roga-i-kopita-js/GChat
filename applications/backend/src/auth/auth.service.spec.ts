@@ -139,3 +139,35 @@ describe('Auth orchestration', (): void => {
     expect(f.crypto.decrypt).toHaveBeenCalledWith('winner', expect.any(String), request_id);
   });
 });
+
+describe('Auth internal session checks', (): void => {
+  it('checks ownership without JWT verification or session extension', async (): Promise<void> => {
+    const f = fixture();
+
+    await expect(f.service.checkSession(f.account.id, 'sid')).resolves.toEqual({
+      accountActive: true,
+      sessionActive: true,
+    });
+    expect(f.crypto.verifyAccess).not.toHaveBeenCalled();
+    expect(f.sessions.mutate).not.toHaveBeenCalled();
+    f.state.session.userId = randomUUID();
+    await expect(f.service.checkSession(f.account.id, 'sid')).resolves.toEqual({
+      accountActive: true,
+      sessionActive: false,
+    });
+  });
+
+  it('keeps account and session state separate and propagates dependency errors', async (): Promise<void> => {
+    const f = fixture();
+
+    f.accounts.byId.mockResolvedValue({ ...f.account, disabledAt: new Date() });
+    await expect(f.service.checkSession(f.account.id, 'sid')).resolves.toEqual({
+      accountActive: false,
+      sessionActive: true,
+    });
+    f.sessions.read.mockRejectedValue(new ErrorService().serviceUnavailable());
+    await expect(f.service.checkSession(f.account.id, 'sid')).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+    });
+  });
+});

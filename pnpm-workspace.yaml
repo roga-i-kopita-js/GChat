@@ -1,6 +1,7 @@
 packages:
   - applications/backend
   - applications/ios
+  - applications/web
 
 sharedWorkspaceLockfile: true
 

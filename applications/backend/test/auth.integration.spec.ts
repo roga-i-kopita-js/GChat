@@ -15,6 +15,7 @@ import type { TokensDto } from '../src/auth/auth.dto.js';
 import { AuthGuard } from '../src/auth/auth.guard.js';
 import { AuthModule } from '../src/auth/auth.module.js';
 import { AuthSessions } from '../src/auth/auth.sessions.js';
+import { AuthWsTickets } from '../src/auth/auth.ws-tickets.js';
 import { validateEnvironment } from '../src/config/environment.js';
 import { runMigrations } from '../src/database/migrations.js';
 import { ErrorModule } from '../src/error/error.module.js';
@@ -134,6 +135,93 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
         .expect('Cache-Control', 'no-store')
     ).body;
   }
+  it('issues a bound browser ticket and atomically accepts it once', async (): Promise<void> => {
+    const tokens = await signIn();
+    const response = await request(app.getHttpServer())
+      .post('/auth/ws-ticket')
+      .auth(tokens.access_token, { type: 'bearer' })
+      .set('Origin', 'http://localhost:5173')
+      .send({})
+      .expect(200)
+      .expect('Cache-Control', 'no-store');
+    const tickets = app.get(AuthWsTickets);
+    const results = await Promise.allSettled([
+      tickets.redeem(response.body.ticket, 'http://localhost:5173'),
+      tickets.redeem(response.body.ticket, 'http://localhost:5173'),
+    ]);
+
+    expect(results.filter((result): boolean => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find((result): boolean => result.status === 'fulfilled')).toMatchObject({
+      value: { userId, sessionId: sessionId(tokens.refresh_token) },
+    });
+    await request(app.getHttpServer())
+      .post('/auth/ws-ticket')
+      .auth(tokens.access_token, { type: 'bearer' })
+      .set('Origin', 'https://foreign.invalid')
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer())
+      .post('/auth/ws-ticket')
+      .auth(tokens.access_token, { type: 'bearer' })
+      .send({})
+      .expect(403);
+  });
+
+  it('checks ticket origin, expiry, revocation and issue rate limits', async (): Promise<void> => {
+    const tokens = await signIn();
+    const tickets = app.get(AuthWsTickets);
+    const issue = async (): Promise<any> =>
+      (
+        await request(app.getHttpServer())
+          .post('/auth/ws-ticket')
+          .auth(tokens.access_token, { type: 'bearer' })
+          .set('Origin', 'http://localhost:5173')
+          .send({})
+          .expect(200)
+      ).body;
+    const wrong = await issue();
+
+    await expect(tickets.redeem(wrong.ticket, 'http://127.0.0.1:5173')).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+    const expired = await issue();
+    const { createHash } = await import('node:crypto');
+
+    await redis.del(
+      prefix + 'auth:ws-ticket:' + createHash('sha256').update(expired.ticket).digest('hex'),
+    );
+    await expect(tickets.redeem(expired.ticket, 'http://localhost:5173')).rejects.toMatchObject({
+      code: 'ACCESS_TOKEN_INVALID',
+    });
+    const revoked = await issue();
+
+    await request(app.getHttpServer())
+      .post('/auth/logout')
+      .send({ refresh_token: tokens.refresh_token })
+      .expect(204);
+    await expect(tickets.redeem(revoked.ticket, 'http://localhost:5173')).rejects.toMatchObject({
+      code: 'SESSION_INVALID',
+    });
+    const another = await signIn();
+
+    for (let i = 0; i < 10; i++)
+      await request(app.getHttpServer())
+        .post('/auth/ws-ticket')
+        .auth(another.access_token, { type: 'bearer' })
+        .set('Origin', 'http://localhost:5173')
+        .send({})
+        .expect(200);
+
+    const limited = await request(app.getHttpServer())
+      .post('/auth/ws-ticket')
+      .auth(another.access_token, { type: 'bearer' })
+      .set('Origin', 'http://localhost:5173')
+      .send({})
+      .expect(429);
+
+    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
   it('normalizes login, stores hashes, uses independent sessions and guards protected requests', async (): Promise<void> => {
     const first = (
       await request(app.getHttpServer())

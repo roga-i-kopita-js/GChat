@@ -110,7 +110,6 @@ for (const [path, content] of documents) {
 
   if (!path.startsWith(moduleFolder)) continue;
 
-  modules++;
   const metadata = content.match(/^---\n([\s\S]*?)\n---\n/);
 
   if (!metadata) {
@@ -122,7 +121,16 @@ for (const [path, content] of documents) {
     [...metadata[1].matchAll(/^(\w+):\s*(.+)$/gm)].map((m) => [m[1], m[2]]),
   );
 
-  if (fields.doc_type !== 'module') fail(path, 'doc_type must be module');
+  if (fields.doc_type === 'decision') {
+    if (!['draft', 'accepted', 'deprecated'].includes(fields.decision_status))
+      fail(path, 'invalid decision_status');
+
+    continue;
+  }
+
+  modules++;
+
+  if (fields.doc_type !== 'module') fail(path, 'doc_type must be module or decision');
 
   if (!['draft', 'accepted', 'deprecated'].includes(fields.decision_status))
     fail(path, 'invalid decision_status');

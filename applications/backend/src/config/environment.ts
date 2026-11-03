@@ -1,4 +1,5 @@
 import { parseAuthKeys } from '../auth/auth.crypto.js';
+import { parseBrowserOrigins } from '../auth/browser-origin.js';
 import { validateDatabaseUrl } from '../database/database-url.js';
 import { parseLogRedaction } from '../logger/logger-settings.js';
 
@@ -47,6 +48,10 @@ export function validateEnvironment(
   const timeouts: Record<string, number> = {};
 
   for (const [name, fallback] of Object.entries({
+    DIRECT_CALLS_RINGING_TIMEOUT_SECONDS: 60,
+    DIRECT_CALLS_CONNECTING_TIMEOUT_SECONDS: 30,
+    DIRECT_CALLS_RECONNECT_TIMEOUT_SECONDS: 30,
+    DIRECT_CALLS_HEARTBEAT_TIMEOUT_SECONDS: 30,
     AUTH_LOGIN_WINDOW_MS: 300000,
     AUTH_LOGIN_MAX_FAILURES: 5,
     AUTH_REFRESH_WINDOW_MS: 60000,
@@ -76,6 +81,36 @@ export function validateEnvironment(
     timeouts[name] = value;
   }
 
+  let turnUrls: unknown;
+
+  try {
+    turnUrls = JSON.parse(String(env.DIRECT_CALLS_TURN_URLS ?? ''));
+  } catch {
+    throw new Error('DIRECT_CALLS_TURN_URLS must be a JSON array of TURN URLs');
+  }
+
+  if (
+    !Array.isArray(turnUrls) ||
+    !turnUrls.length ||
+    !turnUrls.every(
+      (url: unknown): boolean => typeof url === 'string' && /^turns?:[^\s]+$/.test(url),
+    )
+  )
+    throw new Error('DIRECT_CALLS_TURN_URLS must contain TURN URLs');
+
+  if (
+    typeof env.DIRECT_CALLS_TURN_SHARED_SECRET !== 'string' ||
+    !env.DIRECT_CALLS_TURN_SHARED_SECRET.trim()
+  )
+    throw new Error('DIRECT_CALLS_TURN_SHARED_SECRET is required');
+
+  for (const name of ['APNS_TEAM_ID', 'APNS_KEY_ID', 'APNS_PRIVATE_KEY_FILE', 'APNS_BUNDLE_ID']) {
+    if (typeof env[name] !== 'string' || !env[name].trim()) throw new Error(name + ' is required');
+  }
+
+  if (!['sandbox', 'production'].includes(String(env.APNS_ENVIRONMENT)))
+    throw new Error('APNS_ENVIRONMENT must be sandbox or production');
+
   const drift = Math.ceil(timeouts.REDLOCK_LEASE_MS! * 0.01) + 2;
 
   if (
@@ -87,5 +122,13 @@ export function validateEnvironment(
     );
   }
 
-  return { ...env, ...timeouts, LOG_REDACTION_ENABLED: redaction, PORT: port, HOST: host };
+  return {
+    ...env,
+    ...timeouts,
+    SIGNALING_BROWSER_ORIGINS: parseBrowserOrigins(env.SIGNALING_BROWSER_ORIGINS),
+    DIRECT_CALLS_TURN_URLS: turnUrls,
+    LOG_REDACTION_ENABLED: redaction,
+    PORT: port,
+    HOST: host,
+  };
 }
