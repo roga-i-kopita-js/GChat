@@ -10,6 +10,8 @@ process.env.REDIS_KEY_PREFIX = 'gchat:test:';
 const { generateKeyPairSync, randomBytes } = require('node:crypto');
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
 
+process.env.AUTH_PASSWORD_PEPPER = randomBytes(32).toString('base64');
+
 process.env.AUTH_ACCESS_TOKEN_TTL_SECONDS = '120';
 process.env.AUTH_JWT_ACTIVE_KID = 'test';
 process.env.AUTH_JWT_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' });

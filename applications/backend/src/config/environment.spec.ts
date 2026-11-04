@@ -21,3 +21,18 @@ describe('JWT lifetime configuration', (): void => {
     },
   );
 });
+
+describe('Password pepper configuration', (): void => {
+  it.each([
+    undefined,
+    '',
+    'secret',
+    Buffer.alloc(31).toString('base64'),
+    Buffer.alloc(33).toString('base64'),
+    'A'.repeat(42) + 'B=',
+  ])('rejects a missing or invalid pepper without disclosing its value', (value): void => {
+    expect((): unknown =>
+      validateEnvironment({ ...process.env, AUTH_PASSWORD_PEPPER: value }),
+    ).toThrow('AUTH_PASSWORD_PEPPER must contain 32 random bytes in canonical base64');
+  });
+});

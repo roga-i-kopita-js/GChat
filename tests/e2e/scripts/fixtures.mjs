@@ -3,9 +3,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import * as argon2 from 'argon2';
 import pg from 'pg';
 
+import { hashPassword } from '../../../applications/backend/dist/auth/auth.password.js';
 import { runMigrations } from '../../../applications/backend/dist/database/migrations.js';
 
 // Dedicated, loopback-only Compose fixture. Never reads a developer's .env or DATABASE_URL.
@@ -48,10 +48,10 @@ for (let index = 0; index < samples; index++) {
 await writeFile(resolve(local, 'microphone.wav'), wav);
 
 await runMigrations(url, resolve(backend, 'drizzle'));
+const pepper = randomBytes(32);
 const database = new pg.Pool({ connectionString: url });
 
 try {
-  const password = await argon2.hash('gchat-web-test-password');
   const users = [];
 
   for (const [login, name] of [
@@ -59,6 +59,7 @@ try {
     ['maxim', 'Максим Волков'],
     ['elena', 'Елена Соколова'],
   ]) {
+    const password = await hashPassword('gchat-web-test-password', pepper);
     const result = await database.query(
       `INSERT INTO gchat_users(login,display_name,password_hash) VALUES($1,$2,$3) ON CONFLICT(login) DO UPDATE SET display_name=excluded.display_name,password_hash=excluded.password_hash,disabled_at=null RETURNING id`,
       [login, name, password],
@@ -97,6 +98,7 @@ await writeFile(
     DATABASE_URL: url,
     REDIS_URL: 'redis://127.0.0.1:56389/0',
     REDIS_KEY_PREFIX: 'gchat:web-test:',
+    AUTH_PASSWORD_PEPPER: pepper.toString('base64'),
     AUTH_JWT_ACTIVE_KID: 'web-test',
     AUTH_JWT_PRIVATE_KEY: jwt.privateKey.export({ type: 'pkcs8', format: 'pem' }),
     AUTH_JWT_PUBLIC_KEYS: JSON.stringify({

@@ -5,12 +5,11 @@ import type { INestApplication } from '@nestjs/common';
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import * as argon2 from 'argon2';
 import pg from 'pg';
 import { createClient } from 'redis';
 import request from 'supertest';
 
-import { sessionId, tokenHash } from '../src/auth/auth.crypto.js';
+import { AuthCrypto, sessionId, tokenHash } from '../src/auth/auth.crypto.js';
 import type { TokensDto } from '../src/auth/auth.dto.js';
 import { AuthGuard } from '../src/auth/auth.guard.js';
 import { AuthModule } from '../src/auth/auth.module.js';
@@ -87,13 +86,7 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
 
     app = module.createNestApplication();
     await app.listen(0, '127.0.0.1');
-    passwordHash = await argon2.hash(password, {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 4,
-      hashLength: 32,
-    });
+    passwordHash = await app.get(AuthCrypto).hashPassword(password);
   }, 20000);
   beforeEach(async (): Promise<void> => {
     userId = randomUUID();

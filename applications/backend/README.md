@@ -27,6 +27,7 @@ node --input-type=module <<'JS'
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
 const kid = 'local-1';
+console.log('AUTH_PASSWORD_PEPPER=' + randomBytes(32).toString('base64'));
 console.log(`AUTH_JWT_ACTIVE_KID=${kid}`);
 console.log('AUTH_JWT_PRIVATE_KEY=' + JSON.stringify(privateKey.export({ type: 'pkcs8', format: 'pem' })));
 console.log('AUTH_JWT_PUBLIC_KEYS=' + JSON.stringify({ [kid]: publicKey.export({ type: 'spki', format: 'pem' }) }));
@@ -34,6 +35,8 @@ console.log(`AUTH_ROTATION_ACTIVE_KID=${kid}`);
 console.log('AUTH_ROTATION_KEYS=' + JSON.stringify({ [kid]: randomBytes(32).toString('base64') }));
 JS
 ```
+
+Pepper обязателен и независим от ключей JWT. Старые хеши без pepper больше не принимаются; пароли нужно задать заново через `AuthCrypto.hashPassword`. Правила хранения, смены секрета и отзыва существующих сессий — в [контракте Auth](../../docs/backend/modules/auth.md#пароли-и-pepper). Для существующего E2E-стенда повторите `fixtures` после сборки backend.
 
 Перед первым запуском примените схему аккаунтов отдельной командой:
 

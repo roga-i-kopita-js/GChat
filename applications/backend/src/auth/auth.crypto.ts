@@ -9,6 +9,7 @@ import { errors, flattenedDecrypt, FlattenedEncrypt, jwtVerify, SignJWT } from '
 
 import { ErrorService } from '../error/error.service.js';
 import type { TokensDto } from './auth.dto.js';
+import { hashPassword, parsePasswordPepper } from './auth.password.js';
 import type { Account } from './auth.schema.js';
 
 export function tokenHash(token: string): string {
@@ -89,6 +90,7 @@ export function parseAuthKeys(env: Record<string, unknown>): AuthKeys {
 @Injectable()
 export class AuthCrypto implements OnModuleInit {
   private readonly keys: AuthKeys;
+  private readonly passwordPepper: Buffer;
   private readonly accessTokenTtlSeconds: number;
   private dummyHash!: string;
   private active = 0;
@@ -97,6 +99,7 @@ export class AuthCrypto implements OnModuleInit {
     config: ConfigService,
     private readonly error: ErrorService,
   ) {
+    this.passwordPepper = parsePasswordPepper(config.get<unknown>('AUTH_PASSWORD_PEPPER'));
     this.accessTokenTtlSeconds = Number(config.get<number>('AUTH_ACCESS_TOKEN_TTL_SECONDS', 120));
     this.keys = parseAuthKeys(
       Object.fromEntries(
@@ -112,14 +115,19 @@ export class AuthCrypto implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
-    this.dummyHash = await argon2.hash(randomBytes(32), {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 4,
-      hashLength: 32,
-      salt: randomBytes(16),
-    });
+    this.dummyHash = await this.hashPassword(randomBytes(32));
+  }
+
+  async hashPassword(password: string | Buffer): Promise<string> {
+    if (this.active >= 2) throw this.error.serviceUnavailable();
+
+    this.active++;
+
+    try {
+      return await hashPassword(password, this.passwordPepper);
+    } finally {
+      this.active--;
+    }
   }
 
   async verifyPassword(password: string, hash?: string): Promise<boolean> {
@@ -128,7 +136,9 @@ export class AuthCrypto implements OnModuleInit {
     this.active++;
 
     try {
-      const valid = await argon2.verify(hash ?? this.dummyHash, password);
+      const valid = await argon2.verify(hash ?? this.dummyHash, password, {
+        secret: this.passwordPepper,
+      });
 
       return Boolean(hash) && valid;
     } finally {

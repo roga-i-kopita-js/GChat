@@ -1,6 +1,7 @@
-import { createPrivateKey, randomUUID } from 'node:crypto';
+import { createPrivateKey, randomBytes, randomUUID } from 'node:crypto';
 
 import { ConfigService } from '@nestjs/config';
+import * as argon2 from 'argon2';
 import {
   decodeJwt,
   decodeProtectedHeader,
@@ -213,6 +214,50 @@ describe('Auth cryptography', (): void => {
       parseAuthKeys({ ...process.env, AUTH_ROTATION_KEYS: '{"test":"secret"}' }),
     ).toThrow(/^Auth signing/);
   });
+  it('hashes with independent salts and requires the correct password and pepper', async (): Promise<void> => {
+    const password = 'пароль с пробелами 🔐';
+    const first = await crypto.hashPassword(password);
+    const second = await crypto.hashPassword(password);
+
+    expect(first).not.toBe(second);
+    expect(first).toMatch(/^\$argon2id\$v=19\$/);
+    expect(argon2.needsRehash(first, { memoryCost: 65536, timeCost: 3, parallelism: 4 })).toBe(
+      false,
+    );
+    expect(Buffer.from(first.split('$')[4]!, 'base64')).toHaveLength(16);
+    expect(Buffer.from(first.split('$')[5]!, 'base64')).toHaveLength(32);
+    await expect(crypto.verifyPassword(password, first)).resolves.toBe(true);
+    await expect(crypto.verifyPassword(password, second)).resolves.toBe(true);
+    await expect(crypto.verifyPassword('wrong', first)).resolves.toBe(false);
+    await expect(argon2.verify(first, password)).resolves.toBe(false);
+    const other = new AuthCrypto(
+      new ConfigService({
+        ...process.env,
+        AUTH_PASSWORD_PEPPER: randomBytes(32).toString('base64'),
+      }),
+      new ErrorService(),
+    );
+
+    await expect(other.verifyPassword(password, first)).resolves.toBe(false);
+    const legacy = await argon2.hash(password);
+
+    await expect(crypto.verifyPassword(password, legacy)).resolves.toBe(false);
+  });
+
+  it('shares the concurrency budget between hashing and verification and releases it', async (): Promise<void> => {
+    const first = crypto.hashPassword('first');
+    const second = crypto.hashPassword('second');
+
+    await expect(crypto.hashPassword('third')).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+    });
+    await expect(crypto.verifyPassword('third')).rejects.toMatchObject({
+      code: 'SERVICE_UNAVAILABLE',
+    });
+    await Promise.all([first, second]);
+    await expect(crypto.hashPassword('after')).resolves.toMatch(/^\$argon2id\$/);
+  });
+
   it('performs a dummy verification for unknown accounts', async (): Promise<void> => {
     await expect(crypto.verifyPassword('a sufficiently long password')).resolves.toBe(false);
   });
