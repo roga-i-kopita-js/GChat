@@ -159,3 +159,36 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
     await b.close();
   }
 });
+
+test('an idle secondary tab can enable calls without opening diagnostics', async ({
+  browser,
+}): Promise<void> => {
+  const context = await browser.newContext({ permissions: ['microphone'] });
+
+  try {
+    const primary = await context.newPage();
+
+    await login(primary, 'anna');
+    const secondary = await context.newPage();
+
+    await secondary.addInitScript((): void => localStorage.removeItem('debug'));
+    await secondary.goto('/');
+    const call = secondary.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true });
+
+    await expect(call).toBeDisabled();
+    await expect(secondary.getByRole('button', { name: 'Диагностика', exact: true })).toHaveCount(
+      0,
+    );
+    await secondary.getByRole('button', { name: 'Открыть здесь', exact: true }).click();
+    await expect(call).toBeEnabled();
+    await expect(
+      primary.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true }),
+    ).toBeDisabled();
+    await call.click();
+    await expect(secondary.getByTestId('call-status')).toHaveText('Вызываем…');
+    await secondary.getByRole('button', { name: 'Отменить', exact: true }).click();
+    await expect(secondary.getByTestId('call-status')).toHaveText('Вызов отменён');
+  } finally {
+    await context.close();
+  }
+});

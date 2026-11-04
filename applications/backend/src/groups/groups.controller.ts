@@ -23,7 +23,7 @@ import { GroupsService } from './groups.service.js';
 export class GroupsController {
   constructor(private readonly groups: GroupsService) {}
 
-  /** Получить группы текущего пользователя. */
+  /** Получить доступные по роли группы. */
   @Get()
   @Header('Cache-Control', 'no-store')
   @ApiOperation({ operationId: 'groupsList' })
@@ -31,7 +31,7 @@ export class GroupsController {
     return { groups: await this.groups.list(request.user.userId) };
   }
 
-  /** Получить активных участников своей группы. */
+  /** Получить активных участников доступной по роли группы. */
   @Get(':group_id/members')
   @Header('Cache-Control', 'no-store')
   @ApiNotFoundResponse({

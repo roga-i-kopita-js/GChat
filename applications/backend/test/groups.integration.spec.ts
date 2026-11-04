@@ -110,6 +110,31 @@ integration('Groups with isolated PostgreSQL data', (): void => {
     }
   });
 
+  it('lets an admin without membership read all groups and active members using the current role', async (): Promise<void> => {
+    await database!.query("UPDATE gchat_users SET role='admin' WHERE id=$1", [third]);
+
+    try {
+      expect((await service.list(third)).map((item): string => item.id)).toContain(group);
+      expect((await service.members(third, group)).map((item): string => item.id)).toEqual([
+        first,
+        second,
+      ]);
+      await expect(service.members(third, randomUUID())).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+      });
+      await database!.query('UPDATE gchat_users SET disabled_at=now() WHERE id=$1', [second]);
+      expect((await service.members(third, group)).map((item): string => item.id)).toEqual([first]);
+      await database!.query("UPDATE gchat_users SET role='user' WHERE id=$1", [third]);
+      expect(await service.list(third)).toEqual([]);
+      await expect(service.members(third, group)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    } finally {
+      await database!.query(
+        "UPDATE gchat_users SET role='user', disabled_at=null WHERE id=ANY($1::uuid[])",
+        [[second, third]],
+      );
+    }
+  });
+
   it('retains access until the last shared group is removed', async (): Promise<void> => {
     const otherGroup = (
       await database!.query<{ id: string }>(

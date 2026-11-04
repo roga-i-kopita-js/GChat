@@ -24,15 +24,24 @@ export class AuthRepository {
   }
 
   async lockActiveAccounts(tx: DatabaseTransaction, userIds: string[]): Promise<string[]> {
+    return (await this.lockActiveAccountRoles(tx, userIds)).map((account): string => account.id);
+  }
+
+  async lockActiveAccountRoles(
+    tx: DatabaseTransaction,
+    userIds: string[],
+  ): Promise<{ id: string; role: Account['role'] }[]> {
     try {
       const rows = await tx
-        .select({ id: users.id, disabledAt: users.disabledAt })
+        .select({ id: users.id, disabledAt: users.disabledAt, role: users.role })
         .from(users)
         .where(inArray(users.id, [...new Set(userIds)].sort()))
         .orderBy(asc(users.id))
         .for('share');
 
-      return rows.filter((row): boolean => row.disabledAt === null).map((row): string => row.id);
+      return rows
+        .filter((row): boolean => row.disabledAt === null)
+        .map(({ id, role }): { id: string; role: Account['role'] } => ({ id, role }));
     } catch (cause) {
       if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
 

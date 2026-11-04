@@ -52,7 +52,7 @@ async function setup(page: Page, role = 'admin', path = '/', withSession = true)
     },
     { role, adminId, withSession },
   );
-  await page.route('**/api/**', async (route): Promise<void> => {
+  await page.route(/^https?:\/\/[^/]+\/api\//, async (route): Promise<void> => {
     const path = new URL(route.request().url()).pathname;
     let body: unknown = {};
 
@@ -638,4 +638,40 @@ test('search waits for a typing pause and cancels pending work when leaving the 
     .click();
   await page.clock.fastForward(1000);
   expect(queries).toEqual(['anna']);
+});
+
+test('admin calls list includes active users across pages and without groups', async ({
+  page,
+}): Promise<void> => {
+  await setup(page);
+  const offsets: number[] = [];
+
+  await page.route('**/api/admin/users?*', async (route): Promise<void> => {
+    const query = new URL(route.request().url()).searchParams;
+
+    expect(query.get('status')).toBe('active');
+    expect(query.get('limit')).toBe('100');
+    const offset = Number(query.get('offset'));
+
+    offsets.push(offset);
+    await route.fulfill({
+      json: {
+        users:
+          offset === 0
+            ? [account(adminId), account()]
+            : [{ ...account('no-group'), display_name: 'Без группы', groups: [] }],
+        total: 3,
+      },
+    });
+  });
+  await page.reload();
+  await expect(page.getByRole('combobox', { name: 'Группа контактов' })).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Позвонить: Анна', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Позвонить: Без группы', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Позвонить: Администратор', exact: true }),
+  ).toHaveCount(0);
+  expect(offsets).toEqual([0, 2]);
 });

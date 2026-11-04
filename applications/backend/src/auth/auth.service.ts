@@ -10,6 +10,7 @@ import type { LoginDto, RefreshDto, TokensDto } from './auth.dto.js';
 import type { AuthIdentity } from './auth.guard.js';
 import { AuthLimits } from './auth.limits.js';
 import { AuthRepository } from './auth.repository.js';
+import type { Account } from './auth.schema.js';
 import { authSessions } from './auth.schema.js';
 import { AuthSessions } from './auth.sessions.js';
 function matches(a: string, b: string): boolean {
@@ -151,6 +152,13 @@ export class AuthService {
 
   lockActiveAccounts(tx: DatabaseTransaction, userIds: string[]): Promise<string[]> {
     return this.accounts.lockActiveAccounts(tx, userIds);
+  }
+
+  lockActiveAccountRoles(
+    tx: DatabaseTransaction,
+    userIds: string[],
+  ): Promise<{ id: string; role: Account['role'] }[]> {
+    return this.accounts.lockActiveAccountRoles(tx, userIds);
   }
 
   async authenticate(token: string): Promise<AuthIdentity> {

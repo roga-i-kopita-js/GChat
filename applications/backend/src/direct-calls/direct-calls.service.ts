@@ -60,25 +60,35 @@ export class DirectCallsService {
     return this.config.getOrThrow<number>(name) * 1000;
   }
 
+  private async assertCreateAccess(
+    tx: DatabaseTransaction,
+    callerId: string,
+    recipientId: string,
+  ): Promise<void> {
+    const accounts = await this.auth.lockActiveAccountRoles(tx, [callerId, recipientId]);
+    const caller = accounts.find((account): boolean => account.id === callerId);
+
+    if (!caller) throw this.error.sessionInvalid();
+
+    if (
+      !accounts.some((account): boolean => account.id === recipientId) ||
+      (caller.role !== 'admin' && !(await this.groups.lockCommonGroup(tx, callerId, recipientId)))
+    )
+      throw this.failure('CALL_NOT_ALLOWED');
+  }
+
   async create(actor: CallActor, recipientId: string): Promise<CallDto> {
     await this.devices.assertBinding(actor.userId, actor.sessionId, actor.deviceId);
 
-    if (
-      actor.userId === recipientId ||
-      !(await this.groups.hasCommonGroup(actor.userId, recipientId))
-    )
-      throw this.failure('CALL_NOT_ALLOWED');
+    if (actor.userId === recipientId) throw this.failure('CALL_NOT_ALLOWED');
 
     const id = randomUUID();
     const userIds = [actor.userId, recipientId];
-    // Preliminary account check before exposing recipient busy state.
-    const active = await this.repository.transaction((tx): Promise<string[]> =>
-      this.auth.lockActiveAccounts(tx, userIds),
-    );
 
-    if (!active.includes(recipientId)) throw this.failure('CALL_NOT_ALLOWED');
-
-    if (!active.includes(actor.userId)) throw this.error.sessionInvalid();
+    // Check current account roles and permission before exposing recipient busy state.
+    await this.repository.transaction(async (tx): Promise<void> => {
+      await this.assertCreateAccess(tx, actor.userId, recipientId);
+    });
 
     const reserved = await this.presence.reserve(id, userIds);
 
@@ -88,15 +98,7 @@ export class DirectCallsService {
 
     try {
       result = await this.repository.transaction(async (tx): Promise<CallDto> => {
-        const accounts = await this.auth.lockActiveAccounts(tx, userIds);
-
-        if (!accounts.includes(actor.userId)) throw this.error.sessionInvalid();
-
-        if (
-          !accounts.includes(recipientId) ||
-          !(await this.groups.lockCommonGroup(tx, actor.userId, recipientId))
-        )
-          throw this.failure('CALL_NOT_ALLOWED');
+        await this.assertCreateAccess(tx, actor.userId, recipientId);
 
         await this.repository.lock(tx, id);
 

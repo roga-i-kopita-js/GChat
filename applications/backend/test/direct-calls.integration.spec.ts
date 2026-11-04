@@ -211,6 +211,63 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
     expect((await calls.get(actors[0], call.call_id)).state).toBe('ringing');
   });
 
+  it('lets an admin without membership call and the recipient accept', async (): Promise<void> => {
+    await pool.query("UPDATE gchat_users SET role='admin' WHERE id=$1", [actors[0].userId]);
+    await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[0].userId]);
+    const call = await calls.create(actors[0], actors[1].userId);
+
+    expect(call.state).toBe('ringing');
+    expect((await calls.accept(actors[1], call.call_id)).state).toBe('connecting');
+  });
+
+  it('keeps self, disabled recipient and busy checks for admins without membership', async (): Promise<void> => {
+    await pool.query("UPDATE gchat_users SET role='admin' WHERE id=$1", [actors[0].userId]);
+    await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[0].userId]);
+    await expect(calls.create(actors[0], actors[0].userId)).rejects.toMatchObject({
+      code: 'CALL_NOT_ALLOWED',
+    });
+    await pool.query('UPDATE gchat_users SET disabled_at=now() WHERE id=$1', [actors[1].userId]);
+    await expect(calls.create(actors[0], actors[1].userId)).rejects.toMatchObject({
+      code: 'CALL_NOT_ALLOWED',
+    });
+    await pool.query('UPDATE gchat_users SET disabled_at=null WHERE id=$1', [actors[1].userId]);
+    await calls.create(actors[1], actors[2].userId);
+    await expect(calls.create(actors[0], actors[1].userId)).rejects.toMatchObject({
+      code: 'RECIPIENT_BUSY',
+    });
+  });
+
+  it('does not grant ordinary callers access just because the recipient is an admin', async (): Promise<void> => {
+    await pool.query("UPDATE gchat_users SET role='admin' WHERE id=$1", [actors[1].userId]);
+    await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[0].userId]);
+    await expect(calls.create(actors[0], actors[1].userId)).rejects.toMatchObject({
+      code: 'CALL_NOT_ALLOWED',
+    });
+  });
+
+  it('rechecks the current caller role inside the creation transaction', async (): Promise<void> => {
+    await pool.query("UPDATE gchat_users SET role='admin' WHERE id=$1", [actors[0].userId]);
+    await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[0].userId]);
+    const reserve = presence.reserve.bind(presence);
+    const changed = jest
+      .spyOn(presence, 'reserve')
+      .mockImplementationOnce(async (id, users): ReturnType<DirectCallsPresence['reserve']> => {
+        await pool.query("UPDATE gchat_users SET role='user' WHERE id=$1", [actors[0].userId]);
+
+        return reserve(id, users);
+      });
+
+    try {
+      await expect(calls.create(actors[0], actors[1].userId)).rejects.toMatchObject({
+        code: 'CALL_NOT_ALLOWED',
+      });
+      expect((await pool.query('SELECT 1 FROM gchat_direct_calls')).rowCount).toBe(0);
+      expect(await redis.get(prefix + 'direct-calls:busy:' + actors[0].userId)).toBeNull();
+    } finally {
+      changed.mockRestore();
+    }
+  });
+
   it('does not reveal busy state without common membership', async (): Promise<void> => {
     await calls.create(actors[0], actors[1].userId);
     await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[2].userId]);

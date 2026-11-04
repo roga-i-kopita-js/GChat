@@ -60,25 +60,29 @@ export function CallsPage(): JSX.Element {
               <Users size={19} />
             </span>
             <div>
-              {groups.data && groups.data.groups.length > 1 ? (
+              {groups.data && (groups.data.groups.length > 1 || user.role === 'admin') ? (
                 <Select
                   aria-label="Группа контактов"
                   className="contacts-group-select"
                   value={groupId ?? ''}
                   onChange={(value): void => {
-                    setGroupId(value);
+                    setGroupId(value || null);
                     setPerson(null);
                     setMobile(false);
                   }}
                 >
+                  {user.role === 'admin' && <option value="">Все пользователи</option>}
                   {groups.data.groups.map((group): JSX.Element => (
                     <option key={group.id} value={group.id}>
                       {group.name}
                     </option>
                   ))}
-                </select>
+                </Select>
               ) : (
-                <h2>{selectedGroup?.name ?? 'Мои контакты'}</h2>
+                <h2>
+                  {selectedGroup?.name ??
+                    (user.role === 'admin' ? 'Все пользователи' : 'Мои контакты')}
+                </h2>
               )}
               <p>
                 {currentMembers.length
@@ -115,11 +119,15 @@ export function CallsPage(): JSX.Element {
             <div className="list-empty">
               <Users size={32} />
               <h3>
-                {groups.data?.groups.length
+                {user.role === 'admin' || groups.data?.groups.length
                   ? 'Здесь пока нет собеседников'
                   : 'У вас пока нет групп'}
               </h3>
-              <p>Администратор добавит вас в группу, и её участники появятся здесь.</p>
+              <p>
+                {user.role === 'admin'
+                  ? 'Активные пользователи появятся здесь после создания аккаунтов.'
+                  : 'Администратор добавит вас в группу, и её участники появятся здесь.'}
+              </p>
             </div>
           ) : (
             <div className="contact-list">

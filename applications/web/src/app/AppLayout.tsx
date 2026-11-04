@@ -49,6 +49,18 @@ export function AppLayout(): JSX.Element {
         className={'workspace' + (admin ? ' admin-active' : '')}
         aria-label={admin ? 'Администрирование' : 'Звонки'}
       >
+        {!state.owner ? (
+          <div role="status" className="tab-banner">
+            Звонками управляет другая вкладка GChat.
+            <button onClick={(): void => client.activate()} disabled={ongoing}>
+              Открыть здесь
+            </button>
+          </div>
+        ) : state.connection !== 'online' ? (
+          <div role="status" className="tab-banner">
+            Подключаем звонки… Кнопки станут доступны после подключения.
+          </div>
+        ) : null}
         {state.error && (
           <div role="alert" className="error-banner">
             {state.error}

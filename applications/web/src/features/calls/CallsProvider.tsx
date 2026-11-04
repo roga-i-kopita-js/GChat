@@ -36,6 +36,7 @@ const CallsContext = createContext<CallsRuntime | null>(null);
 
 export function CallsProvider({ children }: { children: ReactNode }): JSX.Element {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [person, setPerson] = useState<Member | null>(null);
@@ -43,7 +44,7 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
   const [now, setNow] = useState(Date.now());
   const [mobile, setMobile] = useState(false);
   const groups = useQuery({
-    queryKey: ['groups', user?.sub],
+    queryKey: ['groups', user?.sub, user?.role],
     queryFn: async ({ signal }): Promise<GroupsResponseDto> =>
       request((api): ReturnType<typeof api.groupsList> => api.groupsList({ signal })),
     enabled: !!user,
@@ -52,15 +53,37 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
     refetchInterval: 60000,
   });
   const members = useQuery({
-    queryKey: ['members', user?.sub, groupId],
+    queryKey: ['members', user?.sub, user?.role, groupId],
     queryFn: async ({ signal }): Promise<GroupMembersResponseDto> => {
+      if (!groupId && isAdmin) {
+        const all: GroupMembersResponseDto['members'] = [];
+        let offset = 0;
+
+        while (true) {
+          const page = await request((api): ReturnType<typeof api.adminListUsers> =>
+            api.adminListUsers({ query: { status: 'active', limit: 100, offset }, signal }),
+          );
+
+          all.push(...page.users.map(({ id, display_name }): Member => ({ id, display_name })));
+          offset += page.users.length;
+
+          if (!page.users.length || offset >= page.total) break;
+        }
+
+        return {
+          members: [
+            ...new Map(all.map((member): [string, Member] => [member.id, member])).values(),
+          ],
+        };
+      }
+
       if (!groupId) return { members: [] };
 
       return request((api): ReturnType<typeof api.groupsListMembers> =>
         api.groupsListMembers({ path: { group_id: groupId }, signal }),
       );
     },
-    enabled: !!user && !!groupId,
+    enabled: !!user && (!!groupId || isAdmin),
     retry: 1,
     refetchOnWindowFocus: true,
     refetchInterval: 60000,
@@ -74,9 +97,11 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
     setMobile(false);
   }, [user?.sid]);
   useEffect((): void => {
-    if (groups.data?.groups.length && !groups.data.groups.some((g): boolean => g.id === groupId))
-      setGroupId(groups.data.groups[0].id);
-  }, [groups.data, groupId]);
+    if (isAdmin && !groupId) return;
+
+    if (groups.data && !groups.data.groups.some((g): boolean => g.id === groupId))
+      setGroupId(isAdmin ? null : (groups.data.groups[0]?.id ?? null));
+  }, [groups.data, groupId, isAdmin]);
   useEffect((): void => {
     if (members.data)
       setNames((previous): Record<string, string> => ({

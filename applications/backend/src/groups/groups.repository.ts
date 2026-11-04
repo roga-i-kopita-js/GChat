@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, count, eq, ilike, inArray, isNull } from 'drizzle-orm';
+import { and, asc, count, eq, exists, ilike, inArray, isNull, or } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { users } from '../auth/auth.schema.js';
@@ -70,13 +70,31 @@ export class GroupsRepository {
       .orderBy(asc(groups.name), asc(groups.id));
   }
 
+  private isActiveAdmin(userId: string): ReturnType<typeof exists> {
+    return exists(
+      this.database.db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.id, userId), eq(users.role, 'admin'), isNull(users.disabledAt))),
+    );
+  }
+
   async list(userId: string): Promise<GroupDto[]> {
     try {
       return await this.database.db
         .select({ id: groups.id, name: groups.name })
         .from(groups)
-        .innerJoin(groupMembers, eq(groupMembers.groupId, groups.id))
-        .where(eq(groupMembers.userId, userId))
+        .where(
+          or(
+            this.isActiveAdmin(userId),
+            exists(
+              this.database.db
+                .select({ id: groupMembers.groupId })
+                .from(groupMembers)
+                .where(and(eq(groupMembers.groupId, groups.id), eq(groupMembers.userId, userId))),
+            ),
+          ),
+        )
         .orderBy(asc(groups.name), asc(groups.id));
     } catch (cause) {
       if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
@@ -89,13 +107,28 @@ export class GroupsRepository {
     try {
       return await this.database.db.transaction(
         async (tx): Promise<GroupMemberDto[]> => {
-          const [membership] = await tx
-            .select()
-            .from(groupMembers)
-            .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+          const [accessible] = await tx
+            .select({ id: groups.id })
+            .from(groups)
+            .where(
+              and(
+                eq(groups.id, groupId),
+                or(
+                  this.isActiveAdmin(userId),
+                  exists(
+                    tx
+                      .select({ id: groupMembers.groupId })
+                      .from(groupMembers)
+                      .where(
+                        and(eq(groupMembers.groupId, groups.id), eq(groupMembers.userId, userId)),
+                      ),
+                  ),
+                ),
+              ),
+            )
             .for('share');
 
-          if (!membership) throw this.error.notFound();
+          if (!accessible) throw this.error.notFound();
 
           return tx
             .select({ id: users.id, display_name: users.displayName })

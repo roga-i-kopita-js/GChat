@@ -4,18 +4,10 @@ import { Modal } from '../../shared/ui';
 import { useCalls } from './CallsProvider';
 
 export function DiagnosticsDialog({ close }: { close: () => void }): JSX.Element {
-  const { client, state, call, ongoing } = useCalls();
+  const { state, call } = useCalls();
 
   return (
     <Modal title="Диагностика соединения" close={close}>
-      {!state.owner && (
-        <div className="tab-banner">
-          Звонками управляет другая вкладка GChat.
-          <button onClick={(): void => client.activate()} disabled={ongoing}>
-            Открыть здесь
-          </button>
-        </div>
-      )}
       <dl className="diagnostics">
         <dt>Соединение</dt>
         <dd>{state.connection}</dd>
