@@ -9,6 +9,7 @@
 | Понять продукт                 | [Требования](product/requirements.md) → [Сценарии](product/overview.md) → [Дизайн](design/README.md)                                             |
 | Изменить архитектуру           | [Система](architecture/system.md) → [Решения](architecture/decisions/README.md) → контракт владельца                                             |
 | Добавить HTTP endpoint         | [Соглашения](backend/conventions.md) → [OpenAPI](backend/openapi.md) → [Error](backend/modules/errors.md) → контракт модуля                      |
+| Проектировать внутренний JS-клиент API | [OpenAPI](backend/openapi.md) → [Проект пакета backend-api](packages/backend-api.md) |
 | Реализовать Auth               | [Auth](backend/modules/auth.md) → [Redis](backend/modules/redis.md) → [RedLock](backend/modules/redlock.md) → [Error](backend/modules/errors.md) |
 | Работать с группами          | [Groups](backend/modules/groups.md) → [Требования](product/requirements.md) |
 | Проектировать DirectCalls | [DirectCallsModule](backend/modules/direct-calls/README.md) → [Solution record и диаграммы C1–C3](backend/modules/direct-calls/D003-direct-calls-transport.md) |
