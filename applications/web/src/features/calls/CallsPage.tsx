@@ -11,7 +11,7 @@ import {
 import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
 
-import { Avatar, Modal } from '../../shared/ui';
+import { Avatar, Modal, Select } from '../../shared/ui';
 import { useAuth } from '../auth/AuthProvider';
 import { CallCard } from './CallCard';
 import { useCalls } from './CallsProvider';
@@ -61,12 +61,12 @@ export function CallsPage(): JSX.Element {
             </span>
             <div>
               {groups.data && groups.data.groups.length > 1 ? (
-                <select
+                <Select
                   aria-label="Группа контактов"
                   className="contacts-group-select"
                   value={groupId ?? ''}
-                  onChange={(event): void => {
-                    setGroupId(event.target.value);
+                  onChange={(value): void => {
+                    setGroupId(value);
                     setPerson(null);
                     setMobile(false);
                   }}

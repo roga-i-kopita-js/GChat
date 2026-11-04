@@ -2,6 +2,8 @@ import { X } from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 
+export { Select } from './Select';
+
 export function Avatar({ name, large = false }: { name: string; large?: boolean }): JSX.Element {
   const colors = ['#dceaff', '#e8e2fb', '#dcf2eb', '#faeadc', '#f5e0eb'];
   const index =

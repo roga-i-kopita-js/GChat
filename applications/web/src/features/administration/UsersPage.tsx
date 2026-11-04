@@ -8,7 +8,6 @@ import type {
 import { ApiError } from '@gchat/backend-api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -22,7 +21,7 @@ import type { FormEvent, JSX } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 
-import { Avatar, Modal } from '../../shared/ui';
+import { Avatar, Modal, Select } from '../../shared/ui';
 import { request } from '../auth/session';
 import type { Credentials } from './CredentialsDialog';
 import { generatePassword, mutationError } from './policy';
@@ -459,23 +458,19 @@ export function UsersPage({
             }}
           />
         </label>
-        <div className="admin-status-filter">
-          <select
-            aria-label="Состояние аккаунтов"
-            value={status}
-            onChange={(event): void => {
-              const value = event.target.value;
-
-              if (value === 'all' || value === 'active' || value === 'disabled')
-                changeParams({ status: value, offset: '0' });
-            }}
-          >
-            <option value="all">Все аккаунты</option>
-            <option value="active">Активные</option>
-            <option value="disabled">Отключённые</option>
-          </select>
-          <ChevronDown size={18} aria-hidden="true" />
-        </div>
+        <Select
+          aria-label="Состояние аккаунтов"
+          className="admin-status-filter"
+          value={status}
+          onChange={(value): void => {
+            if (value === 'all' || value === 'active' || value === 'disabled')
+              changeParams({ status: value, offset: '0' });
+          }}
+        >
+          <option value="all">Все аккаунты</option>
+          <option value="active">Активные</option>
+          <option value="disabled">Отключённые</option>
+        </Select>
         <button className="secondary" onClick={refresh} disabled={list.isFetching}>
           <RefreshCw size={16} /> Обновить
         </button>

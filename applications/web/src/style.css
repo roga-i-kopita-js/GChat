@@ -1154,17 +1154,41 @@ button svg {
   padding: 13px 0;
   background: transparent;
 }
-.admin-toolbar select {
+.ui-select {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+.ui-select select {
   font: inherit;
   padding: 12px 42px 12px 14px;
   appearance: none;
   -webkit-appearance: none;
   min-height: var(--control-height);
-  width: 100%;
+  width: auto;
   border: 1px solid #dce3ec;
   border-radius: 10px;
   background: white;
   color: inherit;
+}
+.ui-select > svg {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #66768a;
+}
+.ui-select select:focus-visible {
+  outline: 3px solid #75b8ff;
+  outline-offset: 3px;
+}
+.admin-status-filter {
+  flex-shrink: 0;
+}
+.admin-status-filter select {
+  width: 100%;
 }
 .admin-layout {
   display: grid;
@@ -1313,14 +1337,10 @@ button svg {
   }
 }
 
-.contacts-group-select {
-  font: inherit;
+.contacts-group-select select {
   font-weight: 600;
-  color: inherit;
-  background: white;
-  border: 1px solid #dce3ec;
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 6px 36px 6px 10px;
   max-width: 100%;
 }
 
@@ -1376,22 +1396,6 @@ button svg {
   background: transparent;
 }
 
-.admin-status-filter {
-  position: relative;
-  flex-shrink: 0;
-}
-.admin-status-filter > svg {
-  position: absolute;
-  top: 50%;
-  right: 14px;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: #66768a;
-}
-.admin-status-filter select:focus-visible {
-  outline: 3px solid #75b8ff;
-  outline-offset: 3px;
-}
 .password-control {
   display: grid;
   gap: 7px;
@@ -1542,7 +1546,7 @@ button svg {
   font-size: 16px;
   line-height: 1.25;
 }
-.admin-toolbar select {
+.admin-toolbar .ui-select select {
   min-height: 44px;
   padding-block: 10px;
   font-size: 16px;
@@ -1716,7 +1720,7 @@ button svg {
   margin-top: 2px;
   font-size: 11px;
 }
-.contacts-group-select {
+.contacts-group-select select {
   min-height: 44px;
   font-size: 16px;
 }
@@ -1931,7 +1935,7 @@ button svg {
 }
 
 .admin-search input,
-.admin-toolbar select {
+.admin-toolbar .ui-select select {
   font-weight: 400;
   line-height: 1.25;
 }
