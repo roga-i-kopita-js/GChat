@@ -560,11 +560,33 @@ button svg {
   background: #f0f6ff;
   border-left-color: #087cf0;
 }
-.contact-row > svg {
-  color: #b1c3d8;
+.contact-person {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  color: inherit;
 }
-.contact-row.chosen > svg,
-.contact-row:hover > svg {
+.contact-call {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: transparent;
+  color: #718ca9;
+}
+.contact-call:hover:not(:disabled) {
+  background: #e4efff;
+}
+.contact-row.chosen .contact-call,
+.contact-row:hover .contact-call {
   color: #087cf0;
 }
 .contact-name {
@@ -838,7 +860,20 @@ button svg {
   box-shadow: 0 25px 100px #182b4d25;
   color: #192738;
 }
-.modal::backdrop {
+.incoming-call-modal {
+  border: 0;
+  padding: 0;
+  border-radius: 13px;
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  background: #142d49;
+  box-shadow: 0 25px 100px #182b4d55;
+}
+.incoming-call-modal .call-card {
+  min-height: min(460px, calc(100dvh - 24px));
+}
+.modal::backdrop,
+.incoming-call-modal::backdrop {
   background: #1527386b;
   backdrop-filter: blur(4px);
 }
