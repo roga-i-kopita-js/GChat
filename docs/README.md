@@ -19,6 +19,7 @@
 | Изменить проверки готовности   | [Healthcheck](backend/modules/healthcheck.md) → [Database](backend/modules/database.md) и [Redis](backend/modules/redis.md)                      |
 | Восстановить доступ после сбоя | [Ограничения восстановления](backend/operations/recovery.md) → контракт владельца данных                                                         |
 | Работать над веб-клиентом | [Веб-клиент](web/README.md) → [D005](architecture/decisions/D005-web-client.md) → контракты Auth, Groups и Signaling |
+| Проверить систему целиком | [E2E-пакет и стенд](../tests/e2e/README.md) → [DirectCalls](backend/modules/direct-calls/README.md) → [Signaling](backend/modules/signaling.md) |
 | Работать над iOS               | [Каталог iOS](../applications/ios/README.md) → [Требования](product/requirements.md) → [HTML-прототип](design/index.html)                        |
 | Обслуживать Mattermost         | [Legacy-инструкция](legacy/mattermost.md)                                                                                                        |
 

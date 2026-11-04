@@ -3,7 +3,7 @@ doc_type: module
 decision_status: accepted
 implementation_status: partial
 source: applications/backend/src/direct-calls/
-tests: ["applications/backend/test/direct-calls.integration.spec.ts"]
+tests: ["applications/backend/test/direct-calls.integration.spec.ts", "tests/e2e/tests/protocol/direct-calls.e2e.ts"]
 ---
 
 # DirectCallsModule
@@ -582,6 +582,8 @@ DeliveryStore выбирает готовые задания через `FOR UPD
 - После 30 суток удалённый завершённый звонок возвращает `NOT_FOUND`; очистка не удаляет незавершённый звонок.
 
 `test/direct-calls.integration.spec.ts` проверяет транзакции и конкуренцию на отдельных PostgreSQL и Redis. Включается только при `CALLS_INTEGRATION_DATABASE_URL` и `CALLS_INTEGRATION_REDIS_URL`; создаёт случайную тестовую БД и префикс Redis, удаляет их после проверки. Перечень критериев выше не означает проверки звонка на реальном iPhone. Команды проверок — в [README backend](../../../../applications/backend/README.md#сборка-и-проверки).
+
+`tests/e2e/tests/protocol/direct-calls.e2e.ts` проверяет общий механизм через независимых браузерных участников с реальными HTTP/WS, PostgreSQL, Redis и coturn. Контроль включает декодированные тоны в обе стороны, выбранную relay-пару, жизненный цикл, конкурентное принятие, занятость, дедлайны, восстановление, отзыв сессии и освобождение участников. Это project `protocol` общего системного E2E-модуля; пользовательские сценарии через веб-клиент находятся в project `web` того же модуля. Команды, сценарии и непроверенные границы — в [README стенда](../../../../tests/e2e/README.md).
 
 ## Открытые решения
 

@@ -1,13 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Session } from './auth';
 import { identity, readSession, request, saveSession } from './auth';
 
-function session(exp = Date.now() / 1000 + 120): Session {
+function session(exp = Date.now() / 1000 + 120, lifetime = 120): Session {
   const jwt =
     'e30.' +
     Buffer.from(
-      JSON.stringify({ sub: 'user', sid: 'session', login: 'anna', display_name: 'Анна', exp }),
+      JSON.stringify({
+        sub: 'user',
+        sid: 'session',
+        login: 'anna',
+        display_name: 'Анна',
+        iat: exp - lifetime,
+        exp,
+      }),
     ).toString('base64url') +
     '.signature';
 
@@ -40,6 +47,10 @@ beforeEach((): void => {
   });
 });
 
+afterEach((): void => {
+  vi.restoreAllMocks();
+});
+
 describe('browser session', (): void => {
   it('decodes Unicode names and retains the same session/device on reload', (): void => {
     const stored = { ...session(), deviceId: 'd09edc48-297f-4809-bc98-d250555ea952' };
@@ -47,6 +58,64 @@ describe('browser session', (): void => {
     saveSession(stored);
     expect(identity(readSession()!).display_name).toBe('Анна');
     expect(readSession()?.deviceId).toBe(stored.deviceId);
+  });
+  it('refreshes short-lived JWTs proportionally without rotating on every HTTP request', async (): Promise<void> => {
+    const now = 1700000000000;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    const paths: string[] = [];
+
+    saveSession(session(now / 1000 + 10, 10));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (path: string): Promise<Response> => {
+        paths.push(path);
+
+        return new Response(
+          JSON.stringify(
+            path === '/api/auth/refresh' ? session(Date.now() / 1000 + 10, 10) : { groups: [] },
+          ),
+        );
+      }),
+    );
+    await request('/groups');
+    expect(paths).toEqual(['/api/groups']);
+    clock.mockReturnValue(now + 8000);
+    await request('/groups');
+    await request('/groups');
+    expect(paths).toEqual(['/api/groups', '/api/auth/refresh', '/api/groups', '/api/groups']);
+    expect(identity(readSession()!).exp).toBe(now / 1000 + 18);
+    expect(readSession()?.pending).toBeNull();
+  });
+  it('refreshes after the server shortens the age limit of an otherwise unexpired JWT', async (): Promise<void> => {
+    saveSession(session());
+    const paths: string[] = [];
+    let expired = true;
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (path: string): Promise<Response> => {
+        paths.push(path);
+
+        if (path === '/api/auth/refresh')
+          return new Response(JSON.stringify(session(Date.now() / 1000 + 15, 15)));
+
+        if (expired) {
+          expired = false;
+
+          return new Response(
+            JSON.stringify({ error: { code: 'ACCESS_TOKEN_EXPIRED', message: 'Expired' } }),
+            { status: 401 },
+          );
+        }
+
+        return new Response(JSON.stringify({ groups: [] }));
+      }),
+    );
+    await expect(request('/groups')).resolves.toEqual({ groups: [] });
+    expect(paths).toEqual(['/api/groups', '/api/auth/refresh', '/api/groups']);
+    const jwt = identity(readSession()!);
+
+    expect(jwt.exp - jwt.iat).toBe(15);
   });
   it('preserves refresh request identity across an unknown result', async (): Promise<void> => {
     saveSession(session(1));

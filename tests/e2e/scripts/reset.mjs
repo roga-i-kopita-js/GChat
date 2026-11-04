@@ -1,7 +1,7 @@
 import pg from 'pg';
 import { createClient } from 'redis';
 
-// Same dedicated fixture as tests/compose.yml; no configurable production target.
+// Same dedicated fixture as tests/e2e/compose.yml; no configurable production target.
 const database = new pg.Pool({
   connectionString:
     'postgresql://gchat_web_test:gchat_web_test_only@127.0.0.1:55439/gchat_web_test',

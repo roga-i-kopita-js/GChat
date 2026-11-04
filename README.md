@@ -5,6 +5,7 @@
 - [Документация по задачам](docs/README.md).
 - [Разработка и workspace](docs/development.md).
 - [Запуск backend](applications/backend/README.md).
+- [Системные E2E GChat](tests/e2e/README.md).
 - [iOS](applications/ios/README.md).
 - [Правила для агентов](AGENTS.md).
 

@@ -79,6 +79,61 @@ describe('Auth cryptography', (): void => {
       code: 'ACCESS_TOKEN_EXPIRED',
     });
   });
+  it('issues a custom lifetime and expires older tokens when the configured age limit decreases', async (): Promise<void> => {
+    const short = new AuthCrypto(
+      new ConfigService({ ...process.env, AUTH_ACCESS_TOKEN_TTL_SECONDS: 15 }),
+      new ErrorService(),
+    );
+    const sid = randomUUID();
+    const issued = await short.issue(account, sid);
+    const jwt = decodeJwt(issued.access_token);
+
+    expect(jwt.exp! - jwt.iat!).toBe(15);
+    await expect(short.verifyAccess(issued.access_token)).resolves.toEqual({
+      userId: account.id,
+      sessionId: sid,
+    });
+    // Changing the duration must not invalidate the shape/signature of existing tokens.
+    await expect(crypto.verifyAccess(issued.access_token)).resolves.toEqual({
+      userId: account.id,
+      sessionId: sid,
+    });
+    const existing = await crypto.issue(account, sid);
+
+    await expect(short.verifyAccess(existing.access_token)).resolves.toEqual({
+      userId: account.id,
+      sessionId: sid,
+    });
+    const now = Math.floor(Date.now() / 1000);
+    const old = await new SignJWT({ sid, login: account.login, display_name: account.displayName })
+      .setProtectedHeader({ alg: 'EdDSA', kid: 'test' })
+      .setSubject(account.id)
+      .setIssuer('gchat')
+      .setAudience('gchat-api')
+      .setIssuedAt(now - 16)
+      .setExpirationTime(now + 104)
+      .sign(createPrivateKey(process.env.AUTH_JWT_PRIVATE_KEY!));
+
+    await expect(crypto.verifyAccess(old)).resolves.toEqual({ userId: account.id, sessionId: sid });
+    await expect(short.verifyAccess(old)).rejects.toMatchObject({ code: 'ACCESS_TOKEN_EXPIRED' });
+    // exp still wins even if the current configuration allows a longer lifetime.
+    const expired = await new SignJWT({
+      sid,
+      login: account.login,
+      display_name: account.displayName,
+    })
+      .setProtectedHeader({ alg: 'EdDSA', kid: 'test' })
+      .setSubject(account.id)
+      .setIssuer('gchat')
+      .setAudience('gchat-api')
+      .setIssuedAt(now - 16)
+      .setExpirationTime(now - 1)
+      .sign(createPrivateKey(process.env.AUTH_JWT_PRIVATE_KEY!));
+
+    await expect(crypto.verifyAccess(expired)).rejects.toMatchObject({
+      code: 'ACCESS_TOKEN_EXPIRED',
+    });
+  });
   it('authenticates the encrypted result, session and request ID', async (): Promise<void> => {
     const sid = randomUUID();
     const requestId = randomUUID();

@@ -10,6 +10,7 @@ const claims = z.object({
   sid: z.string(),
   login: z.string(),
   display_name: z.string(),
+  iat: z.number(),
   exp: z.number(),
 });
 const stored = tokens.extend({
@@ -100,8 +101,10 @@ async function access(force = false): Promise<Session> {
 
     if (!session) throw new ApiError('SESSION_INVALID', 'Войдите в аккаунт');
 
-    if (!force && !session.pending && identity(session).exp * 1000 > Date.now() + 15000)
-      return session;
+    const jwt = identity(session);
+    const refreshAheadMs = Math.min(15000, ((jwt.exp - jwt.iat) * 1000) / 4);
+
+    if (!force && !session.pending && jwt.exp * 1000 > Date.now() + refreshAheadMs) return session;
 
     const pending = session.pending ?? {
       refresh_token: session.refresh_token,

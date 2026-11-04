@@ -3,10 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const settings = JSON.parse(
-  await readFile(new URL('../../web/.local/backend.json', import.meta.url), 'utf8'),
+  await readFile(new URL('../.local/backend.json', import.meta.url), 'utf8'),
 );
 const server = spawn(process.execPath, ['dist/main.js'], {
-  cwd: fileURLToPath(new URL('..', import.meta.url)),
+  cwd: fileURLToPath(new URL('../../../applications/backend/', import.meta.url)),
   env: { ...process.env, ...settings },
   stdio: 'inherit',
 });

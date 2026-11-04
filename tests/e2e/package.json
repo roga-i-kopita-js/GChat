@@ -1,0 +1,31 @@
+{
+  "name": "@gchat/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "stack:up": "docker compose -f compose.yml up -d --wait",
+    "stack:down": "docker compose -f compose.yml down --volumes",
+    "fixtures": "node scripts/fixtures.mjs",
+    "backend": "node scripts/backend.mjs",
+    "dev": "vite --host 127.0.0.1",
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write --ignore-unknown --ignore-path .gitignore --ignore-path ../../.prettierignore .",
+    "format:check": "prettier --check --ignore-unknown --ignore-path .gitignore --ignore-path ../../.prettierignore .",
+    "style:check": "oxlint --config ../../.oxlintrc.json --deny-warnings .",
+    "style:fix": "oxlint --config ../../.oxlintrc.json --fix --deny-warnings .",
+    "lint": "pnpm style:check && pnpm format:check",
+    "lint:fix": "pnpm format && pnpm style:fix && pnpm format"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^24.19.2",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.5",
+    "argon2": "^0.45.1",
+    "pg": "^8.23.1",
+    "redis": "^5.12.1"
+  },
+  "description": "System-wide end-to-end tests for GChat applications"
+}

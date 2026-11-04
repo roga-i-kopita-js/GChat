@@ -6,3 +6,7 @@ pnpm-lock.yaml
 applications/web/.local/
 applications/web/test-results/
 applications/web/playwright-report/
+
+tests/e2e/.local/
+tests/e2e/test-results/
+tests/e2e/playwright-report/

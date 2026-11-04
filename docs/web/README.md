@@ -3,7 +3,7 @@ doc_type: client
 decision_status: accepted
 implementation_status: partial
 source: applications/web/src/
-tests: ["applications/web/src/auth.test.ts", "applications/web/src/protocol.test.ts", "applications/web/tests/calls.e2e.ts"]
+tests: ["applications/web/src/auth.test.ts", "applications/web/src/protocol.test.ts", "tests/e2e/tests/web/direct-calls.e2e.ts", "tests/e2e/tests/web/media.e2e.ts", "tests/e2e/tests/protocol/direct-calls.e2e.ts"]
 ---
 
 # Веб-клиент GChat
@@ -126,6 +126,8 @@ Web Locks сериализует ротацию refresh и выбирает од
 | Веб ↔ веб / веб ↔ iOS            | Проверяется совместимость общего протокола. iOS-сценарий принимается после готовности нативного клиента и его инфраструктуры.         |
 
 Unit-тесты проверяют управление сессией и ресурсами, корреляцию ответов и применение версий. End-to-end тесты звонка используют настоящий backend, PostgreSQL/Redis и coturn; подмена WebSocket или PeerConnection не доказывает передачу аудио. Искусственный источник аудио допускается для автоматизации, но не заменяет ручную проверку микрофонов и слышимости в разных сетях.
+
+Системные E2E принадлежат общему модулю над приложениями: project `web` проверяет настоящий веб-клиент, передачу WAV-микрофона и входящий PCM, mute/unmute и разговор через реальное истечение JWT и refresh, project `protocol` — общий механизм независимыми участниками, включая декодирование разных тестовых тонов, конкуренцию, сроки и восстановление. Оба набора запускаются и обслуживаются в одном модуле. Покрытие, границы и команды — в [README системных E2E](../../tests/e2e/README.md); iOS пока не подключён к автоматизации.
 
 Точные команды и поддержанные версии браузеров фиксируются при реализации и проверке. В отчёте разделяются автоматические, ручные и непройденные сценарии. Диагностика помогает тестированию, но не подменяет пользовательскую приёмку приложения.
 

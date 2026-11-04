@@ -2,6 +2,7 @@ packages:
   - applications/backend
   - applications/ios
   - applications/web
+  - tests/e2e
 
 sharedWorkspaceLockfile: true
 

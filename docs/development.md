@@ -11,7 +11,7 @@ pnpm install
 pnpm projects
 ```
 
-Workspace включает @gchat/backend и @gchat/ios. Инструкции запуска backend и локальных зависимостей — только в [README backend](../applications/backend/README.md). Нативный клиент собирается Xcode, не pnpm; выбор мобильного стека описывается в [iOS](../applications/ios/README.md).
+Workspace включает `@gchat/backend`, `@gchat/ios`, `@gchat/web` и отдельный пакет системных E2E `@gchat/e2e` в `tests/e2e/`. Запуск и границы E2E описаны в [README пакета](../tests/e2e/README.md); веб-клиент — в [README приложения](../applications/web/README.md). Инструкции запуска backend и локальных зависимостей — только в [README backend](../applications/backend/README.md). Нативный клиент собирается Xcode, не pnpm; выбор мобильного стека описывается в [iOS](../applications/ios/README.md).
 
 ## Зависимости
 

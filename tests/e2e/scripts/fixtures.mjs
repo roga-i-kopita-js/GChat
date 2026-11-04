@@ -6,14 +6,47 @@ import { fileURLToPath } from 'node:url';
 import * as argon2 from 'argon2';
 import pg from 'pg';
 
-import { runMigrations } from '../dist/database/migrations.js';
+import { runMigrations } from '../../../applications/backend/dist/database/migrations.js';
 
 // Dedicated, loopback-only Compose fixture. Never reads a developer's .env or DATABASE_URL.
 const url = 'postgresql://gchat_web_test:gchat_web_test_only@127.0.0.1:55439/gchat_web_test';
-const backend = fileURLToPath(new URL('..', import.meta.url));
-const local = fileURLToPath(new URL('../../web/.local/', import.meta.url));
+const backend = fileURLToPath(new URL('../../../applications/backend/', import.meta.url));
+const local = fileURLToPath(new URL('../.local/', import.meta.url));
 
 await mkdir(local, { recursive: true });
+
+// Native Chromium fake microphone: looping mono PCM, 440/660 Hz alternating.
+// Both tones are distinct from the reference peer's 880 Hz.
+const sampleRate = 48000;
+const samples = sampleRate;
+const wav = Buffer.alloc(44 + samples * 2);
+
+wav.write('RIFF', 0);
+wav.writeUInt32LE(wav.length - 8, 4);
+wav.write('WAVEfmt ', 8);
+wav.writeUInt32LE(16, 16);
+wav.writeUInt16LE(1, 20);
+wav.writeUInt16LE(1, 22);
+wav.writeUInt32LE(sampleRate, 24);
+wav.writeUInt32LE(sampleRate * 2, 28);
+wav.writeUInt16LE(2, 32);
+wav.writeUInt16LE(16, 34);
+wav.write('data', 36);
+wav.writeUInt32LE(samples * 2, 40);
+
+for (let index = 0; index < samples; index++) {
+  const time = index / sampleRate;
+  const frequency = time < 0.5 ? 440 : 660;
+  const envelope = 0.65 + 0.35 * Math.sin(2 * Math.PI * 8 * time);
+
+  wav.writeInt16LE(
+    Math.round(0.3 * envelope * 32767 * Math.sin(2 * Math.PI * frequency * time)),
+    44 + index * 2,
+  );
+}
+
+await writeFile(resolve(local, 'microphone.wav'), wav);
+
 await runMigrations(url, resolve(backend, 'drizzle'));
 const database = new pg.Pool({ connectionString: url });
 
@@ -79,7 +112,8 @@ await writeFile(
     APNS_BUNDLE_ID: 'invalid.gchat.web-test',
     APNS_ENVIRONMENT: 'sandbox',
     APNS_PRIVATE_KEY_FILE: apnsPath,
-    SIGNALING_BROWSER_ORIGINS: '["http://127.0.0.1:5173","http://localhost:5173"]',
+    SIGNALING_BROWSER_ORIGINS:
+      '["http://127.0.0.1:5173","http://localhost:5173","http://127.0.0.1:5174"]',
   }),
   { mode: 0o600 },
 );

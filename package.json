@@ -16,7 +16,8 @@
     "style:fix": "oxlint --fix --deny-warnings",
     "format:staged": "lint-staged",
     "lint": "pnpm style:check . && pnpm format:check \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\"",
-    "lint:fix": "pnpm format \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\" && pnpm style:fix . && pnpm format \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\""
+    "lint:fix": "pnpm format \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\" && pnpm style:fix . && pnpm format \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\"",
+    "test:e2e": "pnpm --filter @gchat/e2e test"
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",

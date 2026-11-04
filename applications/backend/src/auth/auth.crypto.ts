@@ -89,6 +89,7 @@ export function parseAuthKeys(env: Record<string, unknown>): AuthKeys {
 @Injectable()
 export class AuthCrypto implements OnModuleInit {
   private readonly keys: AuthKeys;
+  private readonly accessTokenTtlSeconds: number;
   private dummyHash!: string;
   private active = 0;
 
@@ -96,6 +97,7 @@ export class AuthCrypto implements OnModuleInit {
     config: ConfigService,
     private readonly error: ErrorService,
   ) {
+    this.accessTokenTtlSeconds = Number(config.get<number>('AUTH_ACCESS_TOKEN_TTL_SECONDS', 120));
     this.keys = parseAuthKeys(
       Object.fromEntries(
         [
@@ -146,7 +148,7 @@ export class AuthCrypto implements OnModuleInit {
       .setIssuer('gchat')
       .setAudience('gchat-api')
       .setIssuedAt(now)
-      .setExpirationTime(now + 120)
+      .setExpirationTime(now + this.accessTokenTtlSeconds)
       .sign(this.keys.privateKey);
 
     return {
@@ -171,7 +173,7 @@ export class AuthCrypto implements OnModuleInit {
           algorithms: ['EdDSA'],
           issuer: 'gchat',
           audience: 'gchat-api',
-          maxTokenAge: 120,
+          maxTokenAge: this.accessTokenTtlSeconds,
           requiredClaims: ['sub', 'sid', 'iat', 'exp', 'login', 'display_name'],
         },
       );
@@ -186,7 +188,7 @@ export class AuthCrypto implements OnModuleInit {
         typeof payload.display_name !== 'string' ||
         typeof payload.iat !== 'number' ||
         typeof payload.exp !== 'number' ||
-        payload.exp - payload.iat !== 120
+        payload.exp <= payload.iat
       )
         throw new Error();
 
