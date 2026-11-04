@@ -5,7 +5,7 @@
 | Задача                         | Читать по порядку                                                                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Подготовить окружение          | [Разработка](development.md) → [Запуск backend](../applications/backend/README.md)                                                               |
-| Проектировать веб-бэк-офис | [Бизнес-требования бэк-офиса](product/backoffice.md) → [Дизайн](design/README.md) → [Auth](backend/modules/auth.md) и [Groups](backend/modules/groups.md) |
+| Проектировать веб-бэк-офис | [Бизнес-требования бэк-офиса](product/backoffice.md) → [Дизайн](design/README.md) → [Auth](backend/modules/auth.md) и [Groups](backend/modules/groups.md) → [Технический проект](backend/modules/backoffice.md) |
 | Понять продукт                 | [Требования](product/requirements.md) → [Сценарии](product/overview.md) → [Дизайн](design/README.md)                                             |
 | Изменить архитектуру           | [Система](architecture/system.md) → [Решения](architecture/decisions/README.md) → контракт владельца                                             |
 | Добавить HTTP endpoint         | [Соглашения](backend/conventions.md) → [OpenAPI](backend/openapi.md) → [Error](backend/modules/errors.md) → контракт модуля                      |
