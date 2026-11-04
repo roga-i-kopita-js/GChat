@@ -1,0 +1,1330 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GChat · Администрирование — дизайн</title>
+    <style>
+      :root {
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        color: #192738;
+        background: #f4f6f9;
+        font-synthesis: none;
+        --blue: #087cf0;
+        --muted: #748295;
+        --line: #e9edf2;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-size: 14px;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button,
+      a,
+      input,
+      select {
+        -webkit-tap-highlight-color: transparent;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible,
+      select:focus-visible {
+        outline: 3px solid #75b8ff;
+        outline-offset: 3px;
+      }
+      button {
+        border: 0;
+        background: none;
+        color: inherit;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      svg {
+        width: 20px;
+        height: 20px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 1.7;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex-shrink: 0;
+      }
+      .shell {
+        display: grid;
+        grid-template-columns: 236px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+      .sidebar {
+        background: white;
+        border-right: 1px solid var(--line);
+        padding: 32px 20px 20px;
+        display: flex;
+        flex-direction: column;
+        position: sticky;
+        top: 0;
+        height: 100vh;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 0 12px;
+        font-weight: 750;
+        font-size: 24px;
+        letter-spacing: -0.8px;
+      }
+      .mark {
+        width: 40px;
+        height: 40px;
+        border-radius: 13px;
+        background: var(--blue);
+        color: white;
+        display: grid;
+        place-items: center;
+        box-shadow: 0 5px 13px #007aff20;
+      }
+      .brand small {
+        font-size: 9px;
+        color: #93a0af;
+        letter-spacing: 1.8px;
+        align-self: start;
+        margin-top: 4px;
+        margin-left: -4px;
+      }
+      .navlabel {
+        font-size: 10px;
+        color: #8a97a7;
+        letter-spacing: 1.5px;
+        margin: 48px 14px 13px;
+        font-weight: 650;
+      }
+      .navitem {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        border-radius: 10px;
+        padding: 13px 14px;
+        width: 100%;
+        text-align: left;
+        color: #657589;
+        font-weight: 550;
+        margin: 4px 0;
+      }
+      .navitem.active {
+        color: #0875df;
+        background: #edf5ff;
+      }
+      .navitem small {
+        margin-left: auto;
+        font-size: 10px;
+        background: #dcecff;
+        padding: 3px 6px;
+        border-radius: 5px;
+      }
+      .sidebar-bottom {
+        margin-top: auto;
+      }
+      .backlink {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 12px;
+        color: #718096;
+        padding: 18px 12px;
+      }
+      .profile {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-top: 1px solid var(--line);
+        padding: 20px 8px 0;
+      }
+      .avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 12px;
+        font-weight: 650;
+        background: #e6efff;
+        color: #4977ba;
+        flex-shrink: 0;
+      }
+      .profile strong {
+        font-size: 12px;
+      }
+      .profile small {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        margin-top: 4px;
+      }
+      .main {
+        min-width: 0;
+      }
+      .topbar {
+        height: 82px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 42px;
+        background: #ffffffa6;
+      }
+      .breadcrumb {
+        font-size: 12px;
+        color: #8793a3;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .breadcrumb strong {
+        font-weight: 500;
+        color: #425369;
+      }
+      .draft {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        color: #8a7443;
+        background: #fbf4e5;
+        border: 1px solid #eee3c9;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 10px;
+        letter-spacing: 0.3px;
+      }
+      .draft i {
+        width: 5px;
+        height: 5px;
+        background: #b79b5c;
+        border-radius: 50%;
+      }
+      .workspace {
+        max-width: 1500px;
+        margin: auto;
+        padding: 42px;
+      }
+      .heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 30px;
+      }
+      h1 {
+        font-size: 28px;
+        letter-spacing: -0.8px;
+        font-weight: 680;
+      }
+      .subtitle {
+        margin-top: 9px;
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .primary,
+      .secondary,
+      .danger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 11px 16px;
+        min-height: 42px;
+        border-radius: 9px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .primary {
+        background: var(--blue);
+        color: white;
+        box-shadow: 0 3px 8px #087cf01a;
+      }
+      .primary:hover {
+        background: #006bd8;
+      }
+      .secondary {
+        background: white;
+        border: 1px solid #dfe5ed;
+      }
+      .secondary:hover {
+        background: #f6f8fc;
+      }
+      .danger {
+        background: #fff1f0;
+        color: #c64640;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+        margin-bottom: 28px;
+      }
+      .stat {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 19px 22px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .stat p {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 9px;
+      }
+      .stat strong {
+        font-size: 26px;
+        letter-spacing: -0.6px;
+        font-weight: 620;
+      }
+      .stat-icon {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 11px;
+        background: #f1f6ff;
+        color: #6395d8;
+      }
+      .stat:nth-child(2) .stat-icon {
+        background: #eff9f4;
+        color: #64a084;
+      }
+      .stat:nth-child(3) .stat-icon {
+        background: #f4f3fa;
+        color: #9b8bbd;
+      }
+      .panel {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        overflow: hidden;
+      }
+      .toolbar {
+        padding: 20px 22px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+      }
+      .search {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        border: 1px solid #e1e7ee;
+        border-radius: 8px;
+        padding: 9px 11px;
+        max-width: 330px;
+        flex: 1;
+        color: #8a97a7;
+      }
+      .search svg {
+        width: 17px;
+        height: 17px;
+      }
+      .search input {
+        border: 0;
+        outline: none;
+        min-width: 0;
+        width: 100%;
+        font-size: 12px;
+        color: #192738;
+        background: transparent;
+      }
+      .filters {
+        display: flex;
+        gap: 4px;
+        background: #f4f6f9;
+        padding: 4px;
+        border-radius: 8px;
+      }
+      .filter {
+        font-size: 11px;
+        padding: 7px 12px;
+        color: #7d8999;
+        border-radius: 6px;
+      }
+      .filter.selected {
+        background: white;
+        color: #34475e;
+        box-shadow: 0 1px 5px #172b4510;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        text-align: left;
+      }
+      th {
+        font-size: 10px;
+        font-weight: 550;
+        color: #8390a1;
+        background: #fafbfd;
+        border-top: 1px solid #f1f3f6;
+        border-bottom: 1px solid var(--line);
+        padding: 13px 22px;
+      }
+      td {
+        padding: 17px 22px;
+        border-bottom: 1px solid #eef1f5;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      tbody tr {
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      tbody tr:hover {
+        background: #f8fbff;
+      }
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      .person {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .person strong {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .person small {
+        display: block;
+        font-size: 11px;
+        color: #8a96a6;
+        margin-top: 5px;
+      }
+      .role {
+        font-size: 10px;
+        color: #7b8796;
+      }
+      .role.admin {
+        color: #3e7dbf;
+        background: #edf5ff;
+        border: 1px solid #e0edff;
+        border-radius: 5px;
+        padding: 4px 7px;
+      }
+      .group {
+        background: #f4f6f9;
+        padding: 5px 8px;
+        border-radius: 5px;
+        color: #65748a;
+        font-size: 10px;
+      }
+      .status {
+        font-size: 10px;
+        color: #4c8b70;
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .status::before {
+        content: '';
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #6bb594;
+      }
+      .status.off {
+        color: #929aa6;
+      }
+      .status.off::before {
+        background: #b1b9c4;
+      }
+      .row-open {
+        color: #a4afbd;
+        display: grid;
+        place-items: center;
+      }
+      .row-open svg {
+        width: 16px;
+        height: 16px;
+      }
+      .table-footer {
+        display: flex;
+        justify-content: space-between;
+        padding: 15px 22px;
+        border-top: 1px solid var(--line);
+        color: #95a0ae;
+        font-size: 10px;
+      }
+      .note {
+        display: flex;
+        gap: 8px;
+        margin-top: 20px;
+        color: #929dac;
+        font-size: 11px;
+        line-height: 1.7;
+      }
+      .note svg {
+        width: 15px;
+        height: 15px;
+        margin-top: 2px;
+      }
+      .empty {
+        padding: 55px;
+        text-align: center;
+        color: var(--muted);
+      }
+      dialog {
+        padding: 0;
+        border: 1px solid var(--line);
+        color: #192738;
+        box-shadow: 0 24px 100px #142e4c30;
+        border-radius: 16px;
+        max-width: calc(100vw - 32px);
+        width: 480px;
+      }
+      dialog::backdrop {
+        background: #182b4550;
+        backdrop-filter: blur(3px);
+      }
+      .dialog-head {
+        padding: 25px 28px 22px;
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--line);
+      }
+      .dialog-head h2 {
+        font-size: 20px;
+        font-weight: 650;
+        letter-spacing: -0.5px;
+      }
+      .dialog-head p {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 7px;
+        line-height: 1.6;
+      }
+      .dialog-head .close {
+        color: #8c98a8;
+        padding: 2px;
+      }
+      .dialog-body {
+        padding: 24px 28px;
+      }
+      .dialog-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 9px;
+        padding: 18px 28px;
+        background: #fafbfd;
+        border-top: 1px solid var(--line);
+      }
+      label.field {
+        display: block;
+        font-size: 12px;
+        font-weight: 550;
+        margin-bottom: 20px;
+      }
+      .field input,
+      .field select {
+        display: block;
+        width: 100%;
+        height: 43px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid #dce3ec;
+        background: white;
+        color: #23364c;
+        margin-top: 8px;
+        font-size: 13px;
+      }
+      .field small {
+        display: block;
+        font-size: 11px;
+        color: #8b97a7;
+        line-height: 1.6;
+        margin-top: 7px;
+        font-weight: 400;
+      }
+      .helper {
+        background: #f2f7ff;
+        color: #5d7fa7;
+        font-size: 11px;
+        padding: 13px 15px;
+        border-radius: 9px;
+        line-height: 1.7;
+      }
+      .detail-person {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 25px;
+      }
+      .detail-person .avatar {
+        width: 54px;
+        height: 54px;
+        font-size: 18px;
+      }
+      .detail-person h3 {
+        font-size: 17px;
+        font-weight: 600;
+      }
+      .detail-person p {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      .detail-line {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 12px;
+      }
+      .detail-line > span:first-child {
+        color: var(--muted);
+      }
+      .detail-actions {
+        margin-top: 24px;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .warning {
+        color: #8b6b41;
+        background: #fcf6eb;
+        padding: 13px 15px;
+        border-radius: 8px;
+        font-size: 12px;
+        line-height: 1.8;
+      }
+      .credentials {
+        background: #f4f7fb;
+        padding: 18px;
+        border-radius: 9px;
+        margin-top: 18px;
+      }
+      .credentials p {
+        font-size: 10px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .credentials code {
+        font-size: 14px;
+        display: block;
+        overflow-wrap: anywhere;
+      }
+      .credentials code + p {
+        margin-top: 18px;
+      }
+      .success-icon {
+        display: grid;
+        place-items: center;
+        background: #edf8f1;
+        color: #4b9c73;
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        margin-bottom: 15px;
+      }
+      .toast {
+        position: fixed;
+        bottom: 28px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #23364c;
+        color: white;
+        font-size: 12px;
+        border-radius: 9px;
+        padding: 14px 22px;
+        box-shadow: 0 5px 25px #152a4330;
+        z-index: 9;
+        max-width: calc(100vw - 32px);
+      }
+      [hidden] {
+        display: none !important;
+      }
+      @media (min-width: 1600px) {
+        .workspace {
+          padding-top: 52px;
+        }
+      }
+      @media (max-width: 1100px) {
+        .shell {
+          grid-template-columns: 195px minmax(0, 1fr);
+        }
+        .sidebar {
+          padding: 26px 12px 18px;
+        }
+        .workspace {
+          padding: 30px 24px;
+        }
+        .topbar {
+          padding: 0 24px;
+        }
+        td,
+        th {
+          padding-left: 14px;
+          padding-right: 14px;
+        }
+        .group-column {
+          display: none;
+        }
+      }
+      @media (max-width: 760px) {
+        .shell {
+          display: block;
+        }
+        .sidebar {
+          position: static;
+          height: auto;
+          padding: 16px 20px;
+          display: flex;
+          flex-direction: row;
+          justify-content: space-between;
+          align-items: center;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .brand {
+          padding: 0;
+          font-size: 22px;
+        }
+        .sidebar nav,
+        .sidebar-bottom,
+        .navlabel,
+        .brand small {
+          display: none;
+        }
+        .sidebar::after {
+          content: 'Администрирование';
+          font-size: 11px;
+          color: #087cf0;
+          background: #edf5ff;
+          padding: 8px;
+          border-radius: 6px;
+        }
+        .topbar {
+          height: 56px;
+          padding: 0 20px;
+        }
+        .breadcrumb {
+          font-size: 10px;
+        }
+        .draft {
+          font-size: 9px;
+        }
+        .workspace {
+          padding: 26px 16px;
+        }
+        .heading {
+          align-items: start;
+          margin-bottom: 22px;
+        }
+        h1 {
+          font-size: 24px;
+        }
+        .heading .primary {
+          font-size: 11px;
+          padding: 10px;
+        }
+        .heading .primary svg {
+          display: none;
+        }
+        .subtitle {
+          font-size: 11px;
+          max-width: 220px;
+        }
+        .stats {
+          gap: 8px;
+          margin-bottom: 20px;
+        }
+        .stat {
+          padding: 14px 12px;
+        }
+        .stat p {
+          font-size: 9px;
+        }
+        .stat strong {
+          font-size: 23px;
+        }
+        .stat-icon {
+          display: none;
+        }
+        .toolbar {
+          padding: 14px;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 12px;
+        }
+        .search {
+          max-width: none;
+          flex: auto;
+        }
+        .filters {
+          align-self: start;
+        }
+        .role-column {
+          display: none;
+        }
+        td,
+        th {
+          padding: 14px 10px;
+        }
+        td {
+          font-size: 11px;
+        }
+        .person {
+          gap: 9px;
+        }
+        .person strong {
+          font-size: 11px;
+        }
+        .person .avatar {
+          width: 30px;
+          height: 30px;
+          font-size: 10px;
+        }
+        .person small {
+          font-size: 10px;
+        }
+        .table-footer {
+          padding: 14px 12px;
+          font-size: 9px;
+        }
+        .dialog-head,
+        .dialog-body {
+          padding: 22px;
+        }
+        .dialog-footer {
+          padding: 16px 22px;
+        }
+        .note {
+          font-size: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="phone" viewBox="0 0 24 24">
+          <path d="m7 3 3 5-2 2c1.4 3 3 4.6 6 6l2-2 5 3c0 3-2 4-4 4C9 20 4 15 3 7c0-2 1-4 4-4Z" />
+        </symbol>
+        <symbol id="users" viewBox="0 0 24 24">
+          <circle cx="9" cy="8" r="3" />
+          <path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 6" />
+        </symbol>
+        <symbol id="shield" viewBox="0 0 24 24">
+          <path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z" />
+          <path d="m8 12 3 3 5-6" />
+        </symbol>
+        <symbol id="search" viewBox="0 0 24 24">
+          <circle cx="10" cy="10" r="6" />
+          <path d="m15 15 5 5" />
+        </symbol>
+        <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+        <symbol id="arrow" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" /></symbol>
+        <symbol id="back" viewBox="0 0 24 24"><path d="M20 12H4m6-6-6 6 6 6" /></symbol>
+        <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6" /></symbol>
+        <symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6" /></symbol>
+        <symbol id="key" viewBox="0 0 24 24">
+          <circle cx="8" cy="9" r="5" />
+          <path d="m12 13 8 8m-4-4 3-3m-6 0 3-3" />
+        </symbol>
+        <symbol id="info" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v6m0-10v.1" />
+        </symbol>
+      </defs>
+    </svg>
+    <div class="shell">
+      <aside class="sidebar">
+        <a class="brand" href="index.html"
+          ><span class="mark"
+            ><svg><use href="#phone" /></svg></span
+          >GChat<small>WEB</small></a
+        >
+        <nav aria-label="Основная навигация">
+          <p class="navlabel">РАБОЧЕЕ ПРОСТРАНСТВО</p>
+          <a class="navitem" href="index.html"
+            ><svg><use href="#phone" /></svg>Звонки</a
+          >
+          <div class="navitem active" aria-current="page">
+            <svg><use href="#shield" /></svg>Администрирование
+          </div>
+        </nav>
+        <div class="sidebar-bottom">
+          <a class="backlink" href="index.html"
+            ><svg><use href="#back" /></svg>К макету звонков</a
+          >
+          <div class="profile">
+            <span class="avatar" style="background: #e8eff9; color: #5881b7">АГ</span>
+            <div><strong>Андрей Глотов</strong><small>Администратор</small></div>
+          </div>
+        </div>
+      </aside>
+      <main class="main">
+        <header class="topbar">
+          <div class="breadcrumb">Администрирование<span>/</span><strong>Аккаунты</strong></div>
+          <span class="draft"><i></i>Дизайн-концепция</span>
+        </header>
+        <div class="workspace">
+          <div class="heading">
+            <div>
+              <h1>Аккаунты</h1>
+              <p class="subtitle">Пользователи GChat и управление их доступом</p>
+            </div>
+            <button class="primary" id="create">
+              <svg><use href="#plus" /></svg>Создать аккаунт
+            </button>
+          </div>
+          <section class="stats" aria-label="Сводка аккаунтов">
+            <div class="stat">
+              <div>
+                <p>Всего аккаунтов</p>
+                <strong id="total">8</strong>
+              </div>
+              <span class="stat-icon"
+                ><svg><use href="#users" /></svg
+              ></span>
+            </div>
+            <div class="stat">
+              <div>
+                <p>Активные</p>
+                <strong id="active">6</strong>
+              </div>
+              <span class="stat-icon"
+                ><svg><use href="#check" /></svg
+              ></span>
+            </div>
+            <div class="stat">
+              <div>
+                <p>Администраторы</p>
+                <strong>1</strong>
+              </div>
+              <span class="stat-icon"
+                ><svg><use href="#shield" /></svg
+              ></span>
+            </div>
+          </section>
+          <section class="panel" aria-label="Список аккаунтов">
+            <div class="toolbar">
+              <label class="search"
+                ><svg><use href="#search" /></svg
+                ><input
+                  id="search-input"
+                  placeholder="Поиск по имени или логину"
+                  aria-label="Поиск по имени или логину"
+              /></label>
+              <div class="filters" aria-label="Состояние аккаунта">
+                <button class="filter selected" data-filter="all" aria-pressed="true">Все</button
+                ><button class="filter" data-filter="active" aria-pressed="false">Активные</button
+                ><button class="filter" data-filter="off" aria-pressed="false">Отключённые</button>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Пользователь</th>
+                  <th class="role-column">Роль</th>
+                  <th class="group-column">Группа</th>
+                  <th>Состояние</th>
+                  <th><span style="position: absolute; clip-path: inset(50%)">Открыть</span></th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+            <div id="empty" class="empty" hidden>Аккаунты не найдены</div>
+            <footer class="table-footer">
+              <span id="count">8 аккаунтов</span><span>Доступ по роли администратора</span>
+            </footer>
+          </section>
+          <p class="note">
+            <svg><use href="#info" /></svg>Отключение аккаунта завершает все его сессии. Данные
+            аккаунта и членство в группах сохраняются.
+          </p>
+          <p class="note">
+            Прототип · Вымышленные аккаунты. Все изменения действуют только до перезагрузки
+            страницы.
+          </p>
+        </div>
+      </main>
+    </div>
+    <dialog id="create-dialog" aria-labelledby="create-title">
+      <form id="create-form">
+        <div class="dialog-head">
+          <div>
+            <h2 id="create-title">Новый аккаунт</h2>
+            <p>Создайте доступ в GChat для пользователя</p>
+          </div>
+          <button type="button" class="close" aria-label="Закрыть">
+            <svg><use href="#close" /></svg>
+          </button>
+        </div>
+        <div class="dialog-body">
+          <label class="field"
+            >Имя пользователя<input
+              name="name"
+              placeholder="Например, Анна Волкова"
+              required
+              maxlength="80"
+            /><small>Так имя будет отображаться собеседникам</small></label
+          ><label class="field"
+            >Логин<input
+              name="login"
+              placeholder="Сгенерировать автоматически"
+              pattern="[a-zA-Z0-9._-]{3,32}"
+              minlength="3"
+              maxlength="32"
+            /><small>Можно задать свой или оставить поле пустым</small></label
+          ><label class="field"
+            >Группа<input
+              name="group"
+              list="groups"
+              placeholder="Выберите или введите название"
+              required
+            /><datalist id="groups">
+              <option value="Команда"></option>
+              <option value="Семья"></option>
+              <option value="Друзья"></option></datalist
+            ><small>Если группы ещё нет, она будет создана</small></label
+          >
+          <div class="helper">
+            Пароль будет сгенерирован автоматически и показан один раз. Передайте данные
+            пользователю безопасным способом.
+          </div>
+        </div>
+        <div class="dialog-footer">
+          <button type="button" class="secondary close">Отмена</button
+          ><button type="submit" class="primary">Создать аккаунт</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="detail-dialog" aria-labelledby="detail-title">
+      <div class="dialog-head">
+        <div>
+          <h2 id="detail-title">Аккаунт</h2>
+          <p>Данные пользователя и доступ к GChat</p>
+        </div>
+        <button class="close" aria-label="Закрыть">
+          <svg><use href="#close" /></svg>
+        </button>
+      </div>
+      <div class="dialog-body" id="detail-body"></div>
+      <div class="dialog-footer"><button class="secondary close">Закрыть</button></div>
+    </dialog>
+    <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+      <div class="dialog-head">
+        <div>
+          <h2 id="confirm-title"></h2>
+          <p id="confirm-name"></p>
+        </div>
+        <button class="close" aria-label="Закрыть">
+          <svg><use href="#close" /></svg>
+        </button>
+      </div>
+      <div class="dialog-body"><div class="warning" id="confirm-copy"></div></div>
+      <div class="dialog-footer">
+        <button class="secondary close">Отмена</button
+        ><button id="confirm-action" class="primary">Подтвердить</button>
+      </div>
+    </dialog>
+    <dialog id="credentials-dialog" aria-labelledby="credentials-title">
+      <div class="dialog-head">
+        <div>
+          <h2 id="credentials-title">Аккаунт создан</h2>
+          <p>Сохраните данные перед закрытием окна</p>
+        </div>
+        <button class="close" aria-label="Закрыть">
+          <svg><use href="#close" /></svg>
+        </button>
+      </div>
+      <div class="dialog-body">
+        <div class="success-icon">
+          <svg><use href="#check" /></svg>
+        </div>
+        <p id="credentials-name" style="font-weight: 600"></p>
+        <div class="credentials">
+          <p>Логин</p>
+          <code id="result-login"></code>
+          <p>Пароль</p>
+          <code id="result-password"></code>
+        </div>
+        <p class="subtitle" style="font-size: 11px">
+          Пароль показывается только в этом окне. При потере данных создайте новый пароль.
+        </p>
+      </div>
+      <div class="dialog-footer">
+        <button class="secondary" id="copy">Скопировать данные</button
+        ><button class="primary close">Готово</button>
+      </div>
+    </dialog>
+    <div class="toast" role="status" hidden id="toast"></div>
+    <script>
+      const $ = (s) => document.querySelector(s);
+      const users = [
+        {
+          name: 'Андрей Глотов',
+          login: 'andrey.g',
+          group: 'Команда',
+          admin: true,
+          active: true,
+          color: '#e8eff9',
+          ink: '#5881b7',
+        },
+        {
+          name: 'Маша Ковалёва',
+          login: 'masha.k',
+          group: 'Команда',
+          active: true,
+          color: '#fce9ef',
+          ink: '#c77b97',
+        },
+        {
+          name: 'Алексей Смирнов',
+          login: 'alex.smirnov',
+          group: 'Команда',
+          active: true,
+          color: '#e9f0ff',
+          ink: '#7397cc',
+        },
+        {
+          name: 'Анна Волкова',
+          login: 'anna.volkova',
+          group: 'Семья',
+          active: true,
+          color: '#f0eafa',
+          ink: '#9c80be',
+        },
+        {
+          name: 'Дмитрий Петров',
+          login: 'dima.petrov',
+          group: 'Друзья',
+          active: true,
+          color: '#fff0df',
+          ink: '#c99b60',
+        },
+        {
+          name: 'Ольга Иванова',
+          login: 'olga.ivanova',
+          group: 'Семья',
+          active: true,
+          color: '#e6f4ec',
+          ink: '#70a58a',
+        },
+        {
+          name: 'Никита Соколов',
+          login: 'nikita.s',
+          group: 'Друзья',
+          active: false,
+          color: '#edf0f4',
+          ink: '#8e9aab',
+        },
+        {
+          name: 'Елена Морозова',
+          login: 'elena.m',
+          group: 'Команда',
+          active: false,
+          color: '#edf0f4',
+          ink: '#8e9aab',
+        },
+      ];
+      let filter = 'all',
+        selected = 0,
+        timer;
+      const escapeHtml = (s) =>
+        s.replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+        );
+      const initials = (name) =>
+        name
+          .split(/\s+/)
+          .slice(0, 2)
+          .map((s) => s[0])
+          .join('');
+      const icon = (name) => `<svg aria-hidden="true"><use href="#${name}"/></svg>`;
+      const avatar = (u) =>
+        `<span class="avatar" style="background:${u.color};color:${u.ink}">${escapeHtml(initials(u.name))}</span>`;
+      const status = (u) =>
+        `<span class="status ${u.active ? '' : 'off'}">${u.active ? 'Активен' : 'Отключён'}</span>`;
+      function render() {
+        const query = $('#search-input').value.trim().toLowerCase();
+        const visible = users
+          .map((u, i) => ({ ...u, index: i }))
+          .filter(
+            (u) =>
+              (filter === 'all' || u.active === (filter === 'active')) &&
+              `${u.name} ${u.login}`.toLowerCase().includes(query),
+          );
+        $('#rows').innerHTML = visible
+          .map(
+            (u) =>
+              `<tr><td><div class="person">${avatar(u)}<div><strong>${escapeHtml(u.name)}</strong><small>${escapeHtml(u.login)}</small></div></div></td><td class="role-column"><span class="role ${u.admin ? 'admin' : ''}">${u.admin ? 'Администратор' : 'Пользователь'}</span></td><td class="group-column"><span class="group">${escapeHtml(u.group)}</span></td><td>${status(u)}</td><td><button class="row-open" data-user="${u.index}" aria-label="Открыть аккаунт: ${escapeHtml(u.name)}">${icon('arrow')}</button></td></tr>`,
+          )
+          .join('');
+        $('#rows')
+          .querySelectorAll('tr')
+          .forEach(
+            (row) =>
+              (row.onclick = () => openUser(Number(row.querySelector('button').dataset.user))),
+          );
+        $('#total').textContent = users.length;
+        $('#active').textContent = users.filter((u) => u.active).length;
+        $('#count').textContent = `Показано ${visible.length} из ${users.length}`;
+        $('#empty').hidden = visible.length > 0;
+      }
+      function toast(text) {
+        $('#toast').textContent = text;
+        $('#toast').hidden = false;
+        clearTimeout(timer);
+        timer = setTimeout(() => ($('#toast').hidden = true), 3500);
+      }
+      function openUser(index) {
+        selected = index;
+        const u = users[index];
+        $('#detail-body').innerHTML =
+          `<div class="detail-person">${avatar(u)}<div><h3>${escapeHtml(u.name)}</h3><p>${escapeHtml(u.login)}</p></div></div><div class="detail-line"><span>Состояние</span>${status(u)}</div><div class="detail-line"><span>Роль</span><span>${u.admin ? 'Администратор' : 'Пользователь'}</span></div><div class="detail-line"><span>Группа</span><span class="group">${escapeHtml(u.group)}</span></div><div class="detail-actions"><button class="secondary" id="reset-password">${icon('key')}Сменить пароль</button>${u.admin ? '' : `<button class="${u.active ? 'danger' : 'secondary'}" id="toggle-account">${u.active ? 'Отключить аккаунт' : 'Включить аккаунт'}</button>`}</div>`;
+        $('#reset-password').onclick = () => confirmOperation('password');
+        if ($('#toggle-account')) $('#toggle-account').onclick = () => confirmOperation('toggle');
+        $('#detail-dialog').showModal();
+      }
+      function confirmOperation(kind) {
+        const u = users[selected];
+        $('#detail-dialog').close();
+        $('#confirm-title').textContent =
+          kind === 'password'
+            ? 'Сменить пароль?'
+            : u.active
+              ? 'Отключить аккаунт?'
+              : 'Включить аккаунт?';
+        $('#confirm-name').textContent = u.name;
+        $('#confirm-copy').textContent =
+          kind === 'password'
+            ? 'Будет создан новый пароль. Все сессии пользователя завершатся. Для следующего входа потребуется новый пароль.'
+            : u.active
+              ? 'Пользователь потеряет доступ к GChat. Все его сессии завершатся. Аккаунт и членство в группах сохранятся.'
+              : 'Пользователь снова сможет войти с текущим паролем. Старые сессии не восстановятся.';
+        $('#confirm-action').textContent =
+          kind === 'password' ? 'Создать новый пароль' : u.active ? 'Отключить' : 'Включить';
+        $('#confirm-action').className = kind === 'toggle' && u.active ? 'danger' : 'primary';
+        $('#confirm-action').onclick = () => {
+          $('#confirm-dialog').close();
+          if (kind === 'password') credentials(u, 'Пароль изменён');
+          else {
+            u.active = !u.active;
+            render();
+            toast(u.active ? 'Аккаунт включён' : 'Аккаунт отключён');
+          }
+        };
+        $('#confirm-dialog').showModal();
+      }
+      function randomText(length) {
+        const alphabet = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        return Array.from(
+          crypto.getRandomValues(new Uint8Array(length)),
+          (v) => alphabet[v % alphabet.length],
+        ).join('');
+      }
+      function credentials(u, title) {
+        $('#credentials-title').textContent = title;
+        $('#credentials-name').textContent = u.name;
+        $('#result-login').textContent = u.login;
+        $('#result-password').textContent = randomText(24);
+        $('#credentials-dialog').showModal();
+      }
+      $('#create').onclick = () => {
+        $('#create-form').reset();
+        $('#create-dialog').showModal();
+      };
+      $('#create-form').onsubmit = (e) => {
+        e.preventDefault();
+        const form = new FormData(e.target);
+        const name = form.get('name').trim(),
+          group = form.get('group').trim().toLowerCase(),
+          login = form.get('login').trim().toLowerCase() || 'user-' + randomText(8).toLowerCase();
+        if (!name || !group) return toast('Укажите имя и группу');
+        if (users.some((u) => u.login === login)) return toast('Этот логин уже занят');
+        const u = { name, login, group, active: true, color: '#e9f0ff', ink: '#7397cc' };
+        users.push(u);
+        $('#create-dialog').close();
+        filter = 'all';
+        $('#search-input').value = '';
+        setFilter();
+        render();
+        credentials(u, 'Аккаунт создан');
+      };
+      function setFilter() {
+        document.querySelectorAll('[data-filter]').forEach((b) => {
+          b.classList.toggle('selected', b.dataset.filter === filter);
+          b.setAttribute('aria-pressed', String(b.dataset.filter === filter));
+        });
+      }
+      document.querySelectorAll('[data-filter]').forEach(
+        (b) =>
+          (b.onclick = () => {
+            filter = b.dataset.filter;
+            setFilter();
+            render();
+          }),
+      );
+      $('#search-input').oninput = render;
+      document
+        .querySelectorAll('.close')
+        .forEach((b) => (b.onclick = () => b.closest('dialog').close()));
+      document.querySelectorAll('dialog').forEach((d) =>
+        d.addEventListener('click', (e) => {
+          if (e.target === d) {
+            const r = d.getBoundingClientRect();
+            if (
+              e.clientX < r.left ||
+              e.clientX > r.right ||
+              e.clientY < r.top ||
+              e.clientY > r.bottom
+            )
+              d.close();
+          }
+        }),
+      );
+      $('#credentials-dialog').addEventListener('close', () => {
+        $('#result-password').textContent = '';
+        $('#result-login').textContent = '';
+      });
+      $('#copy').onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(
+            `Логин: ${$('#result-login').textContent}\nПароль: ${$('#result-password').textContent}`,
+          );
+          toast('Данные скопированы');
+        } catch {
+          toast('Выделите и скопируйте данные вручную');
+        }
+      };
+      render();
+    </script>
+  </body>
+</html>
