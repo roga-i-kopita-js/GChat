@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, count, eq, ilike, inArray, isNull } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import { users } from '../auth/auth.schema.js';
@@ -16,6 +16,59 @@ export class GroupsRepository {
     private readonly database: DatabaseService,
     private readonly error: ErrorService,
   ) {}
+
+  normalizeName(value: string): string {
+    if (typeof value !== 'string' || !value.trim()) throw this.error.validation();
+
+    return value.trim().toLowerCase();
+  }
+
+  async assign(tx: DatabaseTransaction, userId: string, name: string): Promise<void> {
+    name = this.normalizeName(name);
+    const [inserted] = await tx
+      .insert(groups)
+      .values({ name })
+      .onConflictDoNothing({ target: groups.name })
+      .returning({ id: groups.id });
+    const group =
+      inserted ?? (await tx.select({ id: groups.id }).from(groups).where(eq(groups.name, name)))[0];
+
+    if (!group) throw this.error.serviceUnavailable();
+
+    await tx.insert(groupMembers).values({ groupId: group.id, userId }).onConflictDoNothing();
+  }
+
+  async adminList(
+    tx: DatabaseTransaction,
+    query: { q?: string; limit: number; offset: number },
+  ): Promise<{ groups: { id: string; name: string }[]; total: number }> {
+    const pattern = `%${(query.q ?? '').replace(/[\\%_]/g, '\\$&')}%`;
+    const where = ilike(groups.name, pattern);
+    const [{ total }] = await tx.select({ total: count() }).from(groups).where(where);
+    const rows = await tx
+      .select({ id: groups.id, name: groups.name })
+      .from(groups)
+      .where(where)
+      .orderBy(asc(groups.name), asc(groups.id))
+      .limit(query.limit)
+      .offset(query.offset);
+
+    return { groups: rows, total: total! };
+  }
+
+  async forAccounts(
+    tx: DatabaseTransaction,
+    ids: string[],
+  ): Promise<{ userId: string; id: string; name: string }[]> {
+    if (!ids.length) return [];
+
+    return tx
+      .select({ userId: groupMembers.userId, id: groups.id, name: groups.name })
+      .from(groups)
+      .innerJoin(groupMembers, eq(groupMembers.groupId, groups.id))
+      .where(inArray(groupMembers.userId, ids))
+      .orderBy(asc(groups.name), asc(groups.id));
+  }
 
   async list(userId: string): Promise<GroupDto[]> {
     try {

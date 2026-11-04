@@ -18,6 +18,7 @@ const account: Account = {
   login: 'andrey',
   displayName: 'Андрей',
   passwordHash: 'unused',
+  role: 'user',
   disabledAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -44,6 +45,7 @@ describe('Auth cryptography', (): void => {
       sid,
       login: account.login,
       display_name: account.displayName,
+      role: account.role,
       iss: 'gchat',
       aud: 'gchat-api',
     });
@@ -67,6 +69,7 @@ describe('Auth cryptography', (): void => {
       sid: randomUUID(),
       login: account.login,
       display_name: account.displayName,
+      role: account.role,
     })
       .setProtectedHeader({ alg: 'EdDSA', kid: 'test' })
       .setSubject(account.id)
@@ -106,7 +109,12 @@ describe('Auth cryptography', (): void => {
       sessionId: sid,
     });
     const now = Math.floor(Date.now() / 1000);
-    const old = await new SignJWT({ sid, login: account.login, display_name: account.displayName })
+    const old = await new SignJWT({
+      sid,
+      login: account.login,
+      display_name: account.displayName,
+      role: account.role,
+    })
       .setProtectedHeader({ alg: 'EdDSA', kid: 'test' })
       .setSubject(account.id)
       .setIssuer('gchat')
@@ -119,6 +127,7 @@ describe('Auth cryptography', (): void => {
     await expect(short.verifyAccess(old)).rejects.toMatchObject({ code: 'ACCESS_TOKEN_EXPIRED' });
     // exp still wins even if the current configuration allows a longer lifetime.
     const expired = await new SignJWT({
+      role: account.role,
       sid,
       login: account.login,
       display_name: account.displayName,

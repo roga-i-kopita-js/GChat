@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { AuthModule } from './auth/auth.module.js';
+import { BackofficeModule } from './backoffice/backoffice.module.js';
 import { validateEnvironment } from './config/environment.js';
 import { ErrorModule } from './error/error.module.js';
 import { HealthcheckModule } from './healthcheck/healthcheck.module.js';
@@ -21,7 +23,9 @@ import { SignalingModule } from './signaling/signaling.module.js';
     ErrorModule,
     RedisModule.forRoot(),
     HealthcheckModule,
+    ScheduleModule.forRoot(),
     AuthModule,
+    BackofficeModule,
     SignalingModule,
     PushModule,
   ],

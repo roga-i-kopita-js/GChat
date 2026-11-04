@@ -32,7 +32,12 @@ export class ErrorFilter implements ExceptionFilter {
 
     const path = adapter.getRequestUrl(context.getRequest()).split('?')[0];
 
-    if (path === '/auth' || path.startsWith('/auth/')) {
+    if (
+      path === '/auth' ||
+      path.startsWith('/auth/') ||
+      path === '/admin' ||
+      path.startsWith('/admin/')
+    ) {
       adapter.setHeader(response, 'Cache-Control', 'no-store');
     }
 

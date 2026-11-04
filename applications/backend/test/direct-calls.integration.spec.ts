@@ -73,7 +73,7 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
         REDIS_KEY_PREFIX: prefix,
       }),
     );
-    const sessions = new AuthSessions(new RedisService(redis, config), error);
+    const sessions = new AuthSessions(db, error);
 
     auth = new AuthService(
       new AuthRepository(db, error),
@@ -112,9 +112,9 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
         'INSERT INTO gchat_users(id,login,display_name,password_hash) VALUES($1,$2,$2,$3)',
         [userId, 'user-' + i, 'unused'],
       );
-      await redis.set(
-        prefix + 'auth:session:' + sessionId,
-        JSON.stringify({ userId, hash: 'unused', createdAt: Date.now(), updatedAt: Date.now() }),
+      await pool.query(
+        'INSERT INTO gchat_auth_sessions(id,user_id,refresh_token_hash) VALUES($1,$2,$3)',
+        [sessionId, userId, 'unused'],
       );
       actors.push({ userId, sessionId, deviceId: await devices.bind(userId, sessionId, null) });
     }
@@ -234,9 +234,9 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
   it('selects exactly one recipient device and preserves terminal outcomes on retries', async (): Promise<void> => {
     const other = { ...actors[1], sessionId: randomUUID() };
 
-    await redis.set(
-      prefix + 'auth:session:' + other.sessionId,
-      JSON.stringify({ userId: other.userId, hash: 'unused' }),
+    await pool.query(
+      'INSERT INTO gchat_auth_sessions(id,user_id,refresh_token_hash) VALUES($1,$2,$3)',
+      [other.sessionId, other.userId, 'unused'],
     );
     other.deviceId = await devices.bind(other.userId, other.sessionId, null);
     const call = await calls.create(actors[0], actors[1].userId);
@@ -372,7 +372,7 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
   it('detects session revocation without an open WebSocket', async (): Promise<void> => {
     const { id } = await active();
 
-    await redis.del(prefix + 'auth:session:' + actors[0].sessionId);
+    await pool.query('DELETE FROM gchat_auth_sessions WHERE id=$1', [actors[0].sessionId]);
     await calls.sweep(true);
     await expect(calls.get(actors[1], id)).resolves.toMatchObject({
       state: 'ended',
@@ -441,6 +441,8 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
     const original = db.db.transaction.bind(db.db);
     const spy = jest.spyOn(db.db, 'transaction');
 
+    // Auth session snapshot, then the preliminary account transaction.
+    spy.mockImplementationOnce(original);
     spy.mockImplementationOnce(original);
     spy.mockImplementationOnce(async (callback: any): Promise<any> => {
       await original(callback);
@@ -540,7 +542,7 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
     const call = await calls.create(actors[0], actors[1].userId);
 
     await calls.cancel(actors[0], call.call_id);
-    await redis.del(prefix + 'auth:session:' + actors[0].sessionId);
+    await pool.query('DELETE FROM gchat_auth_sessions WHERE id=$1', [actors[0].sessionId]);
     await pool.query(
       "UPDATE gchat_device_sessions SET inactive_since=now()-interval '31 days' WHERE session_id=$1",
       [actors[0].sessionId],

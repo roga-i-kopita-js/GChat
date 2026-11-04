@@ -63,6 +63,10 @@ export class ErrorService {
     return this.make(403, 'FORBIDDEN', 'Действие недоступно.', payload);
   }
 
+  loginTaken(): AppError {
+    return this.make(409, 'LOGIN_TAKEN', 'Логин уже занят.');
+  }
+
   notFound(payload: ErrorPayload = {}): AppError {
     return this.make(404, 'NOT_FOUND', 'Ресурс не найден.', payload);
   }

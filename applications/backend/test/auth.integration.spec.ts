@@ -13,7 +13,6 @@ import { AuthCrypto, sessionId, tokenHash } from '../src/auth/auth.crypto.js';
 import type { TokensDto } from '../src/auth/auth.dto.js';
 import { AuthGuard } from '../src/auth/auth.guard.js';
 import { AuthModule } from '../src/auth/auth.module.js';
-import { AuthSessions } from '../src/auth/auth.sessions.js';
 import { AuthWsTickets } from '../src/auth/auth.ws-tickets.js';
 import { validateEnvironment } from '../src/config/environment.js';
 import { runMigrations } from '../src/database/migrations.js';
@@ -180,8 +179,9 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     const expired = await issue();
     const { createHash } = await import('node:crypto');
 
-    await redis.del(
-      prefix + 'auth:ws-ticket:' + createHash('sha256').update(expired.ticket).digest('hex'),
+    await database.query(
+      "UPDATE gchat_auth_ws_tickets SET issued_at=clock_timestamp()-interval '31 seconds', expires_at=clock_timestamp()-interval '1 second' WHERE ticket_hash=$1",
+      [createHash('sha256').update(expired.ticket).digest('hex')],
     );
     await expect(tickets.redeem(expired.ticket, 'http://localhost:5173')).rejects.toMatchObject({
       code: 'ACCESS_TOKEN_INVALID',
@@ -193,7 +193,7 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       .send({ refresh_token: tokens.refresh_token })
       .expect(204);
     await expect(tickets.redeem(revoked.ticket, 'http://localhost:5173')).rejects.toMatchObject({
-      code: 'SESSION_INVALID',
+      code: 'ACCESS_TOKEN_INVALID',
     });
     const another = await signIn();
 
@@ -227,13 +227,16 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     expect(Object.keys(first).sort()).toEqual(['access_token', 'refresh_token', 'token_type']);
     expect(first.token_type).toBe('Bearer');
     const sid = sessionId(first.refresh_token)!;
-    const saved = await redis.get(`${prefix}auth:session:${sid}`);
+    const saved = (await database.query('SELECT * FROM gchat_auth_sessions WHERE id=$1', [sid]))
+      .rows[0];
 
-    expect(saved).not.toContain(first.refresh_token);
-    expect(await redis.ttl(`${prefix}auth:session:${sid}`)).toBe(-1);
-    expect(await redis.sMembers(`${prefix}auth:user-sessions:${userId}`)).toEqual(
-      expect.arrayContaining([sid, sessionId(second.refresh_token)]),
-    );
+    expect(saved.refresh_token_hash).toBe(tokenHash(first.refresh_token));
+    expect(JSON.stringify(saved)).not.toContain(first.refresh_token);
+    expect(
+      (
+        await database.query('SELECT id FROM gchat_auth_sessions WHERE user_id=$1', [userId])
+      ).rows.map((row): any => row.id),
+    ).toEqual(expect.arrayContaining([sid, sessionId(second.refresh_token)]));
     await request(app.getHttpServer())
       .get('/private')
       .auth(first.access_token, { type: 'bearer' })
@@ -271,10 +274,15 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
 
     const sid = sessionId(first.refresh_token)!;
 
-    expect(await redis.pTTL(`${prefix}auth:rotation:${sid}`)).toBeGreaterThan(0);
-    expect(await redis.get(`${prefix}auth:rotation:${sid}`)).not.toContain(
-      replies[0]!.body.refresh_token,
-    );
+    const saved = (
+      await database.query(
+        'SELECT rotation_expires_at, rotation_encrypted FROM gchat_auth_sessions WHERE id=$1',
+        [sid],
+      )
+    ).rows[0];
+
+    expect(saved.rotation_expires_at.getTime()).toBeGreaterThan(Date.now());
+    expect(saved.rotation_encrypted).not.toContain(replies[0]!.body.refresh_token);
     await request(app.getHttpServer())
       .post('/auth/refresh')
       .send({ refresh_token: first.refresh_token, request_id: randomUUID() })
@@ -317,10 +325,11 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
         .send({ refresh_token: first.refresh_token, request_id })
         .expect(200)
     ).body;
-    const key = `${prefix}auth:rotation:${sessionId(first.refresh_token)}`;
 
-    await redis.pExpire(key, 1);
-    await new Promise((resolve): ReturnType<typeof setTimeout> => setTimeout(resolve, 10));
+    await database.query(
+      'UPDATE gchat_auth_sessions SET rotation_expires_at=clock_timestamp() WHERE id=$1',
+      [sessionId(first.refresh_token)],
+    );
     await request(app.getHttpServer())
       .post('/auth/refresh')
       .send({ refresh_token: first.refresh_token, request_id })
@@ -413,45 +422,6 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       .expect(200)
       .expect(({ body }): void => expect(body).toEqual(tokens));
   });
-  it('allows current-token writes when a rotation snapshot expires but rejects conflicts', async (): Promise<void> => {
-    const first = await signIn();
-    const current = (
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .send({ refresh_token: first.refresh_token, request_id: randomUUID() })
-        .expect(200)
-    ).body as TokensDto;
-    const sid = sessionId(current.refresh_token)!;
-    const sessions = app.get(AuthSessions);
-    const rotationKey = `${prefix}auth:rotation:${sid}`;
-
-    await (async (): Promise<void> => {
-      const before = (await sessions.read(sid))!;
-
-      await redis.pExpire(rotationKey, 1);
-      await new Promise<void>((resolve): void => {
-        setTimeout(resolve, 10);
-      });
-      expect(await redis.get(rotationKey)).toBeNull();
-      const next = { ...before.session, hash: 'replacement-hash' };
-      const rotation = {
-        requestId: randomUUID(),
-        hash: before.session.hash,
-        encrypted: 'test-result',
-      };
-
-      await sessions.mutate('rotate', sid, userId, before, next, rotation);
-      expect((await sessions.read(sid))?.session.hash).toBe(next.hash);
-      // A different live rotation must still fail the comparison without writing anything.
-      const snapshot = (await sessions.read(sid))!;
-
-      await redis.set(rotationKey, JSON.stringify({ ...rotation, requestId: randomUUID() }));
-      expect(await sessions.mutate('rotate', sid, userId, snapshot, before.session, rotation)).toBe(
-        false,
-      );
-      expect((await sessions.read(sid))?.session.hash).toBe(next.hash);
-    })();
-  });
   it.each(['current', 'previous'])(
     'handles expired rotation during logout with the %s token',
     async (which): Promise<void> => {
@@ -461,72 +431,23 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
           .post('/auth/refresh')
           .send({ refresh_token: first.refresh_token, request_id: randomUUID() })
           .expect(200)
-      ).body as TokensDto;
-      const sid = sessionId(current.refresh_token)!;
-      const sessions = app.get(AuthSessions);
+      ).body;
+      const sid = sessionId(first.refresh_token);
 
-      await (async (): Promise<void> => {
-        const before = (await sessions.read(sid))!;
-
-        await redis.pExpire(`${prefix}auth:rotation:${sid}`, 1);
-        await new Promise<void>((resolve): void => {
-          setTimeout(resolve, 10);
-        });
-        expect(await redis.get(`${prefix}auth:rotation:${sid}`)).toBeNull();
-        const hash = tokenHash(which === 'current' ? current.refresh_token : first.refresh_token);
-
-        await sessions.mutate('delete', sid, userId, before, undefined, undefined, hash);
-        expect(Boolean(await sessions.read(sid))).toBe(which === 'previous');
-        expect(Boolean(await redis.sIsMember(`${prefix}auth:user-sessions:${userId}`, sid))).toBe(
-          which === 'previous',
-        );
-      })();
-    },
-  );
-  it.each(['session', 'rotation'])(
-    'returns 503 for a wrong-type %s key without reporting logout success',
-    async (kind): Promise<void> => {
-      const tokens = await signIn();
-      const sid = sessionId(tokens.refresh_token)!;
-      const key = `${prefix}auth:${kind}:${sid}`;
-      const saved = await redis.get(key);
-
-      await redis.del(key);
-      await redis.hSet(key, 'unexpected', 'data');
-
-      try {
-        await request(app.getHttpServer())
-          .get('/private')
-          .auth(tokens.access_token, { type: 'bearer' })
-          .expect(503)
-          .expect(({ body }): void => {
-            expect(body.error.code).toBe('SERVICE_UNAVAILABLE');
-          });
-        await request(app.getHttpServer())
-          .post('/auth/refresh')
-          .send({ refresh_token: tokens.refresh_token, request_id: randomUUID() })
-          .expect(503);
-        await request(app.getHttpServer())
-          .post('/auth/logout')
-          .send({ refresh_token: tokens.refresh_token })
-          .expect(503);
-        expect(await redis.hGet(key, 'unexpected')).toBe('data');
-        expect(Boolean(await redis.sIsMember(`${prefix}auth:user-sessions:${userId}`, sid))).toBe(
-          true,
-        );
-      } finally {
-        await redis.del(key);
-
-        if (saved !== null) await redis.set(key, saved);
-      }
-
+      await database.query(
+        'UPDATE gchat_auth_sessions SET rotation_expires_at=clock_timestamp() WHERE id=$1',
+        [sid],
+      );
       await request(app.getHttpServer())
-        .get('/private')
-        .auth(tokens.access_token, { type: 'bearer' })
-        .expect(200);
+        .post('/auth/logout')
+        .send({ refresh_token: which === 'current' ? current.refresh_token : first.refresh_token })
+        .expect(204);
+      expect(
+        (await database.query('SELECT id FROM gchat_auth_sessions WHERE id=$1', [sid])).rowCount,
+      ).toBe(which === 'previous' ? 1 : 0);
     },
   );
-  it('keeps tokens valid through Redis unavailability and recovers without a new login', async (): Promise<void> => {
+  it('keeps Auth and WS tickets usable without Redis', async (): Promise<void> => {
     const tokens = await signIn();
     const client = app.get(RedisService).client;
 
@@ -536,28 +457,28 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       await request(app.getHttpServer())
         .get('/private')
         .auth(tokens.access_token, { type: 'bearer' })
-        .expect(503);
-      await request(app.getHttpServer())
-        .post('/auth/logout')
-        .send({ refresh_token: tokens.refresh_token })
-        .expect(503);
+        .expect(200);
+      const issued = await request(app.getHttpServer())
+        .post('/auth/ws-ticket')
+        .auth(tokens.access_token, { type: 'bearer' })
+        .set('Origin', 'http://localhost:5173')
+        .send({})
+        .expect(200);
+
+      await expect(
+        app.get(AuthWsTickets).redeem(issued.body.ticket, 'http://localhost:5173'),
+      ).resolves.toMatchObject({ userId });
       await request(app.getHttpServer())
         .post('/auth/refresh')
         .send({ refresh_token: tokens.refresh_token, request_id: randomUUID() })
-        .expect(503);
+        .expect(200);
+      await request(app.getHttpServer())
+        .post('/auth/logout')
+        .send({ refresh_token: tokens.refresh_token })
+        .expect(204);
     } finally {
       await client.connect();
     }
-
-    await request(app.getHttpServer())
-      .get('/private')
-      .auth(tokens.access_token, { type: 'bearer' })
-      .expect(200);
-  });
-  it('fails closed on a broken session index', async (): Promise<void> => {
-    await redis.set(`${prefix}auth:user-sessions:${userId}`, 'wrong-type');
-    await request(app.getHttpServer()).post('/auth/login').send({ login, password }).expect(503);
-    expect(await redis.get(`${prefix}auth:user-sessions:${userId}`)).toBe('wrong-type');
   });
   it('allows only one of two different refresh operations with the same token', async (): Promise<void> => {
     const tokens = await signIn();
@@ -594,7 +515,13 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     ]);
 
     expect([200, 401]).toContain(refresh.status);
-    expect(await redis.get(`${prefix}auth:session:${sessionId(tokens.refresh_token)}`)).toBeNull();
+    expect(
+      (
+        await database.query('SELECT id FROM gchat_auth_sessions WHERE id=$1', [
+          sessionId(tokens.refresh_token),
+        ])
+      ).rowCount,
+    ).toBe(0);
     await request(app.getHttpServer())
       .get('/private')
       .auth(tokens.access_token, { type: 'bearer' })

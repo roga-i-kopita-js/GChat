@@ -9,6 +9,7 @@ export interface AuthIdentity {
   sessionId: string;
   login: string;
   displayName: string;
+  role: 'user' | 'admin';
 }
 
 @Injectable()

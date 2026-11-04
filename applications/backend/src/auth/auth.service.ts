@@ -1,6 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
+import { eq, sql } from 'drizzle-orm';
 
 import type { DatabaseTransaction } from '../database/database.service.js';
 import { ErrorService } from '../error/error.service.js';
@@ -9,6 +10,7 @@ import type { LoginDto, RefreshDto, TokensDto } from './auth.dto.js';
 import type { AuthIdentity } from './auth.guard.js';
 import { AuthLimits } from './auth.limits.js';
 import { AuthRepository } from './auth.repository.js';
+import { authSessions } from './auth.schema.js';
 import { AuthSessions } from './auth.sessions.js';
 function matches(a: string, b: string): boolean {
   const x = Buffer.from(a);
@@ -41,27 +43,25 @@ export class AuthService {
     }
 
     this.limits.check(login, 'login');
-    const current = await this.accounts.byId(account.id);
 
-    if (!current || current.disabledAt || current.passwordHash !== account.passwordHash) {
-      this.limits.check(login, 'login', true);
+    return this.sessions.transaction(async (tx): Promise<TokensDto> => {
+      const current = await this.sessions.lockAccount(tx, account.id);
 
-      throw this.error.invalidCredentials();
-    }
+      if (!current || current.disabledAt || current.passwordHash !== account.passwordHash) {
+        this.limits.check(login, 'login', true);
 
-    const sid = randomUUID();
-    const tokens = await this.crypto.issue(current, sid);
-    const now = Date.now();
-    const created = await this.sessions.mutate('create', sid, current.id, undefined, {
-      userId: current.id,
-      hash: tokenHash(tokens.refresh_token),
-      createdAt: now,
-      updatedAt: now,
+        throw this.error.invalidCredentials();
+      }
+
+      const sid = randomUUID();
+      const tokens = await this.crypto.issue(current, sid);
+
+      await tx
+        .insert(authSessions)
+        .values({ id: sid, userId: current.id, refreshTokenHash: tokenHash(tokens.refresh_token) });
+
+      return tokens;
     });
-
-    if (!created) throw this.error.serviceUnavailable();
-
-    return tokens;
   }
 
   async refresh(input: RefreshDto): Promise<TokensDto> {
@@ -72,81 +72,81 @@ export class AuthService {
 
     const hash = tokenHash(input.refresh_token);
 
-    if (!matches(initial.session.hash, hash) && !matches(initial.rotation?.hash ?? '', hash))
-      throw this.error.sessionInvalid();
+    return this.sessions.transaction(async (tx): Promise<TokensDto> => {
+      const account = await this.sessions.lockAccount(tx, initial.userId);
+      const state = await this.sessions.read(sid, tx, true);
 
-    // A CAS conflict is resolved by reading the winner's result, never by assuming a write failed.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const account = await this.accounts.byId(initial.session.userId);
-      const state = await this.sessions.read(sid);
-
-      if (!account || account.disabledAt || !state || state.session.userId !== account.id)
+      if (!account || account.disabledAt || !state || state.userId !== account.id)
         throw this.error.sessionInvalid();
 
-      if (state.rotation?.requestId === input.request_id && matches(state.rotation.hash, hash)) {
-        return this.crypto.decrypt(state.rotation.encrypted, sid, input.request_id);
+      const now = await this.sessions.now(tx);
+
+      if (
+        state.rotationExpiresAt &&
+        state.rotationExpiresAt > now &&
+        state.rotationRequestId === input.request_id &&
+        matches(state.rotationTokenHash!, hash)
+      ) {
+        return this.crypto.decrypt(state.rotationEncrypted!, sid, input.request_id);
       }
 
-      if (!matches(state.session.hash, hash) || state.rotation?.requestId === input.request_id)
+      if (!matches(state.refreshTokenHash, hash) || state.rotationRequestId === input.request_id)
         throw this.error.sessionInvalid();
 
       this.limits.check(sid, 'refresh', true, `${input.request_id}:${hash}`);
       const tokens = await this.crypto.issue(account, sid);
-      const updated = await this.sessions.mutate(
-        'rotate',
-        sid,
-        account.id,
-        state,
-        { ...state.session, hash: tokenHash(tokens.refresh_token), updatedAt: Date.now() },
-        {
-          requestId: input.request_id,
-          hash,
-          encrypted: await this.crypto.encrypt(tokens, sid, input.request_id),
-        },
-      );
+      const encrypted = await this.crypto.encrypt(tokens, sid, input.request_id);
 
-      if (updated) return tokens;
-    }
+      await tx
+        .update(authSessions)
+        .set({
+          refreshTokenHash: tokenHash(tokens.refresh_token),
+          updatedAt: sql`clock_timestamp()`,
+          rotationRequestId: input.request_id,
+          rotationTokenHash: hash,
+          rotationEncrypted: encrypted,
+          rotationExpiresAt: sql`clock_timestamp() + interval '30 seconds'`,
+        })
+        .where(eq(authSessions.id, sid));
 
-    throw this.error.serviceUnavailable();
+      return tokens;
+    });
   }
 
   async logout(token: string): Promise<void> {
     const sid = sessionId(token);
+    const initial = sid ? await this.sessions.read(sid) : undefined;
 
-    if (!sid) return;
-
-    const initial = await this.sessions.read(sid);
-
-    if (!initial) return;
+    if (!sid || !initial) return;
 
     const hash = tokenHash(token);
 
-    if (!matches(initial.session.hash, hash) && !matches(initial.rotation?.hash ?? '', hash))
-      return;
+    await this.sessions.transaction(async (tx): Promise<void> => {
+      await this.sessions.lockAccount(tx, initial.userId);
+      const state = await this.sessions.read(sid, tx, true);
 
-    await this.sessions.mutate(
-      'delete',
-      sid,
-      initial.session.userId,
-      undefined,
-      undefined,
-      undefined,
-      hash,
-    );
+      if (!state || state.userId !== initial.userId) return;
+
+      const now = await this.sessions.now(tx);
+
+      if (
+        matches(state.refreshTokenHash, hash) ||
+        (state.rotationExpiresAt &&
+          state.rotationExpiresAt > now &&
+          matches(state.rotationTokenHash!, hash))
+      ) {
+        await tx.delete(authSessions).where(eq(authSessions.id, sid));
+      }
+    });
   }
 
   async checkSession(
     userId: string,
     sid: string,
   ): Promise<{ accountActive: boolean; sessionActive: boolean }> {
-    const account = await this.accounts.byId(userId);
-    const state = await this.sessions.read(sid);
+    const state = await this.sessions.access(userId, sid);
 
-    return {
-      accountActive: !!account && !account.disabledAt,
-      sessionActive: state?.session.userId === userId,
-    };
+    return { accountActive: !!state && !state.account.disabledAt, sessionActive: !!state?.session };
   }
 
   lockActiveAccounts(tx: DatabaseTransaction, userIds: string[]): Promise<string[]> {
@@ -155,12 +155,15 @@ export class AuthService {
 
   async authenticate(token: string): Promise<AuthIdentity> {
     const identity = await this.crypto.verifyAccess(token);
-    const account = await this.accounts.byId(identity.userId);
-    const state = await this.sessions.read(identity.sessionId);
+    const state = await this.sessions.access(identity.userId, identity.sessionId);
 
-    if (!account || account.disabledAt || !state || state.session.userId !== account.id)
-      throw this.error.sessionInvalid();
+    if (!state || state.account.disabledAt || !state.session) throw this.error.sessionInvalid();
 
-    return { ...identity, login: account.login, displayName: account.displayName };
+    return {
+      ...identity,
+      login: state.account.login,
+      displayName: state.account.displayName,
+      role: state.account.role,
+    };
   }
 }

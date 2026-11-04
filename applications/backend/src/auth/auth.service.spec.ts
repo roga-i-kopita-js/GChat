@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { jest } from '@jest/globals';
 
+import type { DatabaseTransaction } from '../database/database.service.js';
 import { ErrorService } from '../error/error.service.js';
 import { AuthCrypto, tokenHash } from './auth.crypto.js';
 import type { TokensDto } from './auth.dto.js';
@@ -9,21 +10,25 @@ import { AuthLimits } from './auth.limits.js';
 import { AuthRepository } from './auth.repository.js';
 import type { Account } from './auth.schema.js';
 import { AuthService } from './auth.service.js';
-import type { SessionState } from './auth.sessions.js';
-import { AuthSessions } from './auth.sessions.js';
+import { AuthSessions, type StoredSession } from './auth.sessions.js';
+
 interface Fixture {
   service: AuthService;
   account: Account;
-  accounts: jest.Mocked<Pick<AuthRepository, 'byId' | 'byLogin'>>;
+  state: StoredSession;
+  tokens: TokensDto;
+  token: string;
+  accounts: jest.Mocked<Pick<AuthRepository, 'byLogin'>>;
   crypto: jest.Mocked<
     Pick<AuthCrypto, 'verifyPassword' | 'issue' | 'decrypt' | 'encrypt' | 'verifyAccess'>
   >;
-  sessions: jest.Mocked<Pick<AuthSessions, 'read' | 'mutate'>>;
+  sessions: {
+    [K in 'transaction' | 'lockAccount' | 'read' | 'now' | 'access']: jest.Mock<AuthSessions[K]>;
+  };
+  write: jest.Mock<() => Promise<void>>;
   limits: jest.Mocked<Pick<AuthLimits, 'check'>>;
-  token: string;
-  state: SessionState;
-  tokens: TokensDto;
 }
+
 function fixture(): Fixture {
   const sid = randomUUID();
   const token = `v1.${sid}.${'a'.repeat(43)}`;
@@ -31,25 +36,38 @@ function fixture(): Fixture {
     id: randomUUID(),
     login: 'test',
     displayName: 'Test',
+    role: 'admin',
     passwordHash: 'hash',
     disabledAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
-  const state: SessionState = {
-    session: { userId: account.id, hash: tokenHash(token), createdAt: 1, updatedAt: 1 },
-    raw: 'state',
-    rotationRaw: '',
+  const state: StoredSession = {
+    id: sid,
+    userId: account.id,
+    refreshTokenHash: tokenHash(token),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    rotationRequestId: null,
+    rotationTokenHash: null,
+    rotationEncrypted: null,
+    rotationExpiresAt: null,
+    wsTicketCount: 0,
+    wsTicketWindowStartedAt: null,
   };
-  const accounts = {
-    byId: jest.fn<AuthRepository['byId']>().mockResolvedValue(account),
-    byLogin: jest.fn<AuthRepository['byLogin']>().mockResolvedValue(account),
-  };
-  const tokens: TokensDto = {
+  const tokens = {
     access_token: 'access',
     refresh_token: `v1.${sid}.${'b'.repeat(43)}`,
-    token_type: 'Bearer',
+    token_type: 'Bearer' as const,
   };
+  const write = jest.fn<() => Promise<void>>().mockResolvedValue();
+  const tx = {
+    insert: (): { values: jest.Mock<() => Promise<void>> } => ({ values: write }),
+    update: (): { set: () => { where: jest.Mock<() => Promise<void>> } } => ({
+      set: (): { where: jest.Mock<() => Promise<void>> } => ({ where: write }),
+    }),
+  } as unknown as DatabaseTransaction;
+  const accounts = { byLogin: jest.fn<AuthRepository['byLogin']>().mockResolvedValue(account) };
   const crypto = {
     verifyPassword: jest.fn<AuthCrypto['verifyPassword']>().mockResolvedValue(true),
     issue: jest.fn<AuthCrypto['issue']>().mockResolvedValue(tokens),
@@ -60,8 +78,13 @@ function fixture(): Fixture {
       .mockResolvedValue({ userId: account.id, sessionId: sid }),
   };
   const sessions = {
+    transaction: jest
+      .fn<AuthSessions['transaction']>()
+      .mockImplementation(<T>(fn: (tx: DatabaseTransaction) => Promise<T>): Promise<T> => fn(tx)),
+    lockAccount: jest.fn<AuthSessions['lockAccount']>().mockResolvedValue(account),
     read: jest.fn<AuthSessions['read']>().mockResolvedValue(state),
-    mutate: jest.fn<AuthSessions['mutate']>().mockResolvedValue(true),
+    now: jest.fn<AuthSessions['now']>().mockResolvedValue(new Date()),
+    access: jest.fn<AuthSessions['access']>().mockResolvedValue({ account, session: state }),
   };
   const limits = { check: jest.fn<AuthLimits['check']>() };
   const service = new AuthService(
@@ -72,28 +95,36 @@ function fixture(): Fixture {
     new ErrorService(),
   );
 
-  return { service, account, accounts, crypto, sessions, limits, token, state, tokens };
+  return { service, account, state, tokens, token, accounts, crypto, sessions, write, limits };
 }
-describe('Auth orchestration', (): void => {
-  it('does not issue credentials if the password or account changes during password verification', async (): Promise<void> => {
+
+describe('Auth PostgreSQL orchestration', (): void => {
+  it('rechecks the verified password hash under the account lock', async (): Promise<void> => {
     const f = fixture();
 
-    f.accounts.byId.mockResolvedValue({ ...f.account, passwordHash: 'new-hash' });
+    f.sessions.lockAccount.mockResolvedValue({ ...f.account, passwordHash: 'changed' });
     await expect(f.service.login({ login: 'test', password: 'password' })).rejects.toMatchObject({
       code: 'INVALID_CREDENTIALS',
     });
     expect(f.crypto.issue).not.toHaveBeenCalled();
-    expect(f.sessions.mutate).not.toHaveBeenCalled();
+    expect(f.write).not.toHaveBeenCalled();
   });
-  it('never returns tokens if session persistence fails', async (): Promise<void> => {
+  it('does not return credentials when COMMIT confirmation is lost', async (): Promise<void> => {
     const f = fixture();
 
-    f.sessions.mutate.mockRejectedValue(new ErrorService().serviceUnavailable());
+    f.sessions.transaction.mockImplementation(async (fn): Promise<never> => {
+      await fn({
+        insert: (): { values: jest.Mock<() => Promise<void>> } => ({ values: f.write }),
+      } as unknown as DatabaseTransaction);
+
+      throw new ErrorService().serviceUnavailable();
+    });
     await expect(f.service.login({ login: 'test', password: 'password' })).rejects.toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
     });
+    expect(f.write).toHaveBeenCalledTimes(1);
   });
-  it('uses dummy verification for an unknown login and keeps the same credentials error', async (): Promise<void> => {
+  it('performs dummy verification for an unknown account', async (): Promise<void> => {
     const f = fixture();
 
     f.accounts.byLogin.mockResolvedValue(undefined);
@@ -102,7 +133,7 @@ describe('Auth orchestration', (): void => {
     ).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
     expect(f.crypto.verifyPassword).toHaveBeenCalledWith('password', undefined);
   });
-  it('rechecks session existence before returning a cached rotation', async (): Promise<void> => {
+  it('rechecks the session under lock before returning a cached result', async (): Promise<void> => {
     const f = fixture();
 
     f.sessions.read.mockResolvedValueOnce(f.state).mockResolvedValueOnce(undefined);
@@ -111,62 +142,54 @@ describe('Auth orchestration', (): void => {
     ).rejects.toMatchObject({ code: 'SESSION_INVALID' });
     expect(f.crypto.decrypt).not.toHaveBeenCalled();
   });
-  it('checks session ownership for access tokens', async (): Promise<void> => {
-    const f = fixture();
-
-    f.state.session.userId = randomUUID();
-    await expect(f.service.authenticate('signed')).rejects.toMatchObject({
-      code: 'SESSION_INVALID',
-    });
-  });
-  it('reads the winning rotation after a compare-and-set conflict', async (): Promise<void> => {
+  it('returns the live rotation without counting it or writing again', async (): Promise<void> => {
     const f = fixture();
     const request_id = randomUUID();
 
-    f.sessions.mutate.mockResolvedValueOnce(false);
-    f.sessions.read
-      .mockResolvedValueOnce(f.state)
-      .mockResolvedValueOnce(f.state)
-      .mockResolvedValueOnce({
-        ...f.state,
-        session: { ...f.state.session, hash: 'winner' },
-        rotation: { requestId: request_id, hash: f.state.session.hash, encrypted: 'winner' },
-      });
+    f.state.rotationRequestId = request_id;
+    f.state.rotationTokenHash = f.state.refreshTokenHash;
+    f.state.rotationEncrypted = 'winner';
+    f.state.rotationExpiresAt = new Date(Date.now() + 30000);
+    f.state.refreshTokenHash = 'new';
     await expect(f.service.refresh({ refresh_token: f.token, request_id })).resolves.toEqual(
       f.tokens,
     );
-    expect(f.sessions.mutate).toHaveBeenCalledTimes(1);
-    expect(f.crypto.decrypt).toHaveBeenCalledWith('winner', expect.any(String), request_id);
+    expect(f.crypto.decrypt).toHaveBeenCalledWith('winner', f.state.id, request_id);
+    expect(f.write).not.toHaveBeenCalled();
+    expect(f.limits.check).not.toHaveBeenCalled();
   });
-});
+  it('rejects an expired rotation at the exact database clock boundary', async (): Promise<void> => {
+    const f = fixture();
+    const now = new Date();
 
-describe('Auth internal session checks', (): void => {
-  it('checks ownership without JWT verification or session extension', async (): Promise<void> => {
+    f.sessions.now.mockResolvedValue(now);
+    f.state.rotationExpiresAt = now;
+    f.state.rotationRequestId = randomUUID();
+    f.state.rotationTokenHash = f.state.refreshTokenHash;
+    f.state.refreshTokenHash = 'new';
+    await expect(
+      f.service.refresh({ refresh_token: f.token, request_id: f.state.rotationRequestId }),
+    ).rejects.toMatchObject({ code: 'SESSION_INVALID' });
+    expect(f.crypto.decrypt).not.toHaveBeenCalled();
+  });
+  it('uses the current database role and separates account/session activity', async (): Promise<void> => {
     const f = fixture();
 
-    await expect(f.service.checkSession(f.account.id, 'sid')).resolves.toEqual({
-      accountActive: true,
-      sessionActive: true,
+    await expect(f.service.authenticate('signed')).resolves.toMatchObject({ role: 'admin' });
+    f.sessions.access.mockResolvedValue({
+      account: { ...f.account, disabledAt: new Date() },
+      session: f.state,
     });
-    expect(f.crypto.verifyAccess).not.toHaveBeenCalled();
-    expect(f.sessions.mutate).not.toHaveBeenCalled();
-    f.state.session.userId = randomUUID();
-    await expect(f.service.checkSession(f.account.id, 'sid')).resolves.toEqual({
-      accountActive: true,
-      sessionActive: false,
-    });
-  });
-
-  it('keeps account and session state separate and propagates dependency errors', async (): Promise<void> => {
-    const f = fixture();
-
-    f.accounts.byId.mockResolvedValue({ ...f.account, disabledAt: new Date() });
-    await expect(f.service.checkSession(f.account.id, 'sid')).resolves.toEqual({
+    await expect(f.service.checkSession(f.account.id, f.state.id)).resolves.toEqual({
       accountActive: false,
       sessionActive: true,
     });
-    f.sessions.read.mockRejectedValue(new ErrorService().serviceUnavailable());
-    await expect(f.service.checkSession(f.account.id, 'sid')).rejects.toMatchObject({
+    f.sessions.access.mockResolvedValue({ account: f.account, session: null });
+    await expect(f.service.authenticate('signed')).rejects.toMatchObject({
+      code: 'SESSION_INVALID',
+    });
+    f.sessions.access.mockRejectedValue(new ErrorService().serviceUnavailable());
+    await expect(f.service.checkSession(f.account.id, f.state.id)).rejects.toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
     });
   });

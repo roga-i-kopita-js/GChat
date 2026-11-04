@@ -1,12 +1,19 @@
+import { sql } from 'drizzle-orm';
 import type { AnyPgColumn, PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
-import { index, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
+import { check, index, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
 
 import { users } from '../auth/auth.schema.js';
 
-export const groups = pgTable('gchat_groups', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-});
+export const groups = pgTable(
+  'gchat_groups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull().unique(),
+  },
+  (t): PgTableExtraConfigValue[] => [
+    check('gchat_groups_name_check', sql`${t.name} <> '' and ${t.name} = lower(btrim(${t.name}))`),
+  ],
+);
 
 export const groupMembers = pgTable(
   'gchat_group_members',

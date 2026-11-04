@@ -50,7 +50,7 @@ integration('Groups with isolated PostgreSQL data', (): void => {
     [first, second, third] = accounts.rows.map((row): string => row.id) as [string, string, string];
     group = (
       await database.query<{ id: string }>(
-        `INSERT INTO gchat_groups (name) VALUES ('Family') RETURNING id`,
+        `INSERT INTO gchat_groups (name) VALUES ('family') RETURNING id`,
       )
     ).rows[0]!.id;
     await database.query(
@@ -113,7 +113,7 @@ integration('Groups with isolated PostgreSQL data', (): void => {
   it('retains access until the last shared group is removed', async (): Promise<void> => {
     const otherGroup = (
       await database!.query<{ id: string }>(
-        `INSERT INTO gchat_groups (name) VALUES ('Family') RETURNING id`,
+        `INSERT INTO gchat_groups (name) VALUES ('other family') RETURNING id`,
       )
     ).rows[0]!.id;
 

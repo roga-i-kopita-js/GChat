@@ -91,7 +91,7 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
   beforeEach((): void => {
     auth.authenticate
       .mockReset()
-      .mockResolvedValue({ userId, sessionId, login: 'test', displayName: 'Test' });
+      .mockResolvedValue({ userId, sessionId, login: 'test', displayName: 'Test', role: 'user' });
     auth.checkSession.mockReset().mockResolvedValue({ accountActive: true, sessionActive: true });
     devices.bind.mockReset().mockResolvedValue(deviceId);
     calls.current.mockReset().mockResolvedValue(null);
@@ -133,7 +133,7 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
     auth.authenticate.mockImplementation(async (token): Promise<any> =>
       token === 'peer'
         ? { userId: peerUser, sessionId: peerSession, login: 'peer', displayName: 'Peer' }
-        : { userId, sessionId, login: 'test', displayName: 'Test' },
+        : { userId, sessionId, login: 'test', displayName: 'Test', role: 'user' },
     );
     devices.bind.mockImplementation(async (_user, sid): Promise<string> =>
       sid === peerSession ? peerDevice : deviceId,

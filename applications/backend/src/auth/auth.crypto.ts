@@ -152,6 +152,7 @@ export class AuthCrypto implements OnModuleInit {
       sid,
       login: account.login,
       display_name: account.displayName,
+      role: account.role,
     })
       .setProtectedHeader({ alg: 'EdDSA', kid: this.keys.jwtKid, typ: 'JWT' })
       .setSubject(account.id)
@@ -184,7 +185,7 @@ export class AuthCrypto implements OnModuleInit {
           issuer: 'gchat',
           audience: 'gchat-api',
           maxTokenAge: this.accessTokenTtlSeconds,
-          requiredClaims: ['sub', 'sid', 'iat', 'exp', 'login', 'display_name'],
+          requiredClaims: ['sub', 'sid', 'iat', 'exp', 'login', 'display_name', 'role'],
         },
       );
       const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -196,6 +197,7 @@ export class AuthCrypto implements OnModuleInit {
         !uuid.test(payload.sid) ||
         typeof payload.login !== 'string' ||
         typeof payload.display_name !== 'string' ||
+        (payload.role !== 'user' && payload.role !== 'admin') ||
         typeof payload.iat !== 'number' ||
         typeof payload.exp !== 'number' ||
         payload.exp <= payload.iat

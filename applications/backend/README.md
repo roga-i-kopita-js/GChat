@@ -45,7 +45,18 @@ pnpm --filter @gchat/backend build
 pnpm --filter @gchat/backend db:migrate
 ```
 
-CLI создания и изменения пользователей пока не реализован. HTTP Auth предоставляет вход, обновление и выход для существующих аккаунтов; административных HTTP endpoints нет. Параметры токенов, лимиты и правила смены ключей — в [контракте Auth](../../docs/backend/modules/auth.md). HTTP Guard экспортируется из AuthModule и подключается к защищённым контроллерам через `@UseGuards(AuthGuard)`; проверенная личность доступна в `request.user`.
+Административный API `/admin` реализован в [Backoffice](../../docs/backend/modules/backoffice.md). Сессии, результаты ротации и WS-билеты хранятся в PostgreSQL. После обновления выполните `build` и `db:migrate` перед запуском сервера. Совместимость с прежними Redis-сессиями не предусмотрена. Параметры токенов, лимиты и правила смены ключей — в [контракте Auth](../../docs/backend/modules/auth.md). HTTP Guard экспортируется из AuthModule и подключается к защищённым контроллерам через `@UseGuards(AuthGuard)`; проверенная личность доступна в `request.user`.
+
+Первый и последующие администраторы создаются только отдельной командой после сборки:
+
+```sh
+pnpm --filter @gchat/backend admin:create --display-name "Администратор" --login admin
+pnpm --filter @gchat/backend admin:create --display-name "Администратор семьи" --login family-admin --group "Family"
+```
+
+Пароль вводится скрыто в интерактивном терминале. CLI не принимает пароль или роль аргументами и не управляет существующими аккаунтами. Создание обычных пользователей выполняется через API бэк-офиса. Правила — в [Auth](../../docs/backend/modules/auth.md#cli).
+
+Тесты бэкофиса включаются через `BACKOFFICE_INTEGRATION_DATABASE_URL` и `BACKOFFICE_INTEGRATION_REDIS_URL`. Они используют отдельную временную БД и случайный префикс Redis; требуются права создавать и удалять БД. Используйте выделенные тестовые зависимости. Запуск: `pnpm --filter @gchat/backend test --watchman=false --runTestsByPath test/backoffice.integration.spec.ts`.
 
 Интеграционные тесты Auth включаются только при одновременном задании `AUTH_INTEGRATION_DATABASE_URL` и `AUTH_INTEGRATION_REDIS_URL`. PostgreSQL-пользователю нужны права создавать и удалять тестовую БД. Тест создаёт отдельную случайную БД, применяет миграции и удаляет её после проверки; Redis использует отдельный случайный префикс и удаляет только свои ключи. Используйте выделенные тестовые зависимости.
 
@@ -130,7 +141,7 @@ Redis доступен только на `127.0.0.1:6379`, порт меняет
 
 Redis использует постоянный volume `redis-data`, AOF с `appendfsync always` и политику `noeviction`. Лимит `REDIS_MAXMEMORY` по умолчанию равен `256mb`; это лимит данных Redis, а не всей памяти контейнера. Healthcheck проверяет авторизованный PING. Команды `db:up`, `db:down`, `db:ps` и `db:logs` обслуживают обе зависимости; `db:up` ждёт готовности обеих.
 
-Настройки `REDIS_*` используются RedisModule; `REDLOCK_*` используются RedlockModule. RedlockModule реализован как библиотечный модуль backend, но HTTP Auth его не подключает. Возможное использование в будущем CLI требует отдельного протокола; отдельный контейнер ему не нужен. См. [RedisModule](../../docs/backend/modules/redis.md) и [RedlockModule](../../docs/backend/modules/redlock.md).
+Настройки `REDIS_*` используются RedisModule; `REDLOCK_*` используются RedlockModule. AuthModule подключает RedlockModule.forFeature() только для фоновой очистки; транзакции сессий и CLI не используют Redis-блокировки. Отдельный контейнер Redlock не нужен. См. [RedisModule](../../docs/backend/modules/redis.md) и [RedlockModule](../../docs/backend/modules/redlock.md).
 
 Проверка Redis без вывода пароля (из корня репозитория):
 
@@ -138,7 +149,7 @@ Redis использует постоянный volume `redis-data`, AOF с `app
 docker compose --env-file applications/backend/.env -f applications/backend/docker-compose.yml exec redis sh -ec 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping'
 ```
 
-Ожидаемый ответ — `PONG`. `db:down` сохраняет данные; не используйте `down -v` для обычного перезапуска. Восстановление устаревшего тома с сессиями требует процедуры из RedisModule.
+Ожидаемый ответ — `PONG`. `db:down` сохраняет данные; не используйте `down -v` для обычного перезапуска. Восстановление PostgreSQL с сессиями и Redis с состоянием звонков требует процедур из профильных контрактов.
 
 ## Работа со схемой БД
 

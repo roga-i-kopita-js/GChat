@@ -73,6 +73,12 @@ describe('Backend HTTP', (): void => {
 
     expect(response.body.info.title).toBe('GChat API');
     expect(Object.keys(response.body.paths).sort()).toEqual([
+      '/admin/groups',
+      '/admin/users',
+      '/admin/users/{user_id}',
+      '/admin/users/{user_id}/disable',
+      '/admin/users/{user_id}/enable',
+      '/admin/users/{user_id}/password',
       '/auth/login',
       '/auth/logout',
       '/auth/refresh',

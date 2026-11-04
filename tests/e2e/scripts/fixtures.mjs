@@ -69,9 +69,9 @@ try {
   }
 
   const group =
-    (await database.query("SELECT id FROM gchat_groups WHERE name='Близкие' ORDER BY id LIMIT 1"))
+    (await database.query("SELECT id FROM gchat_groups WHERE name='близкие' ORDER BY id LIMIT 1"))
       .rows[0]?.id ??
-    (await database.query("INSERT INTO gchat_groups(name) VALUES('Близкие') RETURNING id")).rows[0]
+    (await database.query("INSERT INTO gchat_groups(name) VALUES('близкие') RETURNING id")).rows[0]
       .id;
 
   for (const id of users)
