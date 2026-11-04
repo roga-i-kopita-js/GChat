@@ -17,6 +17,7 @@ import {
   ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
+  ApiOperation,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -52,6 +53,7 @@ export class BackofficeController {
   /** Найти аккаунты, включая отключённые и не состоящие в группах администратора. */
   @Get('users')
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'adminListUsers' })
   list(@Query() query: AdminUsersQueryDto): Promise<AdminUsersResponseDto> {
     return this.backoffice.list(query);
   }
@@ -59,6 +61,7 @@ export class BackofficeController {
   /** Получить карточку аккаунта со всеми группами. */
   @Get('users/:user_id')
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'adminGetUser' })
   get(@Param('user_id', new ParseUUIDPipe()) id: string): Promise<AdminUserResponseDto> {
     return this.backoffice.get(id.toLowerCase());
   }
@@ -66,6 +69,7 @@ export class BackofficeController {
   /** Подсказки существующих групп для создания аккаунта. */
   @Get('groups')
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'adminListGroups' })
   groups(@Query() query: AdminGroupsQueryDto): Promise<AdminGroupsResponseDto> {
     return this.backoffice.listGroups(query);
   }
@@ -74,6 +78,7 @@ export class BackofficeController {
   @Post('users')
   @Header('Cache-Control', 'no-store')
   @ApiConflictResponse({ description: 'LOGIN_TAKEN', type: ErrorResponseDto })
+  @ApiOperation({ operationId: 'adminCreateUser' })
   create(
     @Req() request: { user: AuthIdentity },
     @Body() input: AdminCreateUserDto,
@@ -85,6 +90,7 @@ export class BackofficeController {
   @Post('users/:user_id/password')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'adminChangeUserPassword' })
   password(
     @Req() request: { user: AuthIdentity },
     @Param('user_id', new ParseUUIDPipe()) id: string,
@@ -97,6 +103,7 @@ export class BackofficeController {
   @Post('users/:user_id/disable')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'adminDisableUser' })
   disable(
     @Req() request: { user: AuthIdentity },
     @Param('user_id', new ParseUUIDPipe()) id: string,
@@ -109,6 +116,7 @@ export class BackofficeController {
   @Post('users/:user_id/enable')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'adminEnableUser' })
   enable(
     @Req() request: { user: AuthIdentity },
     @Param('user_id', new ParseUUIDPipe()) id: string,

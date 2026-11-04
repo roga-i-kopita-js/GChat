@@ -3,7 +3,14 @@ doc_type: client
 decision_status: accepted
 implementation_status: partial
 source: applications/web/src/
-tests: ["applications/web/src/auth.test.ts", "applications/web/src/protocol.test.ts", "tests/e2e/tests/web/direct-calls.e2e.ts", "tests/e2e/tests/web/media.e2e.ts", "tests/e2e/tests/protocol/direct-calls.e2e.ts"]
+tests:
+  [
+    'applications/web/src/auth.test.ts',
+    'applications/web/src/protocol.test.ts',
+    'tests/e2e/tests/web/direct-calls.e2e.ts',
+    'tests/e2e/tests/web/media.e2e.ts',
+    'tests/e2e/tests/protocol/direct-calls.e2e.ts',
+  ]
 ---
 
 # Веб-клиент GChat
@@ -54,6 +61,8 @@ GChat Web — полноценный пользовательский клиен
 ## Стек и размещение
 
 Используется workspace-приложение `applications/web/`: React, TypeScript и Vite. Для проверок — Vitest и Playwright. Точные версии, зависимости и команды находятся в манифесте, lock-файле и README приложения.
+
+HTTP-операции выполняются через внутренний [SDK backend-api](../packages/backend-api.md). Методы и DTO генерируются из OpenAPI; ручных HTTP-маршрутов и схем групп/участников в приложении нет. TanStack Query использует типизированные методы SDK и передаёт AbortSignal. Общий слой `auth.ts` сохраняет browser session policy: Web Lock для refresh, исходный `request_id`, однократное обновление и повтор операции при `ACCESS_TOKEN_EXPIRED`, очистку подтверждённо недействительной сессии. Запоздалый отказ старой сессии не очищает новую. Транспорт сохраняет `cache: no-store`; HTTP-ошибки SDK передаются с метаданными и `Retry-After`. Zod остаётся для сохранённой сессии/JWT и WebSocket-протокола.
 
 Для интерфейса и типовых задач предпочтительны готовые библиотеки. Нативные WebSocket, RTCPeerConnection и getUserMedia используются с существующим протоколом GChat. Библиотека со своим сервером сигнализации не должна подменять общий backend или правила DirectCalls.
 

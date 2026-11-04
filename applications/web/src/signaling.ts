@@ -1,6 +1,4 @@
-import { z } from 'zod';
-
-import { ApiError, request } from './auth';
+import { ClientError, request } from './auth';
 import { wireSchema } from './protocol';
 
 interface Pending {
@@ -19,7 +17,9 @@ export class Signaling {
   ) {}
 
   async open(): Promise<void> {
-    const { ticket } = z.object({ ticket: z.string() }).parse(await request('/auth/ws-ticket', {}));
+    const { ticket } = await request((api): ReturnType<typeof api.authWsTicket> =>
+      api.authWsTicket({ body: {} }),
+    );
     const url = new URL('/ws', location.href);
 
     url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -38,7 +38,7 @@ export class Signaling {
           clearTimeout(operation.timer);
           this.pending.delete(wire.request_id);
 
-          if (wire.error) operation.reject(new ApiError(wire.error.code, wire.error.message));
+          if (wire.error) operation.reject(new ClientError(wire.error.code, wire.error.message));
           else operation.resolve(wire.payload);
         } else this.event(wire.type, wire.payload);
       } catch {
@@ -48,7 +48,7 @@ export class Signaling {
     socket.onclose = (event): void => {
       for (const operation of this.pending.values()) {
         clearTimeout(operation.timer);
-        operation.reject(new ApiError('DISCONNECTED', 'Связь с сервером потеряна'));
+        operation.reject(new ClientError('DISCONNECTED', 'Связь с сервером потеряна'));
       }
 
       this.pending.clear();
@@ -78,7 +78,7 @@ export class Signaling {
 
   send(type: string, payload: object): Promise<unknown> {
     if (this.socket?.readyState !== WebSocket.OPEN)
-      return Promise.reject(new ApiError('DISCONNECTED', 'Нет подключения к серверу'));
+      return Promise.reject(new ClientError('DISCONNECTED', 'Нет подключения к серверу'));
 
     const id = crypto.randomUUID();
 
@@ -86,7 +86,7 @@ export class Signaling {
       const timer = setTimeout((): void => {
         this.pending.delete(id);
         reject(
-          new ApiError(
+          new ClientError(
             'TIMEOUT',
             'Не удалось подтвердить действие. Получаем актуальное состояние.',
           ),
@@ -106,7 +106,7 @@ export class Signaling {
 
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
-      p.reject(new ApiError('DISCONNECTED', 'Соединение закрыто'));
+      p.reject(new ClientError('DISCONNECTED', 'Соединение закрыто'));
     }
 
     this.pending.clear();

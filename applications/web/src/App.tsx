@@ -1,3 +1,4 @@
+import type { GroupMembersResponseDto, GroupsResponseDto } from '@gchat/backend-api';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -23,10 +24,10 @@ import type { FormEvent, JSX, ReactNode } from 'react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import type { Session } from './auth';
-import { identity, login, readSession, request } from './auth';
+import { errorMessage, identity, login, readSession, request } from './auth';
 import { GChatClient } from './client';
 import type { Member } from './protocol';
-import { groupList, memberList, reasons } from './protocol';
+import { reasons } from './protocol';
 
 const client = new GChatClient();
 
@@ -92,7 +93,7 @@ function Login({ onSession }: { onSession: () => void }): JSX.Element {
       await login(String(form.get('login')), String(form.get('password')));
       onSession();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Не удалось войти');
+      setError(errorMessage(cause, 'Не удалось войти'));
     } finally {
       setBusy(false);
     }
@@ -206,8 +207,8 @@ export function App(): JSX.Element {
   const user = session ? identity(session) : null;
   const groups = useQuery({
     queryKey: ['groups', user?.sub],
-    queryFn: async (): Promise<ReturnType<typeof groupList.parse>> =>
-      groupList.parse(await request('/groups')),
+    queryFn: async ({ signal }): Promise<GroupsResponseDto> =>
+      request((api): ReturnType<typeof api.groupsList> => api.groupsList({ signal })),
     enabled: !!user,
     retry: 1,
     refetchOnWindowFocus: true,
@@ -215,8 +216,13 @@ export function App(): JSX.Element {
   });
   const members = useQuery({
     queryKey: ['members', user?.sub, groupId],
-    queryFn: async (): Promise<ReturnType<typeof memberList.parse>> =>
-      memberList.parse(await request('/groups/' + groupId + '/members')),
+    queryFn: async ({ signal }): Promise<GroupMembersResponseDto> => {
+      if (!groupId) return { members: [] };
+
+      return request((api): ReturnType<typeof api.groupsListMembers> =>
+        api.groupsListMembers({ path: { group_id: groupId }, signal }),
+      );
+    },
     enabled: !!user && !!groupId,
     retry: 1,
     refetchOnWindowFocus: true,
@@ -279,7 +285,9 @@ export function App(): JSX.Element {
       void Promise.all(
         groups.data.groups.map(async (group): Promise<void> => {
           try {
-            const data = memberList.parse(await request('/groups/' + group.id + '/members'));
+            const data = await request((api): ReturnType<typeof api.groupsListMembers> =>
+              api.groupsListMembers({ path: { group_id: group.id } }),
+            );
 
             if (!cancelled)
               setNames((old): Record<string, string> => ({
@@ -739,9 +747,7 @@ export function App(): JSX.Element {
               void client
                 .signOut()
                 .catch((cause: unknown): void =>
-                  setAccountError(
-                    cause instanceof Error ? cause.message : 'Не удалось подтвердить выход',
-                  ),
+                  setAccountError(errorMessage(cause, 'Не удалось подтвердить выход')),
                 );
             }}
           >

@@ -13,14 +13,19 @@
     "style:check": "oxlint --config ../../.oxlintrc.json --deny-warnings .",
     "style:fix": "oxlint --config ../../.oxlintrc.json --fix --deny-warnings .",
     "lint": "pnpm style:check && pnpm format:check",
-    "lint:fix": "pnpm format && pnpm style:fix && pnpm format"
+    "lint:fix": "pnpm format && pnpm style:fix && pnpm format",
+    "predev": "pnpm --filter @gchat/backend-api build",
+    "prebuild": "pnpm --filter @gchat/backend-api build",
+    "pretypecheck": "pnpm --filter @gchat/backend-api build",
+    "pretest": "pnpm --filter @gchat/backend-api build"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.105.3",
     "lucide-react": "^1.67.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "@gchat/backend-api": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

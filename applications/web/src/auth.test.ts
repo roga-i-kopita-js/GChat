@@ -1,15 +1,25 @@
+import { ApiError, type GroupsResponseDto } from '@gchat/backend-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Session } from './auth';
-import { identity, readSession, request, saveSession } from './auth';
+import {
+  errorMessage,
+  identity,
+  login,
+  logout,
+  readSession,
+  request,
+  retryAfter,
+  saveSession,
+} from './auth';
 
-function session(exp = Date.now() / 1000 + 120, lifetime = 120): Session {
+function session(exp = Date.now() / 1000 + 120, lifetime = 120, sid = 'session'): Session {
   const jwt =
     'e30.' +
     Buffer.from(
       JSON.stringify({
         sub: 'user',
-        sid: 'session',
+        sid,
         login: 'anna',
         display_name: 'Анна',
         iat: exp - lifetime,
@@ -25,6 +35,10 @@ function session(exp = Date.now() / 1000 + 120, lifetime = 120): Session {
     deviceId: null,
     pending: null,
   };
+}
+
+function groups(): Promise<GroupsResponseDto> {
+  return request((api): ReturnType<typeof api.groupsList> => api.groupsList());
 }
 
 beforeEach((): void => {
@@ -49,6 +63,7 @@ beforeEach((): void => {
 
 afterEach((): void => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('browser session', (): void => {
@@ -77,11 +92,11 @@ describe('browser session', (): void => {
         );
       }),
     );
-    await request('/groups');
+    await groups();
     expect(paths).toEqual(['/api/groups']);
     clock.mockReturnValue(now + 8000);
-    await request('/groups');
-    await request('/groups');
+    await groups();
+    await groups();
     expect(paths).toEqual(['/api/groups', '/api/auth/refresh', '/api/groups', '/api/groups']);
     expect(identity(readSession()!).exp).toBe(now / 1000 + 18);
     expect(readSession()?.pending).toBeNull();
@@ -104,14 +119,14 @@ describe('browser session', (): void => {
 
           return new Response(
             JSON.stringify({ error: { code: 'ACCESS_TOKEN_EXPIRED', message: 'Expired' } }),
-            { status: 401 },
+            { status: 401, headers: { 'Content-Type': 'application/json' } },
           );
         }
 
         return new Response(JSON.stringify({ groups: [] }));
       }),
     );
-    await expect(request('/groups')).resolves.toEqual({ groups: [] });
+    await expect(groups()).resolves.toEqual({ groups: [] });
     expect(paths).toEqual(['/api/groups', '/api/auth/refresh', '/api/groups']);
     const jwt = identity(readSession()!);
 
@@ -129,8 +144,8 @@ describe('browser session', (): void => {
         throw new TypeError('Network unavailable');
       }),
     );
-    await expect(request('/groups')).rejects.toThrow('Network unavailable');
-    await expect(request('/groups')).rejects.toThrow('Network unavailable');
+    await expect(groups()).rejects.toThrow('Network unavailable');
+    await expect(groups()).rejects.toThrow('Network unavailable');
     expect(bodies[0]).toBe(bodies[1]);
     expect(readSession()?.pending?.request_id).toBeTruthy();
   });
@@ -142,11 +157,11 @@ describe('browser session', (): void => {
         async (): Promise<Response> =>
           new Response(
             JSON.stringify({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Unavailable' } }),
-            { status: 503 },
+            { status: 503, headers: { 'Content-Type': 'application/json' } },
           ),
       ),
     );
-    await expect(request('/groups')).rejects.toThrow('Unavailable');
+    await expect(groups()).rejects.toThrow('Unavailable');
     expect(readSession()).not.toBeNull();
     vi.stubGlobal(
       'fetch',
@@ -154,10 +169,210 @@ describe('browser session', (): void => {
         async (): Promise<Response> =>
           new Response(JSON.stringify({ error: { code: 'SESSION_INVALID', message: 'Revoked' } }), {
             status: 401,
+            headers: { 'Content-Type': 'application/json' },
           }),
       ),
     );
-    await expect(request('/groups')).rejects.toThrow('Revoked');
+    await expect(groups()).rejects.toThrow('Revoked');
     expect(readSession()).toBeNull();
   });
+});
+
+function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...headers },
+  });
+}
+
+it('uses generated login/logout operations without Bearer and retains session after unknown logout', async (): Promise<void> => {
+  const next = session();
+  const fetch = vi.fn(async (path: string, init: RequestInit): Promise<Response> => {
+    expect(init.cache).toBe('no-store');
+    expect(new Headers(init.headers).has('Authorization')).toBe(false);
+
+    if (path === '/api/auth/login') {
+      expect(JSON.parse(String(init.body))).toEqual({ login: 'anna', password: 'password' });
+
+      return json(next);
+    }
+
+    expect(path).toBe('/api/auth/logout');
+    expect(JSON.parse(String(init.body))).toEqual({ refresh_token: next.refresh_token });
+
+    throw new TypeError('Unknown logout result');
+  });
+
+  vi.stubGlobal('fetch', fetch);
+  await login('anna', 'password');
+  expect(readSession()?.deviceId).toBeNull();
+  await expect(logout()).rejects.toThrow('Unknown logout result');
+  expect(readSession()?.access_token).toBe(next.access_token);
+  fetch.mockImplementationOnce(async (): Promise<Response> => new Response(null, { status: 204 }));
+  await logout();
+  expect(readSession()).toBeNull();
+});
+
+it('keeps SDK error metadata and Retry-After available to reconnect policy', async (): Promise<void> => {
+  saveSession(session());
+  const body = {
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Try later',
+      fields: [{ field: 'ticket', code: 'limited' }],
+    },
+  };
+  const fetch = vi.fn(async (): Promise<Response> => json(body, 429, { 'Retry-After': '12' }));
+
+  vi.stubGlobal('fetch', fetch);
+  const failure = await request((api): ReturnType<typeof api.authWsTicket> =>
+    api.authWsTicket({ body: {} }),
+  ).catch((cause: unknown): unknown => cause);
+
+  expect(failure).toBeInstanceOf(ApiError);
+
+  if (!(failure instanceof ApiError)) throw new Error('Expected SDK error');
+
+  expect(failure.status).toBe(429);
+  expect(failure.body).toEqual(body);
+  expect(failure.fields).toEqual(body.error.fields);
+  expect(retryAfter(failure)).toBe(12);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(readSession()).not.toBeNull();
+});
+
+it('shares one proactive refresh through the browser lock and retains device binding', async (): Promise<void> => {
+  let tail: Promise<unknown> = Promise.resolve();
+
+  vi.stubGlobal('navigator', {
+    locks: {
+      request: (_name: string, action: () => Promise<unknown>): Promise<unknown> => {
+        const next = tail.then(action);
+
+        tail = next.catch((): void => {});
+
+        return next;
+      },
+    },
+  });
+  const next = { ...session(), refresh_token: 'rotated' };
+
+  saveSession({ ...session(1), deviceId: 'same-device' });
+  let refreshes = 0;
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (path: string, init: RequestInit): Promise<Response> => {
+      if (path === '/api/auth/refresh') {
+        refreshes++;
+        expect(new Headers(init.headers).has('Authorization')).toBe(false);
+
+        return json(next);
+      }
+
+      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer ' + next.access_token);
+
+      return json({ groups: [] });
+    }),
+  );
+  await Promise.all([groups(), groups()]);
+  expect(refreshes).toBe(1);
+  expect(readSession()?.deviceId).toBe('same-device');
+  expect(readSession()?.refresh_token).toBe('rotated');
+});
+
+it('does not resurrect a logged-out session after a late refresh', async (): Promise<void> => {
+  saveSession(session(1));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (): Promise<Response> => {
+      saveSession(null);
+
+      return json(session());
+    }),
+  );
+  await expect(groups()).rejects.toThrow('Сессия завершена');
+  expect(readSession()).toBeNull();
+});
+
+it('does not clear a replacement session after an old refresh or HTTP refusal', async (): Promise<void> => {
+  const replacement = session(Date.now() / 1000 + 120, 120, 'other-session');
+
+  for (const expired of [true, false]) {
+    saveSession(expired ? session(1) : session());
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (): Promise<Response> => {
+        saveSession(replacement);
+
+        return expired
+          ? json(session())
+          : json({ error: { code: 'SESSION_INVALID', message: 'Revoked' } }, 401);
+      }),
+    );
+    await expect(groups()).rejects.toThrow();
+    expect(identity(readSession()!).sid).toBe('other-session');
+  }
+});
+
+it('clears an invalid session on the single retry and does not refresh repeatedly', async (): Promise<void> => {
+  saveSession(session());
+  let calls = 0;
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (path: string): Promise<Response> => {
+      calls++;
+
+      if (path === '/api/auth/refresh') return json(session());
+
+      return json(
+        {
+          error: {
+            code: calls === 1 ? 'ACCESS_TOKEN_EXPIRED' : 'SESSION_INVALID',
+            message: 'Denied',
+          },
+        },
+        401,
+      );
+    }),
+  );
+  await expect(groups()).rejects.toThrow('Denied');
+  expect(calls).toBe(3);
+  expect(readSession()).toBeNull();
+});
+
+it('passes AbortSignal to SDK operations without clearing the session or retrying', async (): Promise<void> => {
+  saveSession(session());
+  const controller = new AbortController();
+
+  controller.abort();
+  const failure = new DOMException('Aborted', 'AbortError');
+  const fetch = vi.fn(async (_path: string, init: RequestInit): Promise<Response> => {
+    expect(init.signal).toBe(controller.signal);
+
+    throw failure;
+  });
+
+  vi.stubGlobal('fetch', fetch);
+  await expect(
+    request((api): ReturnType<typeof api.groupsList> =>
+      api.groupsList({ signal: controller.signal }),
+    ),
+  ).rejects.toBe(failure);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(readSession()).not.toBeNull();
+});
+
+it('keeps the service fallback for HTTP errors without a backend envelope', async (): Promise<void> => {
+  saveSession(session());
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (): Promise<Response> => new Response('Unavailable', { status: 503 })),
+  );
+  const failure = await groups().catch((cause: unknown): unknown => cause);
+
+  expect(failure).toBeInstanceOf(ApiError);
+  expect(errorMessage(failure, 'Fallback')).toBe('Сервис временно недоступен');
+  expect(readSession()).not.toBeNull();
 });

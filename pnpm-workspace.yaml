@@ -3,6 +3,7 @@ packages:
   - applications/ios
   - applications/web
   - tests/e2e
+  - packages/*
 
 sharedWorkspaceLockfile: true
 

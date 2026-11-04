@@ -11,6 +11,8 @@ pnpm install
 pnpm --filter @gchat/web dev
 ```
 
+Команды `dev`, `build`, `typecheck` и `test` сначала автоматически собирают workspace-зависимость [backend-api](../../docs/packages/backend-api.md) из сохранённых исходников. Экспорт OpenAPI и инфраструктура backend для сборки SDK не нужны. При изменении HTTP-контракта обновляйте SDK по инструкции пакета.
+
 Vite принимает `http://127.0.0.1:5173` и проксирует `/api` и `/ws` на backend `http://127.0.0.1:3000`. Другой backend задаётся переменной процесса `GCHAT_BACKEND_URL` при запуске Vite. Прокси сохраняет браузерный Origin. В backend нужно явно включить origin страницы в `SIGNALING_BROWSER_ORIGINS`.
 
 Для рабочего окружения соберите `pnpm --filter @gchat/web build`, разместите `dist/` на HTTPS-origin и настройте reverse proxy: `/api/*` передаётся в backend без префикса `/api`, `/ws` — с upgrade и исходным Origin. Остальные клиентские пути получают `index.html`. Backend отдельно настраивается по своему README; TURN должен быть доступен клиентским устройствам.

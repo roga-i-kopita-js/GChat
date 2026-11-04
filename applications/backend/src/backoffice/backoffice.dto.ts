@@ -18,19 +18,23 @@ export class AdminGroupsQueryDto {
   @IsInt()
   @Min(1)
   @Max(100)
+  @ApiProperty({ required: false, default: 20 })
   limit: number = 20;
 
   @Transform(integer)
   @IsInt()
   @Min(0)
   @Max(Number.MAX_SAFE_INTEGER)
+  @ApiProperty({ required: false, default: 0 })
   offset: number = 0;
 }
 
 export class AdminUsersQueryDto extends AdminGroupsQueryDto {
+  @ApiProperty({ required: false, default: 25 })
   limit: number = 25;
 
   @IsIn(['all', 'active', 'disabled'])
+  @ApiProperty({ required: false, default: 'all', enum: ['all', 'active', 'disabled'] })
   status: 'all' | 'active' | 'disabled' = 'all';
 }
 

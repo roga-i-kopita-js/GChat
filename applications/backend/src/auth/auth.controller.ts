@@ -4,6 +4,7 @@ import {
   ApiBearerAuth,
   ApiForbiddenResponse,
   ApiNoContentResponse,
+  ApiOperation,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -46,6 +47,7 @@ export class AuthController {
   })
   @ApiForbiddenResponse({ description: 'Origin не разрешён', type: ErrorResponseDto })
   @ApiTooManyRequestsResponse({ description: 'RATE_LIMITED', type: ErrorResponseDto })
+  @ApiOperation({ operationId: 'authWsTicket' })
   wsTicket(
     @Body() _input: WsTicketRequestDto,
     @Req() request: { user: AuthIdentity; headers: { origin?: string } },
@@ -62,6 +64,7 @@ export class AuthController {
     description: 'RATE_LIMITED; Retry-After содержит задержку в секундах',
     type: ErrorResponseDto,
   })
+  @ApiOperation({ operationId: 'authLogin' })
   login(@Body() input: LoginDto): Promise<TokensDto> {
     return this.auth.login(input);
   }
@@ -75,6 +78,7 @@ export class AuthController {
     description: 'RATE_LIMITED; Retry-After содержит задержку в секундах',
     type: ErrorResponseDto,
   })
+  @ApiOperation({ operationId: 'authRefresh' })
   refresh(@Body() input: RefreshDto): Promise<TokensDto> {
     return this.auth.refresh(input);
   }
@@ -84,6 +88,7 @@ export class AuthController {
   @HttpCode(204)
   @Header('Cache-Control', 'no-store')
   @ApiNoContentResponse({ description: 'Выход завершён' })
+  @ApiOperation({ operationId: 'authLogout' })
   logout(@Body() input: RefreshTokenDto): Promise<void> {
     return this.auth.logout(input.refresh_token);
   }

@@ -1,0 +1,27 @@
+name: Backend API client
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+jobs:
+  backend-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm api:check
+      - run: pnpm --filter @gchat/backend typecheck
+      - run: pnpm --filter @gchat/backend exec node --test test/openapi-build.test.mjs
+      - run: pnpm --filter @gchat/backend test --watchman=false --runTestsByPath test/app.e2e.spec.ts
+      - run: pnpm --filter @gchat/backend-api typecheck
+      - run: pnpm --filter @gchat/backend-api test
+      - run: pnpm --filter @gchat/web lint
+      - run: pnpm --filter @gchat/web typecheck
+      - run: pnpm --filter @gchat/web test
+      - run: pnpm --filter @gchat/web build
+      - run: pnpm docs:check

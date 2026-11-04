@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import { ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 
 import { DatabaseService } from '../database/database.service.js';
 import { ReadinessError } from '../error/readiness.error.js';
@@ -16,6 +16,7 @@ export class HealthcheckController {
 
   /** Check HTTP application liveness. */
   @Get('health')
+  @ApiOperation({ operationId: 'healthcheckHealth' })
   health(): HealthResponseDto {
     return { status: 'ok', service: 'gchat-backend' };
   }
@@ -26,6 +27,7 @@ export class HealthcheckController {
     description: 'PostgreSQL or Redis is unavailable.',
     type: ReadinessResponseDto,
   })
+  @ApiOperation({ operationId: 'healthcheckReady' })
   async ready(): Promise<ReadinessResponseDto> {
     const results = await Promise.allSettled([this.database.ping(), this.redis.ping()]);
     const checks: ReadinessResponseDto['checks'] = {

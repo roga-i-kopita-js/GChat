@@ -2,6 +2,7 @@ import { Controller, Get, Header, Param, ParseUUIDPipe, Req, UseGuards } from '@
 import {
   ApiBearerAuth,
   ApiNotFoundResponse,
+  ApiOperation,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -25,6 +26,7 @@ export class GroupsController {
   /** Получить группы текущего пользователя. */
   @Get()
   @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'groupsList' })
   async list(@Req() request: { user: AuthIdentity }): Promise<GroupsResponseDto> {
     return { groups: await this.groups.list(request.user.userId) };
   }
@@ -36,6 +38,7 @@ export class GroupsController {
     description: 'Группа недоступна или не существует',
     type: ErrorResponseDto,
   })
+  @ApiOperation({ operationId: 'groupsListMembers' })
   async members(
     @Req() request: { user: AuthIdentity },
     @Param('group_id', new ParseUUIDPipe()) id: string,

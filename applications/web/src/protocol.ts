@@ -36,17 +36,7 @@ export const iceConfig = z.object({
   expires_at: z.string(),
 });
 
-export const groupList = z.object({
-  groups: z.array(z.object({ id: z.string(), name: z.string() })),
-});
-
-export const memberList = z.object({
-  members: z.array(z.object({ id: z.string(), display_name: z.string() })),
-});
-
-export type Group = z.infer<typeof groupList>['groups'][number];
-
-export type Member = z.infer<typeof memberList>['members'][number];
+export type { GroupDto as Group, GroupMemberDto as Member } from '@gchat/backend-api';
 
 export const wireSchema = z.object({
   type: z.string(),

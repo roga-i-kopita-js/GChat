@@ -17,7 +17,9 @@
     "db:ps": "docker compose --env-file .env -f docker-compose.yml ps",
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
     "db:migrate": "node --env-file-if-exists=.env dist/database/migrate.js",
-    "admin:create": "node --env-file-if-exists=.env dist/auth/admin-cli.js"
+    "admin:create": "node --env-file-if-exists=.env dist/auth/admin-cli.js",
+    "openapi:export": "node dist/swagger/export-openapi.js",
+    "openapi:test": "pnpm build && node --test test/openapi-build.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "12.3.2",

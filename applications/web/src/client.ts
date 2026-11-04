@@ -1,6 +1,14 @@
 import { z } from 'zod';
 
-import { ApiError, identity, logout, readSession, saveSession } from './auth';
+import {
+  ClientError,
+  errorMessage,
+  identity,
+  logout,
+  readSession,
+  retryAfter,
+  saveSession,
+} from './auth';
 import type { Call } from './protocol';
 import {
   callResponse,
@@ -247,7 +255,7 @@ export class GChatClient {
       if (generation !== this.connectionGeneration) return;
 
       this.fail(cause);
-      this.scheduleReconnect(cause instanceof ApiError ? cause.retryAfter : 0);
+      this.scheduleReconnect(retryAfter(cause));
     }
   }
 
@@ -456,7 +464,7 @@ export class GChatClient {
     if (epoch !== this.mediaEpoch) {
       for (const track of stream.getTracks()) track.stop();
 
-      throw new ApiError('CANCELLED', 'Действие отменено');
+      throw new ClientError('CANCELLED', 'Действие отменено');
     }
 
     this.stream = stream;
@@ -615,7 +623,7 @@ export class GChatClient {
       this.startHeartbeat();
       await this.restart();
     } catch (cause) {
-      if (!(cause instanceof ApiError && cause.code === 'FORBIDDEN')) this.fail(cause);
+      if (!(cause instanceof ClientError && cause.code === 'FORBIDDEN')) this.fail(cause);
     }
   }
 
@@ -882,10 +890,10 @@ export class GChatClient {
   }
 
   private fail(cause: unknown): void {
-    if (cause instanceof ApiError && cause.code === 'CANCELLED') return;
+    if (cause instanceof ClientError && cause.code === 'CANCELLED') return;
 
     this.set({
-      error: cause instanceof Error ? cause.message : 'Действие не выполнено. Попробуйте ещё раз.',
+      error: errorMessage(cause, 'Действие не выполнено. Попробуйте ещё раз.'),
     });
   }
 

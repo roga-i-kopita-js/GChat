@@ -1,3 +1,4 @@
+import { ApiError, type ApiResult, BackendApi } from '@gchat/backend-api';
 import { z } from 'zod';
 
 const tokens = z.object({
@@ -22,7 +23,7 @@ export type Session = z.infer<typeof stored>;
 
 const key = 'gchat.session.v1';
 
-export class ApiError extends Error {
+export class ClientError extends Error {
   constructor(
     readonly code: string,
     message: string,
@@ -62,35 +63,45 @@ export function saveSession(value: Session | null): void {
   window.dispatchEvent(new Event('gchat-session'));
 }
 
-async function json(path: string, body?: object, bearer?: string): Promise<unknown> {
-  const response = await fetch('/api' + path, {
-    method: body ? 'POST' : 'GET',
-    headers: {
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(bearer ? { Authorization: 'Bearer ' + bearer } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-    cache: 'no-store',
+function createApi(accessToken?: string): BackendApi {
+  return new BackendApi({
+    baseUrl: '/api',
+    getAccessToken: (): string | undefined => accessToken,
+    fetch: (input, init): Promise<Response> =>
+      globalThis.fetch(input, { ...init, cache: 'no-store' }),
   });
-  const value: unknown = response.status === 204 ? {} : await response.json();
+}
 
-  if (!response.ok) {
-    const failure = z
-      .object({ error: z.object({ code: z.string(), message: z.string() }) })
-      .safeParse(value);
+const publicApi = createApi();
 
-    throw new ApiError(
-      failure.success ? failure.data.error.code : 'HTTP_ERROR',
-      failure.success ? failure.data.error.message : 'Сервис временно недоступен',
-      Number(response.headers.get('Retry-After') ?? 0),
-    );
-  }
+export function errorMessage(cause: unknown, fallback: string): string {
+  if (cause instanceof ApiError && !cause.code) return 'Сервис временно недоступен';
 
-  return value;
+  return cause instanceof Error ? cause.message : fallback;
+}
+
+export function retryAfter(cause: unknown): number {
+  if (cause instanceof ClientError) return cause.retryAfter;
+
+  if (!(cause instanceof ApiError)) return 0;
+
+  const seconds = Number(cause.headers.get('Retry-After') ?? 0);
+
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+}
+
+function invalidateSession(cause: unknown, original: Session): void {
+  if (!(cause instanceof ApiError || cause instanceof ClientError)) return;
+
+  if (!['SESSION_INVALID', 'ACCESS_TOKEN_INVALID'].includes(cause.code ?? '')) return;
+
+  const current = readSession();
+
+  if (current && identity(current).sid === identity(original).sid) saveSession(null);
 }
 
 export async function login(login: string, password: string): Promise<void> {
-  const result = tokens.parse(await json('/auth/login', { login, password }));
+  const result = tokens.parse((await publicApi.authLogin({ body: { login, password } })).data);
 
   saveSession({ ...result, deviceId: null, pending: null });
 }
@@ -99,7 +110,7 @@ async function access(force = false): Promise<Session> {
   return navigator.locks.request('gchat-refresh', async (): Promise<Session> => {
     let session = readSession();
 
-    if (!session) throw new ApiError('SESSION_INVALID', 'Войдите в аккаунт');
+    if (!session) throw new ClientError('SESSION_INVALID', 'Войдите в аккаунт');
 
     const jwt = identity(session);
     const refreshAheadMs = Math.min(15000, ((jwt.exp - jwt.iat) * 1000) / 4);
@@ -114,41 +125,42 @@ async function access(force = false): Promise<Session> {
     saveSession({ ...session, pending });
 
     try {
-      const next = tokens.parse(await json('/auth/refresh', pending));
+      const next = tokens.parse((await publicApi.authRefresh({ body: pending })).data);
 
       // A concurrent logout must not be undone by a late refresh.
       if (!readSession() || identity(readSession()!).sid !== identity(session).sid)
-        throw new ApiError('SESSION_INVALID', 'Сессия завершена');
+        throw new ClientError('SESSION_INVALID', 'Сессия завершена');
 
       session = { ...next, deviceId: session.deviceId, pending: null };
       saveSession(session);
 
       return session;
     } catch (cause) {
-      if (cause instanceof ApiError && cause.code === 'SESSION_INVALID') saveSession(null);
+      invalidateSession(cause, session);
 
       throw cause;
     }
   });
 }
 
-export async function request(path: string, body?: object): Promise<unknown> {
+/** Session policy belongs to the application; the SDK performs each HTTP operation once. */
+export async function request<T>(
+  operation: (api: BackendApi) => Promise<ApiResult<T>>,
+): Promise<T> {
   const session = await access();
 
   try {
-    return await json(path, body, session.access_token);
-  } catch (cause) {
-    if (cause instanceof ApiError && cause.code === 'ACCESS_TOKEN_EXPIRED') {
+    try {
+      return (await operation(createApi(session.access_token))).data;
+    } catch (cause) {
+      if (!(cause instanceof ApiError && cause.code === 'ACCESS_TOKEN_EXPIRED')) throw cause;
+
       const refreshed = await access(true);
 
-      return json(path, body, refreshed.access_token);
+      return (await operation(createApi(refreshed.access_token))).data;
     }
-
-    if (
-      cause instanceof ApiError &&
-      ['SESSION_INVALID', 'ACCESS_TOKEN_INVALID'].includes(cause.code)
-    )
-      saveSession(null);
+  } catch (cause) {
+    invalidateSession(cause, session);
 
     throw cause;
   }
@@ -160,7 +172,7 @@ export async function logout(): Promise<void> {
 
     if (!session) return;
 
-    await json('/auth/logout', { refresh_token: session.refresh_token });
+    await publicApi.authLogout({ body: { refresh_token: session.refresh_token } });
     saveSession(null);
   });
 }

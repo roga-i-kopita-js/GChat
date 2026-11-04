@@ -10,3 +10,6 @@ applications/web/playwright-report/
 tests/e2e/.local/
 tests/e2e/test-results/
 tests/e2e/playwright-report/
+
+# Deterministic JSON emitted by the compiled Nest exporter.
+packages/backend-api/openapi.json

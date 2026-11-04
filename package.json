@@ -17,7 +17,9 @@
     "format:staged": "lint-staged",
     "lint": "pnpm style:check . && pnpm format:check \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\"",
     "lint:fix": "pnpm format \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\" && pnpm style:fix . && pnpm format \"**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,json,jsonc,yaml,yml}\"",
-    "test:e2e": "pnpm --filter @gchat/e2e test"
+    "test:e2e": "pnpm --filter @gchat/e2e test",
+    "api:generate": "pnpm --filter @gchat/backend build && pnpm --filter @gchat/backend openapi:export ../../packages/backend-api/openapi.json && pnpm --filter @gchat/backend-api generate",
+    "api:check": "pnpm --filter @gchat/backend-api check"
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^5.10.0",

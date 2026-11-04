@@ -158,3 +158,7 @@ docker compose --env-file applications/backend/.env -f applications/backend/dock
 ## Восстановление
 
 При неизвестной актуальности Redis сначала читайте [правила восстановления](../../docs/backend/operations/recovery.md). Обычный перезапуск сохраняет volumes; удаление томов не является штатным способом восстановления доступа.
+
+## Генерация HTTP-клиента
+
+[Контракт backend-api](../../docs/packages/backend-api.md) описывает пакет, команды экспорта и проверки актуальности схемы. `pnpm api:generate` из корня собирает backend и обновляет снимок OpenAPI и SDK; `pnpm api:check` проверяет их без изменения файлов. `pnpm --filter @gchat/backend openapi:test` сравнивает автономный документ с документом HTTP-приложения из одной сборки. Внешняя инфраструктура для этих команд не нужна.
