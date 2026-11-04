@@ -1,14 +1,7 @@
 import { z } from 'zod';
 
-import {
-  ClientError,
-  errorMessage,
-  identity,
-  logout,
-  readSession,
-  retryAfter,
-  saveSession,
-} from './auth';
+import { ClientError, errorMessage, retryAfter } from '../../shared/api/client';
+import { identity, logout, readSession, saveSession } from '../auth/session';
 import type { Call } from './protocol';
 import {
   callResponse,

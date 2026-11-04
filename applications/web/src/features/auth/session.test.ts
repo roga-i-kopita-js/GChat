@@ -1,17 +1,9 @@
 import { ApiError, type GroupsResponseDto } from '@gchat/backend-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { Session } from './auth';
-import {
-  errorMessage,
-  identity,
-  login,
-  logout,
-  readSession,
-  request,
-  retryAfter,
-  saveSession,
-} from './auth';
+import { errorMessage, retryAfter } from '../../shared/api/client';
+import type { Session } from './session';
+import { identity, login, logout, readSession, request, saveSession } from './session';
 
 function session(exp = Date.now() / 1000 + 120, lifetime = 120, sid = 'session'): Session {
   const jwt =

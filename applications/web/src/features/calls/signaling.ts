@@ -1,4 +1,5 @@
-import { ClientError, request } from './auth';
+import { ClientError } from '../../shared/api/client';
+import { request } from '../auth/session';
 import { wireSchema } from './protocol';
 
 interface Pending {

@@ -1,6 +1,8 @@
 import { ApiError, type ApiResult, BackendApi } from '@gchat/backend-api';
 import { z } from 'zod';
 
+import { ClientError, createApi } from '../../shared/api/client';
+
 const tokens = z.object({
   access_token: z.string(),
   refresh_token: z.string(),
@@ -8,6 +10,7 @@ const tokens = z.object({
 });
 const claims = z.object({
   sub: z.string(),
+  role: z.enum(['user', 'admin']).default('user'),
   sid: z.string(),
   login: z.string(),
   display_name: z.string(),
@@ -22,16 +25,6 @@ const stored = tokens.extend({
 export type Session = z.infer<typeof stored>;
 
 const key = 'gchat.session.v1';
-
-export class ClientError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly retryAfter = 0,
-  ) {
-    super(message);
-  }
-}
 
 export function identity(session: Session): z.infer<typeof claims> {
   const part = session.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
@@ -63,32 +56,7 @@ export function saveSession(value: Session | null): void {
   window.dispatchEvent(new Event('gchat-session'));
 }
 
-function createApi(accessToken?: string): BackendApi {
-  return new BackendApi({
-    baseUrl: '/api',
-    getAccessToken: (): string | undefined => accessToken,
-    fetch: (input, init): Promise<Response> =>
-      globalThis.fetch(input, { ...init, cache: 'no-store' }),
-  });
-}
-
 const publicApi = createApi();
-
-export function errorMessage(cause: unknown, fallback: string): string {
-  if (cause instanceof ApiError && !cause.code) return 'Сервис временно недоступен';
-
-  return cause instanceof Error ? cause.message : fallback;
-}
-
-export function retryAfter(cause: unknown): number {
-  if (cause instanceof ClientError) return cause.retryAfter;
-
-  if (!(cause instanceof ApiError)) return 0;
-
-  const seconds = Number(cause.headers.get('Retry-After') ?? 0);
-
-  return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
-}
 
 function invalidateSession(cause: unknown, original: Session): void {
   if (!(cause instanceof ApiError || cause instanceof ClientError)) return;

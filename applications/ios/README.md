@@ -8,3 +8,5 @@
 - [Обзор приложения](../../docs/product/overview.md).
 - [Бизнес-требования](../../docs/product/requirements.md).
 - [Базовый дизайн](../../docs/design/README.md).
+
+Подготовлен [AppIcon asset catalog](Resources/Assets.xcassets/AppIcon.appiconset/) для будущего Xcode target: размеры iPhone/iPad и App Store 1024 × 1024. Источник и пересчёт размеров — в [описании брендинга](../../docs/design/branding/README.md). Каталог пока не включён в собранное приложение.

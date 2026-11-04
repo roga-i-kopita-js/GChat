@@ -67,11 +67,12 @@ test('full browser call uses relay audio, mute, reload and ends for both users',
     const extra = await a.newPage();
 
     await extra.goto('/');
+    await extra.getByRole('button', { name: 'Диагностика', exact: true }).click();
     await expect(extra.getByText('Звонками управляет другая вкладка GChat.')).toBeVisible();
     await expect(anna.getByTestId('call-status')).toHaveText('Разговор');
     await extra.close();
     await anna.reload();
-    await expect(anna.getByRole('heading', { name: 'Ваши люди' })).toBeVisible();
+    await expect(anna.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
     await expect(anna.getByTestId('call-status')).toHaveText('Разговор', { timeout: 20000 });
     await anna.getByRole('button', { name: 'Диагностика', exact: true }).click();
     await expect
@@ -111,8 +112,10 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
     await anna.getByRole('dialog').getByRole('button', { name: 'Отмена', exact: true }).click();
     await expect(maxim.getByTestId('call-status')).not.toBeVisible();
     await anna.reload();
-    await expect(anna.getByRole('heading', { name: 'Ваши люди' })).toBeVisible();
-    await expect(anna.getByRole('status').first()).toHaveText('На связи');
+    await expect(anna.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
+    await expect(
+      anna.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true }),
+    ).toBeEnabled();
     await maxim.getByRole('button', { name: 'Елена Соколова Голосовой звонок' }).click();
     await maxim.getByRole('button', { name: /Максим Волков @maxim/ }).click();
     await expect(maxim.getByRole('dialog')).toBeVisible();

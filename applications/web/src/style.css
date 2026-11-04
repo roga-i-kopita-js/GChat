@@ -1,10 +1,16 @@
 :root {
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
+  --page-gutter: 12px;
+  --header-height: 56px;
+  --tabs-height: 60px;
+  --brand-size: 32px;
+  --control-height: 44px;
+  --modal-padding: 20px;
+  --section-title-size: 18px;
+  font-size: 14px;
+  line-height: 1.45;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   color: #192738;
   background: #f4f6f9;
   font-synthesis: none;
@@ -19,8 +25,11 @@ body {
   margin: 0;
 }
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+  letter-spacing: normal;
 }
 button,
 a {
@@ -52,6 +61,12 @@ h3,
 p {
   margin: 0;
 }
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
 button svg {
   flex-shrink: 0;
 }
@@ -60,7 +75,7 @@ button svg {
   align-items: center;
   gap: 11px;
   font-size: 24px;
-  font-weight: 750;
+  font-weight: 700;
   letter-spacing: -1px;
 }
 .brand-mark {
@@ -74,10 +89,19 @@ button svg {
   color: white;
   box-shadow: 0 5px 13px #007aff20;
 }
+.brand-mark {
+  overflow: hidden;
+}
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 .brand-web {
   font-size: 10px;
   letter-spacing: 1.5px;
-  font-weight: 650;
+  font-weight: 600;
   color: #8a97a9;
   align-self: flex-start;
   margin-top: 8px;
@@ -96,10 +120,10 @@ button svg {
   justify-content: center;
   gap: 10px;
   border-radius: 11px;
-  padding: 14px 20px;
-  min-height: 48px;
+  padding: 10px 14px;
+  min-height: var(--control-height);
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   transition:
     background 0.15s,
     transform 0.15s;
@@ -107,7 +131,7 @@ button svg {
 .primary {
   background: #087cf0;
   color: white;
-  box-shadow: 0 4px 10px #087cf020;
+  box-shadow: none;
 }
 .primary:hover:not(:disabled) {
   background: #006bd8;
@@ -125,6 +149,8 @@ button svg {
   width: 100%;
 }
 .icon {
+  min-width: 44px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -196,7 +222,7 @@ button svg {
 }
 .login-card label {
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -291,26 +317,13 @@ button svg {
 }
 .app-shell {
   min-height: 100dvh;
-  display: grid;
-  grid-template-columns: 244px 1fr;
-}
-.sidebar {
-  height: 100dvh;
-  position: sticky;
-  top: 0;
-  background: white;
-  border-right: 1px solid #e4eaf1;
-  padding: 32px 18px 0;
   display: flex;
   flex-direction: column;
-}
-.sidebar .brand {
-  margin: 0 14px 44px;
 }
 .workspace-label {
   font-size: 9px;
   letter-spacing: 1.5px;
-  font-weight: 650;
+  font-weight: 600;
   color: #718092;
   padding: 0 15px;
   margin-bottom: 15px;
@@ -320,24 +333,13 @@ button svg {
   align-items: center;
   gap: 12px;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   border-radius: 10px;
   padding: 14px;
 }
 .nav-item.active {
   background: #edf5ff;
   color: #087cf0;
-}
-.sidebar-heading {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  font-weight: 650;
-  color: #8d98a6;
-  padding: 32px 14px 14px;
-}
-.sidebar-heading span {
-  color: #718092;
 }
 .group-button {
   display: flex;
@@ -383,13 +385,6 @@ button svg {
   background: #e5effc;
   color: #087cf0;
 }
-.sidebar nav {
-  overflow: auto;
-}
-.sidebar-bottom {
-  margin-top: auto;
-  padding-top: 30px;
-}
 .privacy-note {
   display: flex;
   gap: 10px;
@@ -428,7 +423,7 @@ button svg {
 }
 .profile strong {
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .profile small {
   font-size: 10px;
@@ -447,7 +442,7 @@ button svg {
   align-items: center;
   justify-content: center;
   color: #456584;
-  font-weight: 650;
+  font-weight: 600;
   font-size: 14px;
   letter-spacing: 0.4px;
 }
@@ -498,7 +493,7 @@ button svg {
   color: #a37f3d;
 }
 .content-grid {
-  display: grid;
+  display: flex;
   grid-template-columns: minmax(280px, 0.92fr) minmax(310px, 1.08fr);
   border: 1px solid #e4eaf2;
   background: white;
@@ -853,10 +848,13 @@ button svg {
 }
 .modal {
   border: 1px solid #e4eaf2;
-  border-radius: 20px;
-  padding: 30px;
-  max-width: 440px;
-  width: calc(100vw - 40px);
+  border-radius: 16px;
+  padding: var(--modal-padding);
+  max-width: 420px;
+  width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: 0 25px 100px #182b4d25;
   color: #192738;
 }
@@ -902,10 +900,27 @@ button svg {
   font-size: 15px;
 }
 .modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 25px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #edf0f5;
+}
+.modal .modal-actions > button {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 12px 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  box-shadow: none;
+}
+.modal-actions > button:only-child {
+  grid-column: 1 / -1;
 }
 .account-person {
   text-align: center;
@@ -923,7 +938,7 @@ button svg {
   height: 80px;
   font-size: 26px;
 }
-.modal .danger-button {
+.modal > .danger-button {
   margin-top: 22px;
 }
 .diagnostics {
@@ -1056,9 +1071,6 @@ button svg {
   }
 }
 @media (max-width: 1050px) {
-  .sidebar {
-    padding: 27px 12px 0;
-  }
   .app-shell {
     grid-template-columns: 210px 1fr;
   }
@@ -1082,180 +1094,7 @@ button svg {
     font-size: 39px;
   }
 }
-@media (max-width: 800px) {
-  .app-shell {
-    grid-template-columns: 1fr;
-  }
-  .sidebar {
-    position: static;
-    height: auto;
-    padding: 18px 20px 0;
-    border-right: 0;
-    border-bottom: 1px solid #e4eaf1;
-  }
-  .sidebar .brand {
-    margin: 0 0 17px;
-    font-size: 21px;
-  }
-  .sidebar .brand-mark {
-    width: 35px;
-    height: 35px;
-    border-radius: 11px;
-  }
-  .workspace-label,
-  .nav-item,
-  .sidebar-heading,
-  .privacy-note {
-    display: none;
-  }
-  .sidebar nav {
-    display: flex;
-    gap: 6px;
-    padding-bottom: 12px;
-    overflow: auto;
-  }
-  .group-button {
-    width: auto;
-    flex-shrink: 0;
-    padding: 7px 9px;
-  }
-  .group-button > .group-icon {
-    width: 26px;
-    height: 26px;
-  }
-  .group-button > svg {
-    display: none;
-  }
-  .sidebar-bottom {
-    position: absolute;
-    right: 17px;
-    top: 15px;
-    padding: 0;
-  }
-  .profile {
-    padding: 0;
-    border: 0;
-    width: auto;
-  }
-  .profile > .avatar {
-    width: 37px;
-    height: 37px;
-    font-size: 12px;
-  }
-  .profile > span:nth-child(2),
-  .profile > svg {
-    display: none;
-  }
-  .workspace {
-    height: auto;
-    min-height: calc(100dvh - 120px);
-    padding: 22px 18px 0;
-  }
-  .topbar {
-    margin-bottom: 20px;
-  }
-  .topbar h1 {
-    font-size: 24px;
-  }
-  .topbar .eyebrow {
-    font-size: 8px;
-  }
-  .connection {
-    font-size: 10px;
-    padding: 7px 9px;
-  }
-  .content-grid {
-    display: flex;
-    min-height: calc(100dvh - 275px);
-    max-height: none;
-  }
-  .contact-panel,
-  .detail-panel {
-    width: 100%;
-    border-right: 0;
-    min-height: 440px;
-  }
-  .mobile-hidden {
-    display: none;
-  }
-  .detail-panel {
-    padding: 12px;
-  }
-  .mobile-back {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    background: transparent;
-    color: #6d86a3;
-    font-size: 12px;
-    padding: 7px 4px 14px;
-    align-self: flex-start;
-  }
-  .person-preview,
-  .welcome-panel {
-    min-height: 400px;
-  }
-  .contact-row {
-    padding: 18px 20px;
-  }
-  .contact-row.chosen {
-    background: #f6f9ff;
-  }
-  .workspace-footer {
-    padding: 17px 2px;
-  }
-  .call-card {
-    min-height: 460px;
-  }
-  .login-page {
-    padding: 25px 20px;
-  }
-  .login-layout {
-    display: flex;
-    flex-direction: column;
-    gap: 30px;
-    padding: 30px 0;
-    width: 100%;
-    max-width: 420px;
-  }
-  .login-copy {
-    width: 100%;
-    text-align: center;
-  }
-  .login-copy .eyebrow {
-    font-size: 8px;
-    margin-top: 8px;
-  }
-  .login-copy h1 {
-    font-size: 31px;
-    letter-spacing: -1px;
-    margin: 15px 0;
-  }
-  .login-copy > p {
-    font-size: 13px;
-  }
-  .login-art {
-    display: none;
-  }
-  .login-card {
-    width: 100%;
-    padding: 27px;
-    border-radius: 20px;
-  }
-  .login-card .mini-icon {
-    display: none;
-  }
-  .login-page footer {
-    padding: 20px 0 0;
-  }
-  .tab-banner {
-    font-size: 11px;
-    align-items: flex-start;
-  }
-  .welcome-panel h2 {
-    font-size: 19px;
-  }
-}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *:before,
@@ -1263,4 +1102,846 @@ button svg {
     animation: none !important;
     transition: none !important;
   }
+}
+
+[hidden] {
+  display: none !important;
+}
+.admin-workspace {
+  flex: 1;
+  padding: 0;
+  min-width: 0;
+  overflow: auto;
+}
+.admin-heading,
+.admin-toolbar,
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.admin-heading {
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+.admin-heading h2 {
+  font-size: var(--section-title-size);
+}
+.admin-heading p,
+.admin-detail > p {
+  margin-top: 7px;
+  color: #66768a;
+  font-size: 14px;
+}
+.admin-toolbar {
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.admin-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 180px;
+  background: white;
+  padding: 0 14px;
+  border: 1px solid #dce3ec;
+  border-radius: 10px;
+}
+.admin-search input {
+  width: 100%;
+  border: 0;
+  padding: 13px 0;
+  background: transparent;
+}
+.admin-toolbar select {
+  font: inherit;
+  padding: 12px 42px 12px 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: var(--control-height);
+  width: 100%;
+  border: 1px solid #dce3ec;
+  border-radius: 10px;
+  background: white;
+  color: inherit;
+}
+.admin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.admin-list,
+.admin-detail {
+  background: white;
+  border: 1px solid #e3e8ef;
+  border-radius: 15px;
+  overflow: hidden;
+}
+.admin-list-caption {
+  padding: 16px;
+  font-size: 12px;
+  color: #66768a;
+  border-bottom: 1px solid #edf0f5;
+}
+.admin-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 16px;
+  width: 100%;
+  background: white;
+  text-align: left;
+  color: inherit;
+  border-bottom: 1px solid #edf0f5;
+}
+.admin-row:hover,
+.admin-row.selected {
+  background: #f0f6ff;
+}
+.admin-row-info {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.admin-row-info strong,
+.admin-row-info small {
+  display: block;
+}
+.admin-row-info small {
+  margin-top: 5px;
+  font-size: 12px;
+  color: #66768a;
+}
+.admin-status {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.admin-status.active {
+  color: #24744c;
+  background: #eaf7ef;
+}
+.admin-status.disabled {
+  color: #9c4f46;
+  background: #fff0ed;
+}
+.admin-pagination {
+  padding: 14px 16px;
+  font-size: 13px;
+}
+.admin-pagination > span {
+  flex: 1;
+}
+.admin-detail {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  overflow-wrap: anywhere;
+}
+.admin-detail > h2 {
+  margin-top: 16px;
+  font-size: 21px;
+}
+.admin-detail > .admin-status {
+  margin-top: 14px;
+}
+.admin-detail > button {
+  width: 100%;
+  margin-top: 12px;
+}
+.admin-facts {
+  margin: 24px 0;
+  font-size: 14px;
+}
+.admin-facts dt {
+  color: #66768a;
+  margin-top: 15px;
+  font-size: 12px;
+}
+.admin-facts dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+}
+.admin-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 18px 0;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.admin-form label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.admin-form input {
+  padding: 12px;
+  border: 1px solid #dce3ec;
+  border-radius: 9px;
+  width: 100%;
+  min-width: 0;
+}
+.admin-hint {
+  color: #66768a;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.admin-notice {
+  padding: 12px 16px;
+  background: #eaf7ef;
+  color: #24744c;
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+.credential-password {
+  font-family: monospace;
+  user-select: all;
+  padding: 12px;
+  background: #f4f6f9;
+  border-radius: 8px;
+}
+@media (max-width: 1200px) {
+  .admin-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.contacts-group-select {
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  background: white;
+  border: 1px solid #dce3ec;
+  border-radius: 8px;
+  padding: 6px 10px;
+  max-width: 100%;
+}
+
+.app-shell {
+  padding-bottom: calc(var(--tabs-height) + env(safe-area-inset-bottom, 0px));
+}
+.app-shell > .workspace {
+  height: auto;
+  min-height: calc(
+    100dvh - var(--header-height) - var(--tabs-height) - env(safe-area-inset-bottom, 0px)
+  );
+}
+.bottom-navigation {
+  position: fixed;
+  z-index: 30;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  min-height: calc(var(--tabs-height) + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px max(12px, env(safe-area-inset-right, 0px))
+    calc(4px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  border-top: 1px solid #e4eaf1;
+  background: #ffffffed;
+  backdrop-filter: blur(18px);
+}
+.bottom-tab {
+  flex: 1;
+  max-width: 180px;
+  min-width: 0;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border-radius: 10px;
+  color: #778596;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 600;
+  text-align: center;
+}
+.bottom-tab:hover {
+  background: #f2f6fc;
+}
+.bottom-tab.active {
+  color: #087cf0;
+  background: transparent;
+}
+
+.admin-status-filter {
+  position: relative;
+  flex-shrink: 0;
+}
+.admin-status-filter > svg {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #66768a;
+}
+.admin-status-filter select:focus-visible {
+  outline: 3px solid #75b8ff;
+  outline-offset: 3px;
+}
+.password-control {
+  display: grid;
+  gap: 7px;
+}
+.password-field {
+  position: relative;
+}
+.admin-form .password-field input {
+  padding-right: 90px;
+}
+.password-field-actions {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 2px;
+}
+.password-action {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: transparent;
+  color: #66768a;
+}
+.password-action:hover {
+  background: #edf5ff;
+  color: #087cf0;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-shrink: 0;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px var(--page-gutter);
+  background: white;
+  border-bottom: 1px solid #e4eaf1;
+}
+.app-header .brand-mark {
+  width: 40px;
+  height: 40px;
+}
+.app-header .profile {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.app-header .profile .avatar {
+  width: 40px;
+  height: 40px;
+}
+.profile-identity {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Mobile is the default layout. Desktop expands spacing and adds a second call pane. */
+.app-shell > .workspace {
+  width: 100%;
+  max-width: 1120px;
+  margin-inline: auto;
+  padding: var(--page-gutter);
+}
+.app-header .brand {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+}
+.app-header .brand-mark,
+.app-header .profile .avatar {
+  width: var(--brand-size);
+  height: var(--brand-size);
+}
+.app-header .profile {
+  width: 44px;
+  height: 44px;
+  justify-content: center;
+}
+.bottom-tab {
+  gap: 3px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.bottom-tab > svg {
+  width: 22px;
+  height: 22px;
+}
+.workspace-footer {
+  flex-shrink: 0;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+.workspace-footer button {
+  min-height: 44px;
+  padding: 8px;
+}
+.admin-heading {
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.admin-heading h2 {
+  font-size: var(--section-title-size);
+}
+.admin-heading p {
+  display: none;
+}
+.admin-heading > .primary {
+  flex-shrink: 0;
+  padding-inline: 12px;
+  gap: 6px;
+  font-size: 14px;
+}
+.admin-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.admin-search {
+  grid-column: 1 / -1;
+  min-width: 0;
+  min-height: 44px;
+  padding-inline: 12px;
+  gap: 8px;
+}
+.admin-search input {
+  padding-block: 10px;
+  font-size: 16px;
+  line-height: 1.25;
+}
+.admin-toolbar select {
+  min-height: 44px;
+  padding-block: 10px;
+  font-size: 16px;
+  line-height: 1.25;
+}
+.admin-toolbar > .secondary {
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.admin-list {
+  border-radius: 12px;
+}
+.admin-list-caption {
+  padding: 10px 12px;
+  font-size: 11px;
+}
+.admin-row {
+  gap: 10px;
+  padding: 10px 12px;
+}
+.admin-row > .avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 12px;
+}
+.admin-row-info strong,
+.admin-row-info small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-row-info strong {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.admin-row-info small {
+  margin-top: 2px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.admin-status {
+  padding: 3px 6px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.admin-pagination {
+  gap: 6px;
+  padding: 4px 8px 4px 12px;
+  font-size: 12px;
+}
+.admin-pagination > button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.modal h2 {
+  margin-bottom: 16px;
+  padding-right: 30px;
+  font-size: 18px;
+  line-height: 1.3;
+}
+.modal .close {
+  top: 6px;
+  right: 6px;
+  width: 44px;
+  height: 44px;
+}
+.modal p {
+  line-height: 1.45;
+}
+.modal-actions {
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+.modal .modal-actions > button {
+  font-size: 13px;
+}
+.confirm-person {
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.confirm-person > .avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 12px;
+}
+.admin-detail > .avatar.large,
+.account-person .avatar {
+  width: 64px;
+  height: 64px;
+  font-size: 22px;
+}
+.admin-detail > h2 {
+  margin: 12px 0 0;
+  font-size: 18px;
+}
+.admin-detail > .admin-status {
+  margin-top: 10px;
+}
+.admin-facts {
+  margin: 16px 0;
+  font-size: 14px;
+}
+.admin-facts dt {
+  margin-top: 10px;
+}
+.admin-facts dd {
+  margin-top: 3px;
+}
+.admin-detail > button {
+  margin-top: 8px;
+}
+.admin-form fieldset {
+  gap: 12px;
+  margin: 12px 0;
+}
+.admin-form label,
+.password-control {
+  gap: 6px;
+}
+.admin-form input,
+.login-card input {
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.25;
+}
+.admin-form .password-field input {
+  min-height: 48px;
+  padding-right: 96px;
+}
+.password-field-actions {
+  right: 2px;
+  gap: 0;
+}
+.password-action {
+  width: 44px;
+  height: 44px;
+}
+.admin-hint {
+  line-height: 1.45;
+}
+.content-grid {
+  min-height: 0;
+  max-height: none;
+  border-radius: 12px;
+}
+.contact-panel,
+.detail-panel {
+  width: 100%;
+  min-height: 0;
+  border-right: 0;
+}
+.mobile-hidden {
+  display: none;
+}
+.panel-title {
+  gap: 10px;
+  padding: 12px;
+}
+.panel-title .group-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+.panel-title p {
+  margin-top: 2px;
+  font-size: 11px;
+}
+.contacts-group-select {
+  min-height: 44px;
+  font-size: 16px;
+}
+.contact-list {
+  padding-block: 4px;
+}
+.contact-row {
+  gap: 8px;
+  padding: 8px 12px;
+}
+.contact-person {
+  min-height: 44px;
+  gap: 10px;
+}
+.contact-person .avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 12px;
+}
+.contact-call {
+  width: 44px;
+  height: 44px;
+}
+.contact-name strong {
+  font-size: 14px;
+}
+.contact-name small {
+  margin-top: 2px;
+  font-size: 11px;
+}
+.contacts-foot {
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 10px;
+}
+.detail-panel {
+  padding: 10px;
+}
+.mobile-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 4px;
+  align-self: flex-start;
+  color: #617b99;
+  background: transparent;
+  font-size: 13px;
+}
+.person-preview,
+.welcome-panel {
+  min-height: 280px;
+  padding: 16px;
+}
+.person-preview > .avatar.large {
+  width: 64px;
+  height: 64px;
+  font-size: 22px;
+}
+.person-preview h2 {
+  font-size: 20px;
+}
+.person-preview .primary {
+  margin-top: 20px;
+}
+.list-empty {
+  gap: 10px;
+  padding: 28px 16px;
+}
+.list-empty p {
+  line-height: 1.5;
+}
+.call-card,
+.incoming-call-modal .call-card {
+  min-height: min(360px, calc(100dvh - 24px));
+  padding: 18px 14px;
+}
+.call-person .avatar.large {
+  width: 72px;
+  height: 72px;
+  margin-block: 20px;
+  font-size: 24px;
+}
+.call-person h2 {
+  font-size: 21px;
+}
+.call-person p {
+  margin-top: 8px;
+}
+.call-controls {
+  gap: 24px;
+  margin-block: 16px;
+}
+.round-action > span {
+  width: 56px;
+  height: 56px;
+}
+.call-bottom {
+  margin-top: 20px;
+}
+.error-banner,
+.tab-banner {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.login-page {
+  padding: 16px;
+}
+.login-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  max-width: 400px;
+  padding-block: 24px;
+}
+.login-copy {
+  display: none;
+}
+.login-card {
+  width: 100%;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: none;
+}
+.login-card .mini-icon {
+  display: none;
+}
+.login-card h2 {
+  font-size: 22px;
+}
+.login-card > p {
+  margin: 8px 0 18px;
+}
+.login-card form {
+  gap: 14px;
+}
+.login-note {
+  padding-top: 16px;
+  margin-top: 16px;
+  line-height: 1.5;
+}
+.login-page footer {
+  padding-top: 0;
+}
+@media (min-width: 801px) {
+  :root {
+    --page-gutter: 24px;
+    --header-height: 64px;
+    --tabs-height: 64px;
+    --brand-size: 36px;
+    --modal-padding: 24px;
+    --section-title-size: 20px;
+  }
+  .bottom-tab {
+    min-height: 56px;
+  }
+  .admin-heading {
+    margin-bottom: 20px;
+  }
+  .admin-heading p {
+    display: block;
+  }
+  .admin-toolbar {
+    display: flex;
+    gap: 12px;
+  }
+  .admin-search {
+    min-width: 220px;
+  }
+  .admin-row {
+    padding: 12px 16px;
+  }
+  .content-grid {
+    display: grid;
+    min-height: 420px;
+  }
+  .contact-panel {
+    border-right: 1px solid #e9edf3;
+  }
+  .mobile-hidden {
+    display: flex;
+  }
+  .mobile-back {
+    display: none;
+  }
+  .panel-title {
+    padding: 16px;
+  }
+  .call-card {
+    min-height: 420px;
+  }
+  .login-page {
+    padding: 35px 7vw;
+  }
+  .login-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 400px;
+    gap: 6vw;
+    max-width: 1040px;
+    padding-block: 48px;
+  }
+  .login-copy {
+    display: block;
+  }
+  .login-card {
+    padding: 28px;
+  }
+  .login-card .mini-icon {
+    display: grid;
+  }
+}
+
+.admin-search input,
+.admin-toolbar select {
+  font-weight: 400;
+  line-height: 1.25;
+}
+.admin-search input::placeholder {
+  color: #7b8796;
+  opacity: 1;
+  font-weight: 400;
+}
+.admin-row-info,
+.admin-pagination,
+.admin-list-caption {
+  letter-spacing: normal;
 }
