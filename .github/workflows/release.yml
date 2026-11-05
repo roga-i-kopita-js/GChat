@@ -3,10 +3,12 @@ name: GChat release and manual deployment
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Unique release version, e.g. v0.1.0'
+      bump:
+        description: 'Version increment'
         required: true
-        type: string
+        type: choice
+        options: [patch, minor, major]
+        default: patch
       platform:
         description: 'Target Linux server architecture'
         type: choice
@@ -31,19 +33,20 @@ jobs:
     permissions:
       contents: write
     env:
-      VERSION: ${{ inputs.version }}
+      BUMP: ${{ inputs.bump }}
       PLATFORM: ${{ inputs.platform }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
-      - name: Validate version and fix source identity
+      - name: Calculate next version and fix source identity
         shell: bash
         run: |
-          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" > /dev/null 2>&1; then
-            echo 'Choose a new version: this tag already exists.'
-            exit 1
-          fi
+          # Include drafts: an incomplete release must not be overwritten.
+          gh api --paginate "repos/$GITHUB_REPOSITORY/tags?per_page=100" --jq '.[].name' > "$RUNNER_TEMP/gchat-versions"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name' >> "$RUNNER_TEMP/gchat-versions"
+          VERSION=$(python3 deployment/gchat/next-version.py "$BUMP" < "$RUNNER_TEMP/gchat-versions")
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Release version: $VERSION ($BUMP)"
           SOURCE_SHA=$(git rev-parse HEAD)
           echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
           echo "IMAGE=gchat:$SOURCE_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
