@@ -1,146 +1,75 @@
-import { ApiError, type ApiResult, BackendApi } from '@gchat/backend-api';
-import { z } from 'zod';
+import { ApiError, type ApiResult, type BackendApi } from '@gchat/backend-api';
 
-import { ClientError, createApi } from '../../shared/api/client';
+import { createApi } from '../../shared/api/client';
+import { embedded, invoke, nativePlugin, serverUrl } from '../../shared/native/bridge';
+import { nativeRuntime } from '../../shared/native/runtime';
+import * as browser from './browser-session';
 
-const tokens = z.object({
-  access_token: z.string(),
-  refresh_token: z.string(),
-  token_type: z.literal('Bearer'),
-});
-const claims = z.object({
-  sub: z.string(),
-  role: z.enum(['user', 'admin']).default('user'),
-  sid: z.string(),
-  login: z.string(),
-  display_name: z.string(),
-  iat: z.number(),
-  exp: z.number(),
-});
-const stored = tokens.extend({
-  deviceId: z.string().nullable(),
-  pending: z.object({ refresh_token: z.string(), request_id: z.string() }).nullable(),
-});
+export { identity, readSession, saveSession, type Session } from './browser-session';
 
-export type Session = z.infer<typeof stored>;
+export function currentSession(): { access_token: string } | null {
+  if (!embedded) return browser.readSession();
 
-const key = 'gchat.session.v1';
+  const token = nativeRuntime.getToken();
 
-export function identity(session: Session): z.infer<typeof claims> {
-  const part = session.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-  const bytes = Uint8Array.from(atob(part), (char): number => char.charCodeAt(0));
-
-  return claims.parse(JSON.parse(new TextDecoder().decode(bytes)));
-}
-
-export function readSession(): Session | null {
-  try {
-    const raw = localStorage.getItem(key);
-
-    if (!raw) return null;
-
-    const value = stored.parse(JSON.parse(raw));
-
-    identity(value);
-
-    return value;
-  } catch {
-    return null;
-  }
-}
-
-export function saveSession(value: Session | null): void {
-  if (value) localStorage.setItem(key, JSON.stringify(value));
-  else localStorage.removeItem(key);
-
-  window.dispatchEvent(new Event('gchat-session'));
-}
-
-const publicApi = createApi();
-
-function invalidateSession(cause: unknown, original: Session): void {
-  if (!(cause instanceof ApiError || cause instanceof ClientError)) return;
-
-  if (!['SESSION_INVALID', 'ACCESS_TOKEN_INVALID'].includes(cause.code ?? '')) return;
-
-  const current = readSession();
-
-  if (current && identity(current).sid === identity(original).sid) saveSession(null);
+  return token ? { access_token: token } : null;
 }
 
 export async function login(login: string, password: string): Promise<void> {
-  const result = tokens.parse((await publicApi.authLogin({ body: { login, password } })).data);
+  if (!embedded) return browser.login(login, password);
 
-  saveSession({ ...result, deviceId: null, pending: null });
+  const selected = new URLSearchParams(window.location.search).get('serverUrl');
+
+  await invoke((): Promise<void> =>
+    nativePlugin.login({ serverUrl: serverUrl(selected ?? ''), login, password }),
+  );
 }
 
-async function access(force = false): Promise<Session> {
-  return navigator.locks.request('gchat-refresh', async (): Promise<Session> => {
-    let session = readSession();
-
-    if (!session) throw new ClientError('SESSION_INVALID', 'Войдите в аккаунт');
-
-    const jwt = identity(session);
-    const refreshAheadMs = Math.min(15000, ((jwt.exp - jwt.iat) * 1000) / 4);
-
-    if (!force && !session.pending && jwt.exp * 1000 > Date.now() + refreshAheadMs) return session;
-
-    const pending = session.pending ?? {
-      refresh_token: session.refresh_token,
-      request_id: crypto.randomUUID(),
-    };
-
-    saveSession({ ...session, pending });
-
-    try {
-      const next = tokens.parse((await publicApi.authRefresh({ body: pending })).data);
-
-      // A concurrent logout must not be undone by a late refresh.
-      if (!readSession() || identity(readSession()!).sid !== identity(session).sid)
-        throw new ClientError('SESSION_INVALID', 'Сессия завершена');
-
-      session = { ...next, deviceId: session.deviceId, pending: null };
-      saveSession(session);
-
-      return session;
-    } catch (cause) {
-      invalidateSession(cause, session);
-
-      throw cause;
-    }
-  });
-}
-
-/** Session policy belongs to the application; the SDK performs each HTTP operation once. */
+/** A native session never reads browser tokens or calls the HTTP auth endpoints. */
 export async function request<T>(
   operation: (api: BackendApi) => Promise<ApiResult<T>>,
 ): Promise<T> {
-  const session = await access();
+  if (!embedded) return browser.request(operation);
+
+  const signal = nativeRuntime.getSignal();
+  const run = async (force: boolean): Promise<T> => {
+    const token = await nativeRuntime.access(force);
+
+    signal.throwIfAborted();
+    const result = await operation(createApi(token, signal));
+
+    signal.throwIfAborted();
+
+    return result.data;
+  };
 
   try {
     try {
-      return (await operation(createApi(session.access_token))).data;
+      return await run(false);
     } catch (cause) {
+      signal.throwIfAborted();
+
       if (!(cause instanceof ApiError && cause.code === 'ACCESS_TOKEN_EXPIRED')) throw cause;
 
-      const refreshed = await access(true);
-
-      return (await operation(createApi(refreshed.access_token))).data;
+      return await run(true);
     }
   } catch (cause) {
-    invalidateSession(cause, session);
+    if (
+      !signal.aborted &&
+      cause instanceof ApiError &&
+      ['SESSION_INVALID', 'ACCESS_TOKEN_INVALID'].includes(cause.code ?? '')
+    ) {
+      nativeRuntime.clear();
+      // Native determines the next route and clears its own session after confirmation.
+      void nativeRuntime.ready();
+    }
 
     throw cause;
   }
 }
 
 export async function logout(): Promise<void> {
-  await navigator.locks.request('gchat-refresh', async (): Promise<void> => {
-    const session = readSession();
+  if (!embedded) return browser.logout();
 
-    if (!session) return;
-
-    await publicApi.authLogout({ body: { refresh_token: session.refresh_token } });
-    saveSession(null);
-  });
+  await invoke((): Promise<void> => nativePlugin.logout());
 }

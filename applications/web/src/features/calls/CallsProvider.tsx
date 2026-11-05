@@ -3,14 +3,16 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { Dispatch, JSX, ReactNode, SetStateAction } from 'react';
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 
+import { embedded } from '../../shared/native/bridge';
 import { useAuth } from '../auth/AuthProvider';
 import { request } from '../auth/session';
 import { type ClientState, GChatClient } from './client';
+import { type CallsClient, NativeCallsClient } from './native-client';
 import { type Member, reasons } from './protocol';
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
 interface CallsRuntime {
-  client: GChatClient;
+  client: CallsClient;
   state: ClientState;
   groups: UseQueryResult<GroupsResponseDto>;
   members: UseQueryResult<GroupMembersResponseDto>;
@@ -31,7 +33,7 @@ interface CallsRuntime {
   selectedGroup: GroupsResponseDto['groups'][number] | undefined;
   currentMembers: Member[];
 }
-const client = new GChatClient();
+const client: CallsClient = embedded ? new NativeCallsClient() : new GChatClient();
 const CallsContext = createContext<CallsRuntime | null>(null);
 
 export function CallsProvider({ children }: { children: ReactNode }): JSX.Element {

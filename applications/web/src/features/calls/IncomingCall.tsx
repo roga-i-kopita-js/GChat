@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 
+import { embedded } from '../../shared/native/bridge';
 import { useAuth } from '../auth/AuthProvider';
 import { CallCard } from './CallCard';
 import { useCalls } from './CallsProvider';
@@ -9,7 +10,7 @@ export function IncomingCall(): JSX.Element | null {
   const { user } = useAuth();
   const { incoming } = useCalls();
 
-  return user && incoming ? (
+  return !embedded && user && incoming ? (
     <CallSurface incoming>
       <CallCard />
     </CallSurface>

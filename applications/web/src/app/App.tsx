@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router';
 
 import { type Credentials, CredentialsDialog } from '../features/administration/CredentialsDialog';
@@ -10,7 +10,10 @@ import { identity, readSession, saveSession } from '../features/auth/session';
 import { CallsPage } from '../features/calls/CallsPage';
 import { CallsProvider, useCalls } from '../features/calls/CallsProvider';
 import { IncomingCall } from '../features/calls/IncomingCall';
+import { embedded } from '../shared/native/bridge';
+import { nativeRuntime } from '../shared/native/runtime';
 import { AppLayout } from './AppLayout';
+import { NativeBoundary } from './NativeBoundary';
 
 function RequireSession(): JSX.Element {
   const { session } = useAuth();
@@ -18,6 +21,8 @@ function RequireSession(): JSX.Element {
 
   return session ? (
     <Outlet />
+  ) : embedded ? (
+    <p role="status">Ожидаем входа в приложении…</p>
   ) : (
     <Navigate
       to="/login"
@@ -43,10 +48,15 @@ function RequireAdmin(): JSX.Element {
   );
 }
 
-function ApplicationRoutes(): JSX.Element {
+function ApplicationRoutes({
+  credentials,
+  onCredentials,
+}: {
+  credentials: Credentials | null;
+  onCredentials(value: Credentials, sid: string): void;
+}): JSX.Element {
   const { user } = useAuth();
   const { incoming } = useCalls();
-  const [credentials, setCredentials] = useState<Credentials | null>(null);
 
   return (
     <>
@@ -67,7 +77,14 @@ function ApplicationRoutes(): JSX.Element {
                       userId={user.sub}
                       showDetails={!credentials && !incoming}
                       onCredentials={(value): void => {
-                        setCredentials(value);
+                        onCredentials(value, user.sid);
+
+                        if (embedded) {
+                          if (value.self) void nativeRuntime.ready();
+
+                          return;
+                        }
+
                         const current = readSession();
 
                         if (value.self && current && identity(current).sid === user.sid)
@@ -94,15 +111,42 @@ function ApplicationRoutes(): JSX.Element {
           }
         />
       </Routes>
-      {credentials && (
-        <CredentialsDialog value={credentials} close={(): void => setCredentials(null)} />
-      )}
     </>
   );
 }
 
 export function App(): JSX.Element {
-  if (!('locks' in navigator) || !('mediaDevices' in navigator))
+  const [credentials, setCredentials] = useState<{ value: Credentials; sid: string } | null>(null);
+
+  // A one-time self-reset result must survive confirmed revocation, as in the browser UI.
+  // Other account data is discarded on resync, and all credentials are hidden on backgrounding.
+  useEffect((): (() => void) | undefined => {
+    if (!embedded || !credentials) return;
+
+    const sync = (): void => {
+      const state = nativeRuntime.getSnapshot();
+      const token = nativeRuntime.getToken();
+
+      if (
+        (state.phase !== 'ready' && !credentials.value.self) ||
+        (token && identity({ access_token: token }).sid !== credentials.sid)
+      )
+        setCredentials(null);
+    };
+    const visibility = (): void => {
+      if (document.visibilityState !== 'visible') setCredentials(null);
+    };
+    const unsubscribe = nativeRuntime.subscribe(sync);
+
+    document.addEventListener('visibilitychange', visibility);
+
+    return (): void => {
+      unsubscribe();
+      document.removeEventListener('visibilitychange', visibility);
+    };
+  }, [credentials]);
+
+  if (!embedded && (!('locks' in navigator) || !('mediaDevices' in navigator)))
     return (
       <main className="unsupported">
         <h1>Откройте GChat в современном браузере</h1>
@@ -113,12 +157,24 @@ export function App(): JSX.Element {
       </main>
     );
 
-  return (
+  const content = (
     <AuthProvider>
       <CallsProvider>
-        <ApplicationRoutes />
+        <ApplicationRoutes
+          credentials={credentials?.value ?? null}
+          onCredentials={(value, sid): void => setCredentials({ value, sid })}
+        />
         <IncomingCall />
       </CallsProvider>
     </AuthProvider>
+  );
+
+  return (
+    <>
+      {embedded ? <NativeBoundary>{content}</NativeBoundary> : content}
+      {credentials && (
+        <CredentialsDialog value={credentials.value} close={(): void => setCredentials(null)} />
+      )}
+    </>
   );
 }

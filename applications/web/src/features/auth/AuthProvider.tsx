@@ -2,25 +2,34 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { JSX, ReactNode } from 'react';
 import { createContext, useContext, useEffect, useState } from 'react';
 
-import { identity, readSession, type Session } from './session';
+import { currentSession, identity } from './session';
 
-type AuthState = { session: Session | null; user: ReturnType<typeof identity> | null };
+type AuthState = {
+  session: boolean;
+  user: ReturnType<typeof identity> | null;
+};
 const AuthContext = createContext<AuthState | null>(null);
 
+function readAuth(): AuthState {
+  const session = currentSession();
+
+  return { session: !!session, user: session ? identity(session) : null };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [session, setSession] = useState(readSession);
+  const [state, setState] = useState(readAuth);
   const cache = useQueryClient();
 
   useEffect((): (() => void) => {
-    let sid = session ? identity(session).sid : null;
+    let sid = state.user?.sid ?? null;
     const sync = (): void => {
-      const next = readSession();
-      const nextSid = next ? identity(next).sid : null;
+      const next = readAuth();
+      const nextSid = next.user?.sid ?? null;
 
       if (sid !== nextSid) cache.clear();
 
       sid = nextSid;
-      setSession(next);
+      setState(next);
     };
 
     window.addEventListener('gchat-session', sync);
@@ -32,11 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     };
   }, [cache]);
 
-  return (
-    <AuthContext value={{ session, user: session ? identity(session) : null }}>
-      {children}
-    </AuthContext>
-  );
+  return <AuthContext value={state}>{children}</AuthContext>;
 }
 
 export function useAuth(): AuthState {

@@ -11,6 +11,7 @@ import {
 import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
 
+import { embedded } from '../../shared/native/bridge';
 import { Avatar, Modal, Select } from '../../shared/ui';
 import { useAuth } from '../auth/AuthProvider';
 import { CallCard } from './CallCard';
@@ -177,7 +178,7 @@ export function CallsPage(): JSX.Element {
             </button>
           )}
           {call ? (
-            !incoming && <CallCard />
+            (embedded || !incoming) && <CallCard />
           ) : person ? (
             <div className="person-preview">
               <span className="eyebrow">ГОЛОСОВОЙ ЗВОНОК</span>
@@ -229,7 +230,11 @@ export function CallsPage(): JSX.Element {
             <Avatar name={person.display_name} />
             <strong>{person.display_name}</strong>
           </div>
-          <p>Браузер запросит разрешение на микрофон.</p>
+          <p>
+            {embedded
+              ? 'Звонок начнётся в приложении.'
+              : 'Браузер запросит разрешение на микрофон.'}
+          </p>
           <div className="modal-actions">
             <button className="secondary" onClick={(): void => setConfirm(false)}>
               Отмена

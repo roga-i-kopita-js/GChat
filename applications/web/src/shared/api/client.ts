@@ -10,12 +10,18 @@ export class ClientError extends Error {
   }
 }
 
-export function createApi(accessToken?: string): BackendApi {
+export function createApi(accessToken?: string, cycleSignal?: AbortSignal): BackendApi {
   return new BackendApi({
     baseUrl: '/api',
     getAccessToken: (): string | undefined => accessToken,
     fetch: (input, init): Promise<Response> =>
-      globalThis.fetch(input, { ...init, cache: 'no-store' }),
+      globalThis.fetch(input, {
+        ...init,
+        cache: 'no-store',
+        signal: cycleSignal
+          ? AbortSignal.any([cycleSignal, ...(init?.signal ? [init.signal] : [])])
+          : init?.signal,
+      }),
   });
 }
 

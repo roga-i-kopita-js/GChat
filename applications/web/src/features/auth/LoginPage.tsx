@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router';
 
 import { errorMessage } from '../../shared/api/client';
+import { embedded } from '../../shared/native/bridge';
 import { useCalls } from '../calls/CallsProvider';
 import { useAuth } from './AuthProvider';
 import { loginDestination } from './navigation';
@@ -31,13 +32,18 @@ export function LoginPage(): JSX.Element {
     }
   }
 
-  if (session) return <Navigate to={loginDestination(location.state)} replace />;
+  if (session && !embedded) return <Navigate to={loginDestination(location.state)} replace />;
 
   return (
     <main className="login-page">
       <Link className="brand" to="/">
         <span className="brand-mark" aria-hidden="true">
-          <img src="/icons/icon-192.png" width="43" height="43" alt="" />
+          <img
+            src={`${import.meta.env.BASE_URL}icons/icon-192.png`}
+            width="43"
+            height="43"
+            alt=""
+          />
         </span>
         GChat<span className="brand-web">WEB</span>
       </Link>

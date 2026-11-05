@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "build:server": "tsc --noEmit && vite build --mode server",
+    "prebuild:server": "pnpm --filter @gchat/backend-api build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "prettier --write --ignore-unknown --ignore-path .gitignore --ignore-path ../../.prettierignore .",
@@ -20,6 +22,7 @@
     "pretest": "pnpm --filter @gchat/backend-api build"
   },
   "dependencies": {
+    "@capacitor/core": "^8.6.0",
     "@gchat/backend-api": "workspace:*",
     "@tanstack/react-query": "^5.105.3",
     "lucide-react": "^1.67.0",

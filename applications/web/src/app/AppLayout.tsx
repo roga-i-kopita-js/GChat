@@ -7,6 +7,7 @@ import { useAuth } from '../features/auth/AuthProvider';
 import { useCalls } from '../features/calls/CallsProvider';
 import { DiagnosticsDialog } from '../features/calls/DiagnosticsDialog';
 import { errorMessage } from '../shared/api/client';
+import { embedded } from '../shared/native/bridge';
 import { Avatar, Modal } from '../shared/ui';
 import { useDebug } from '../shared/useDebug';
 
@@ -34,7 +35,12 @@ export function AppLayout(): JSX.Element {
       <header className="app-header">
         <Link className="brand" to="/calls" aria-label="GChat — звонки">
           <span className="brand-mark" aria-hidden="true">
-            <img src="/icons/icon-192.png" width="43" height="43" alt="" />
+            <img
+              src={`${import.meta.env.BASE_URL}icons/icon-192.png`}
+              width="43"
+              height="43"
+              alt=""
+            />
           </span>
         </Link>
         <button className="profile" title="Мой аккаунт" onClick={(): void => setAccount(true)}>
@@ -90,7 +96,7 @@ export function AppLayout(): JSX.Element {
               <Volume2 size={14} /> Включить звук звонков
             </button>
           )}
-          {debug && (
+          {debug && !embedded && (
             <button onClick={(): void => setDiagnostics(true)}>
               <Code2 size={14} /> Диагностика
             </button>
@@ -146,7 +152,9 @@ export function AppLayout(): JSX.Element {
           </button>
         </Modal>
       )}
-      {debug && diagnostics && <DiagnosticsDialog close={(): void => setDiagnostics(false)} />}
+      {debug && !embedded && diagnostics && (
+        <DiagnosticsDialog close={(): void => setDiagnostics(false)} />
+      )}
     </div>
   );
 }

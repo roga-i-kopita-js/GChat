@@ -1,6 +1,7 @@
 import { ArrowRight, Mic, MicOff, Phone, PhoneOff, ShieldCheck, Volume2 } from 'lucide-react';
 import type { JSX } from 'react';
 
+import { embedded } from '../../shared/native/bridge';
 import { Avatar } from '../../shared/ui';
 import { useCalls } from './CallsProvider';
 
@@ -58,6 +59,9 @@ export function CallCard(): JSX.Element | null {
         </button>
       )}
       {incoming && state.error && <p role="alert">{state.error}</p>}
+      {embedded && call.state !== 'ended' && (
+        <p className="call-hint">Управление звонком доступно в приложении.</p>
+      )}
       <div className="call-controls">
         {call.state === 'ended' ? (
           <button
@@ -71,7 +75,7 @@ export function CallCard(): JSX.Element | null {
             Вернуться к контактам
             <ArrowRight size={17} />
           </button>
-        ) : incoming ? (
+        ) : embedded ? null : incoming ? (
           <>
             <button
               className="round-action decline"
