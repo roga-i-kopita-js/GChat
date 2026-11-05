@@ -2,6 +2,7 @@ import 'reflect-metadata';
 
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 
 import { AppModule } from './app.module.js';
 import { AuthService } from './auth/auth.service.js';
@@ -9,11 +10,15 @@ import { LoggerService } from './logger/logger.service.js';
 import { LoggerSettings } from './logger/logger-settings.js';
 import { SignalingAdapter } from './signaling/signaling.adapter.js';
 import { setupSwagger } from './swagger/setup-swagger.js';
+import { setupServerWeb } from './web/setup-server-web.js';
 
 const bootstrapLogger = new LoggerService();
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { logger: bootstrapLogger, abortOnError: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger: bootstrapLogger,
+    abortOnError: false,
+  });
   const logger = new LoggerService(app.get(LoggerSettings));
 
   app.useLogger(logger);
@@ -21,6 +26,7 @@ async function bootstrap(): Promise<void> {
 
   app.useWebSocketAdapter(new SignalingAdapter(app, app.get(AuthService)));
   setupSwagger(app);
+  setupServerWeb(app, process.env.GCHAT_WEB_ROOT);
   app.enableShutdownHooks();
   await app.listen(config.getOrThrow<number>('PORT'), config.getOrThrow<string>('HOST'));
   logger.log(

@@ -1,0 +1,47 @@
+# Included inside the host nginx http {} context.
+server {
+    listen 80;
+    server_name ${GCHAT_DOMAIN};
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+    location / {
+        return 308 https://${GCHAT_DOMAIN}$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name ${GCHAT_DOMAIN};
+    ssl_certificate /etc/letsencrypt/live/${GCHAT_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${GCHAT_DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    # Request URIs may contain credentials (e.g. WS tickets).
+    access_log off;
+    error_log /var/log/nginx/gchat-error.log crit;
+
+    proxy_set_header Host $host;
+    proxy_set_header Origin $http_origin;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:${GCHAT_HTTP_PORT}/;
+    }
+    location = /ws {
+        proxy_pass http://127.0.0.1:${GCHAT_HTTP_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 90s;
+    }
+    location = / {
+        proxy_pass http://127.0.0.1:${GCHAT_HTTP_PORT};
+    }
+    location /apps/ {
+        proxy_pass http://127.0.0.1:${GCHAT_HTTP_PORT};
+    }
+    location / {
+        return 404;
+    }
+}

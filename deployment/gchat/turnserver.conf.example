@@ -1,0 +1,15 @@
+# Fill on the server; match DIRECT_CALLS_TURN_SHARED_SECRET in backend.env.
+listening-port=3478
+fingerprint
+use-auth-secret
+static-auth-secret=REPLACE_ON_SERVER
+realm=chat.example.com
+# Public/private NAT mapping if needed: external-ip=PUBLIC_IP/PRIVATE_IP
+external-ip=REPLACE_PUBLIC_IP
+min-port=49160
+max-port=49259
+no-tls
+no-multicast-peers
+# CLI, DTLS and loopback peers remain disabled by the image defaults.
+log-file=stdout
+simple-log

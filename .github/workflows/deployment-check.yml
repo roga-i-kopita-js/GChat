@@ -1,0 +1,65 @@
+name: GChat deployment access check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  access-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check SSH, Docker and nginx without deploying
+        shell: bash
+        env:
+          SSH_HOST: ${{ vars.GCHAT_SSH_HOST }}
+          SSH_PORT: ${{ vars.GCHAT_SSH_PORT }}
+          SSH_USER: ${{ vars.GCHAT_SSH_USER }}
+          INSTALL_ROOT: ${{ vars.GCHAT_INSTALL_ROOT }}
+          SSH_KEY: ${{ secrets.GCHAT_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.GCHAT_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          : "${SSH_HOST:?}" "${SSH_PORT:?}" "${SSH_USER:?}" "${INSTALL_ROOT:?}"
+          : "${SSH_KEY:?}" "${SSH_KNOWN_HOSTS:?}"
+          [[ "$SSH_HOST" =~ ^[a-zA-Z0-9.-]+$ && "$SSH_USER" =~ ^[a-zA-Z0-9_-]+$ ]]
+          [[ "$SSH_PORT" =~ ^[0-9]+$ && "$INSTALL_ROOT" =~ ^/[a-zA-Z0-9/_-]+$ ]]
+          SSH_DIR=$(mktemp -d)
+          trap 'rm -rf "$SSH_DIR"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$SSH_DIR/key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$SSH_DIR/known_hosts"
+          ssh -i "$SSH_DIR/key" -p "$SSH_PORT" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$SSH_DIR/known_hosts" -o ConnectTimeout=20 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+            "$SSH_USER@$SSH_HOST" "bash -s -- '$INSTALL_ROOT'" <<'REMOTE'
+          set -euo pipefail
+          root=$1
+          printf 'SSH identity: '
+          whoami
+          docker compose version
+          docker info --format 'Docker platform: {{.OSType}}/{{.Architecture}}'
+          sudo -n nginx -t
+          sudo -n systemctl is-active --quiet nginx
+          test -d "$root/incoming" && test -w "$root/incoming"
+          test -d "$root/shared" && test -w "$root/shared"
+          echo 'SSH, Docker, nginx and release directories: OK'
+          missing=false
+          for file in compose.env backend.env secrets/apns.p8 turnserver.conf; do
+            if test -s "$root/shared/$file"; then
+              printf 'PRESENT shared/%s\n' "$file"
+            else
+              printf 'MISSING shared/%s\n' "$file"
+              missing=true
+            fi
+          done
+          if [[ "$missing" == true ]]; then
+            echo 'Access check passed. Full deployment still requires the missing server files and TLS setup.'
+          else
+            echo 'Server files exist. Their configuration, TLS and infrastructure readiness must be checked before deployment.'
+          fi
+          REMOTE
+          echo 'SSH access from GitHub runner: passed. No release was published or installed.' >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,101 @@
+name: GChat release and manual deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Unique release version, e.g. v0.1.0'
+        required: true
+        type: string
+      platform:
+        description: 'Target Linux server architecture'
+        type: choice
+        options: [linux/amd64, linux/arm64]
+        default: linux/amd64
+      deploy:
+        description: 'Also deploy to the configured production server'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gchat-production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ inputs.version }}
+      PLATFORM: ${{ inputs.platform }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate version and fix source identity
+        shell: bash
+        run: |
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$VERSION" > /dev/null 2>&1; then
+            echo 'Choose a new version: this tag already exists.'
+            exit 1
+          fi
+          SOURCE_SHA=$(git rev-parse HEAD)
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "IMAGE=gchat:$SOURCE_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+          printf '### GChat release\nVersion: %s\n\nSource: %s\n\nPlatform: %s\n' "$VERSION" "$SOURCE_SHA" "$PLATFORM" >> "$GITHUB_STEP_SUMMARY"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check backend, SDK and Web
+        run: |
+          pnpm api:check
+          pnpm style:check applications/backend/src/web applications/backend/test/server-web.e2e.spec.ts deployment/gchat/smoke-client.mjs
+          pnpm format:check .github/workflows/release.yml deployment/gchat/compose.yaml deployment/gchat/smoke-client.mjs applications/backend/src/web applications/backend/test/server-web.e2e.spec.ts
+          pnpm --filter @gchat/backend typecheck
+          pnpm --filter @gchat/backend test --watchman=false
+          pnpm --filter @gchat/backend exec node --test test/openapi-build.test.mjs
+          pnpm --filter @gchat/backend-api typecheck
+          pnpm --filter @gchat/backend-api test
+          pnpm --filter @gchat/web lint
+          pnpm --filter @gchat/web typecheck
+          pnpm --filter @gchat/web test
+          pnpm --filter @gchat/web build:server
+          pnpm docs:check
+          python3 -m unittest discover -s deployment/gchat/tests -p 'test_*.py'
+          for script in deployment/gchat/*.sh; do bash -n "$script"; done
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the release image
+        run: |
+          docker buildx build --load --platform "$PLATFORM" \
+            --build-arg "NODE_VERSION=$(cat .nvmrc)" \
+            -f deployment/gchat/Dockerfile -t "$IMAGE" .
+      - name: Test packaged image and nginx
+        run: bash deployment/gchat/smoke.sh
+      - name: Package the exact tested image
+        run: bash deployment/gchat/package-release.sh
+      - name: Publish immutable version assets
+        run: |
+          # A published version is never updated or overwritten by this workflow.
+          gh release create "$VERSION" release/* --draft --target "$SOURCE_SHA" \
+            --title "GChat $VERSION" --notes "Source: $SOURCE_SHA. Build: $GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT. Platform: $PLATFORM. Load gchat-image.tar.gz with docker load."
+          gh release edit "$VERSION" --draft=false --latest=false
+          echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION" >> "$GITHUB_STEP_SUMMARY"
+      - name: Deliver and deploy the same release
+        if: ${{ inputs.deploy }}
+        env:
+          SSH_HOST: ${{ vars.GCHAT_SSH_HOST }}
+          SSH_PORT: ${{ vars.GCHAT_SSH_PORT }}
+          SSH_USER: ${{ vars.GCHAT_SSH_USER }}
+          INSTALL_ROOT: ${{ vars.GCHAT_INSTALL_ROOT }}
+          SSH_KEY: ${{ secrets.GCHAT_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.GCHAT_SSH_KNOWN_HOSTS }}
+        run: bash deployment/gchat/deliver.sh

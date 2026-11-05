@@ -10,5 +10,7 @@ coverage/
 DerivedData/
 .build/
 build/
+/release/
+__pycache__/
 xcuserdata/
 *.xcuserstate

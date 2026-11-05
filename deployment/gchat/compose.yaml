@@ -1,0 +1,91 @@
+name: gchat
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+x-app: &app
+  image: ${GCHAT_IMAGE:?Select a release image}
+  env_file:
+    - ${GCHAT_SHARED_DIR:?Set the shared configuration directory}/backend.env
+  environment:
+    HOST: 0.0.0.0
+    PORT: '3000'
+    GCHAT_WEB_ROOT: /app/web
+    APNS_PRIVATE_KEY_FILE: /run/gchat-secrets/apns.p8
+  volumes:
+    - ${GCHAT_SHARED_DIR}/secrets:/run/gchat-secrets:ro
+  init: true
+  logging: *logging
+
+services:
+  app:
+    <<: *app
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${GCHAT_HTTP_PORT:-3000}:3000'
+    stop_grace_period: 30s
+
+  migrate:
+    <<: *app
+    profiles: [tools]
+    restart: 'no'
+    command: [node, dist/database/migrate.js]
+    healthcheck:
+      disable: true
+
+  postgres:
+    profiles: [infrastructure]
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  redis:
+    profiles: [infrastructure]
+    image: redis:8.2-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        exec /usr/local/bin/docker-entrypoint.sh redis-server \
+          --requirepass "$$REDIS_PASSWORD" --appendonly yes \
+          --appendfsync always --no-appendfsync-on-rewrite no \
+          --maxmemory 256mb --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -qx PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  coturn:
+    profiles: [infrastructure]
+    image: coturn/coturn:4.18.0-r0
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ${GCHAT_SHARED_DIR}/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: [-c, /etc/coturn/turnserver.conf]
+    logging: *logging
+
+volumes:
+  postgres-data:
+  redis-data:
