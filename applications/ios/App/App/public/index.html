@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; script-src 'self'; connect-src 'none'; img-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>GChat — сервер</title>
+    <link rel="stylesheet" href="server.css" />
+    <script src="server.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>GChat</h1>
+      <p>Укажите адрес вашего сервера</p>
+      <form>
+        <label for="server">Адрес сервера</label>
+        <input
+          id="server"
+          name="server"
+          type="url"
+          inputmode="url"
+          autocomplete="url"
+          autocapitalize="none"
+          spellcheck="false"
+          placeholder="https://chat.example.com"
+          required
+        />
+        <p id="error" role="alert"></p>
+        <button type="submit">Продолжить</button>
+      </form>
+    </main>
+  </body>
+</html>

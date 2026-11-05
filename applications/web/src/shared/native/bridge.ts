@@ -35,6 +35,8 @@ const messages: Record<string, string> = {
   VALIDATION_ERROR: 'Некорректные данные мобильной интеграции',
   SECURE_STORAGE_ERROR: 'Не удалось прочитать или сохранить сессию',
   UNAUTHENTICATED: 'Войдите в аккаунт',
+  INVALID_CREDENTIALS: 'Неверный логин или пароль',
+  SERVICE_UNAVAILABLE: 'Сервис временно недоступен',
   SESSION_INVALID: 'Сессия завершена. Войдите снова',
   NETWORK_ERROR: 'Проверьте соединение и повторите попытку',
   RATE_LIMITED: 'Слишком много запросов. Попробуйте позже',
@@ -42,12 +44,20 @@ const messages: Record<string, string> = {
 
 export function bridgeError(cause: unknown): ClientError {
   const parsed = z
-    .object({ code: z.string(), retryAfter: z.number().nonnegative().optional() })
+    .object({
+      code: z.string(),
+      retryAfter: z.number().nonnegative().optional(),
+      data: z.object({ retryAfter: z.number().nonnegative().optional() }).optional(),
+    })
     .safeParse(cause);
   const code =
     parsed.success && messages[parsed.data.code] ? parsed.data.code : 'BRIDGE_UNAVAILABLE';
 
-  return new ClientError(code, messages[code], parsed.success ? parsed.data.retryAfter : 0);
+  return new ClientError(
+    code,
+    messages[code],
+    parsed.success ? (parsed.data.retryAfter ?? parsed.data.data?.retryAfter ?? 0) : 0,
+  );
 }
 
 export async function invoke<T>(operation: () => Promise<T>): Promise<T> {

@@ -1,6 +1,6 @@
 import { Code2, LogOut, Phone, ShieldCheck, Volume2, X } from 'lucide-react';
 import type { JSX } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '../features/auth/AuthProvider';
@@ -8,11 +8,13 @@ import { useCalls } from '../features/calls/CallsProvider';
 import { DiagnosticsDialog } from '../features/calls/DiagnosticsDialog';
 import { errorMessage } from '../shared/api/client';
 import { embedded } from '../shared/native/bridge';
+import { nativeRuntime } from '../shared/native/runtime';
 import { Avatar, Modal } from '../shared/ui';
 import { useDebug } from '../shared/useDebug';
 
 export function AppLayout(): JSX.Element {
   const { user } = useAuth();
+  const native = useSyncExternalStore(nativeRuntime.subscribe, nativeRuntime.getSnapshot);
   const debug = useDebug();
   const { client, state, call, incoming, ongoing } = useCalls();
   const admin = useLocation().pathname.startsWith('/admin');
@@ -61,6 +63,10 @@ export function AppLayout(): JSX.Element {
             <button onClick={(): void => client.activate()} disabled={ongoing}>
               Открыть здесь
             </button>
+          </div>
+        ) : embedded && native.nativeCalls === false ? (
+          <div role="status" className="tab-banner">
+            Звонки в этой сборке приложения пока недоступны.
           </div>
         ) : state.connection !== 'online' ? (
           <div role="status" className="tab-banner">

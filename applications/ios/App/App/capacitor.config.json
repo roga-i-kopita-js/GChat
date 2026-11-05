@@ -1,0 +1,11 @@
+{
+  "appId": "com.gchat.app",
+  "appName": "GChat",
+  "webDir": "public",
+  "loggingBehavior": "none",
+  "packageClassList": [],
+  "ios": {
+    "webContentsDebuggingEnabled": false,
+    "allowsLinkPreview": false
+  }
+}

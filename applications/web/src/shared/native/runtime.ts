@@ -25,10 +25,11 @@ const capabilitiesSchema = z.strictObject({
   bridgeVersion: z.literal(bridgeVersion),
   platform: z.literal('ios'),
   nativeAuth: z.literal(true),
-  nativeCalls: z.literal(true),
+  nativeCalls: z.boolean(),
 });
 
 export interface NativeState {
+  nativeCalls: boolean | null;
   cycleId: string;
   epoch: number;
   phase: 'waiting' | 'ready' | 'error';
@@ -41,6 +42,7 @@ export interface NativeState {
 /** Only the HTTP transport reads the token. React and Query snapshots never contain it. */
 export class NativeRuntime {
   private state: NativeState = {
+    nativeCalls: null,
     cycleId: '',
     epoch: 0,
     phase: 'waiting',
@@ -199,7 +201,7 @@ export class NativeRuntime {
     const generation = ++this.generation;
 
     this.clear();
-    this.set({ cycleId: crypto.randomUUID(), error: null });
+    this.set({ cycleId: crypto.randomUUID(), error: null, nativeCalls: null });
     this.deadline = setTimeout((): void => {
       if (generation === this.generation) {
         this.fail({ code: 'BRIDGE_UNAVAILABLE' });
@@ -217,8 +219,11 @@ export class NativeRuntime {
 
       if (generation !== this.generation) return;
 
-      if (!capabilitiesSchema.safeParse(capabilities).success)
-        throw bridgeError({ code: 'UNSUPPORTED_VERSION' });
+      const parsedCapabilities = capabilitiesSchema.safeParse(capabilities);
+
+      if (!parsedCapabilities.success) throw bridgeError({ code: 'UNSUPPORTED_VERSION' });
+
+      this.set({ nativeCalls: parsedCapabilities.data.nativeCalls });
 
       for (const name of [
         'route',

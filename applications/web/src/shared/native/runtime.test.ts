@@ -192,6 +192,37 @@ describe('native bridge handshake and synchronization', (): void => {
     expect(currentSession()).toBeNull();
   });
 
+  it('supports an auth-only shell and keeps dialing unavailable', async (): Promise<void> => {
+    mock.plugin.getCapabilities.mockResolvedValueOnce({
+      bridgeVersion: 1,
+      platform: 'ios',
+      nativeAuth: true,
+      nativeCalls: false,
+    });
+    await nativeRuntime.ready();
+    emit('route', { path: '/calls', accessToken: token() });
+    emit('callSnapshot', { call: null, runtime: { status: 'offline', muted: false } });
+    expect(nativeRuntime.getSnapshot()).toMatchObject({ phase: 'ready', nativeCalls: false });
+    const client = new NativeCallsClient();
+    const stop = client.start();
+
+    emit('callRuntimeChanged', { status: { status: 'online', muted: false } });
+    await client.dial('c9308a56-c680-49ee-a664-e36566311111');
+    expect(mock.plugin.placeCall).not.toHaveBeenCalled();
+    emit('loggedOut', {});
+    emit('route', { path: '/login' });
+    emit('route', { path: '/calls', accessToken: token('B') });
+    expect(nativeRuntime.getSnapshot().nativeCalls).toBe(false);
+    stop();
+  });
+
+  it('reads Capacitor retry metadata without exposing native error text', (): void => {
+    expect(
+      bridgeError({ code: 'RATE_LIMITED', message: 'secret', data: { retryAfter: 12 } }),
+    ).toMatchObject({ code: 'RATE_LIMITED', retryAfter: 12 });
+    expect(bridgeError({ code: 'INVALID_CREDENTIALS' }).message).toBe('Неверный логин или пароль');
+  });
+
   it('times out an incomplete handshake and ignores subsequent events', async (): Promise<void> => {
     await nativeRuntime.ready();
     await vi.advanceTimersByTimeAsync(15000);

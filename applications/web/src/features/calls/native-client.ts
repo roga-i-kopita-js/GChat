@@ -68,7 +68,7 @@ export class NativeCallsClient implements CallsClient {
 
       this.set({
         call: snapshot.call,
-        connection: snapshot.runtime.status,
+        connection: snapshot.nativeCalls === false ? 'offline' : snapshot.runtime.status,
         muted: snapshot.runtime.muted,
       });
     };

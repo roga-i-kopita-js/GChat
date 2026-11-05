@@ -31,7 +31,7 @@ pnpm --filter @gchat/web build:server
 
 Сборка поддерживает браузерный и встроенный режимы одного Web-клиента. HTML и файлы `dist/static/` подготовлены для `/apps/client` и `/apps/static/`; React Router использует `/apps/client` как basename. Публичные файлы `dist/` вне `static/` доступны под `/apps/` (например, `/apps/icons/`). Backend-раздача и SPA fallback ещё не реализованы этой Web-частью. Не размещайте сборку как готовую интеграцию без серверных маршрутов и проверки production-загрузки по D008. Обычный `build` сохраняет корневые пути текущего браузерного развёртывания.
 
-Native shell должен выбрать встроенный режим до выполнения JS и реализовать Capacitor-плагин `GChat`. [Форматы запросов, событий и правила сессии](../../docs/web/README.md#встроенный-web-и-capacitor-bridge) — в контракте клиента. Для проверки обработки отсутствующего плагина в dev: `VITE_GCHAT_RUNTIME=native pnpm --filter @gchat/web dev`, затем `/apps/client/login`; ожидается явная ошибка bridge. Такой запуск не проверяет настоящий Capacitor или iOS.
+Создана [iOS-оболочка](../ios/README.md) с Capacitor-плагином `GChat`, выбором встроенного режима до выполнения JS и нативной сессией. Звонковый движок ещё отсутствует; оболочка возвращает `nativeCalls: false`. [Форматы запросов, событий и правила сессии](../../docs/web/README.md#встроенный-web-и-capacitor-bridge) — в контракте клиента. Для проверки обработки отсутствующего плагина в dev: `VITE_GCHAT_RUNTIME=native pnpm --filter @gchat/web dev`, затем `/apps/client/login`; ожидается явная ошибка bridge. Такой запуск не проверяет настоящий Capacitor или iOS.
 
 ## Изолированный стенд и проверки
 

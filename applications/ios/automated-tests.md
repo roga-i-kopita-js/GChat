@@ -1,8 +1,8 @@
 # План автоматизированных проверок GChat iOS
 
-Все проверки, не требующие ручной оценки поведения физического iPhone, автоматизируются. Этот документ описывает целевое покрытие: Xcode-проект, native test target и native-плагин ещё предстоит создать. Web unit-тесты адаптера bridge реализованы в [runtime.test.ts](../web/src/shared/native/runtime.test.ts); они не закрывают проверки настоящего Capacitor в Simulator. Simulator не используется как ручной этап приёмки. Ручные проверки физического устройства вынесены в [отдельный план](manual-tests.md).
+Все проверки, не требующие ручной оценки поведения физического iPhone, автоматизируются. Этот документ описывает целевое покрытие. Xcode-проект и Swift-плагин созданы; XCTest с fixture для сессии и origin находится в [NativeCore](NativeCore/Tests/GChatCoreTests/SessionTests.swift). Native/UI test target с реальным Capacitor и Simulator runner ещё предстоит создать. Web unit-тесты адаптера bridge реализованы в [runtime.test.ts](../web/src/shared/native/runtime.test.ts); они не закрывают проверки настоящего Capacitor в Simulator. Simulator не используется как ручной этап приёмки. Ручные проверки физического устройства вынесены в [отдельный план](manual-tests.md).
 
-Контракты и архитектурные критерии — в [D008](../../docs/architecture/decisions/D008-capacitor-bridge.md); существующий системный стенд и запуск реализованных E2E — в [E2E README](../../tests/e2e/README.md). Новые Simulator/native-наборы пока не подключены к командам репозитория; их выполнение нельзя объявлять успешным по результатам существующих browser/protocol-тестов.
+Контракты и архитектурные критерии — в [D008](../../docs/architecture/decisions/D008-capacitor-bridge.md); существующий системный стенд и запуск реализованных E2E — в [E2E README](../../tests/e2e/README.md). `pnpm --filter @gchat/ios test` запускает NativeCore XCTest на macOS. Simulator/native-интеграционные наборы пока не подключены к командам репозитория; их выполнение нельзя объявлять успешным по результатам существующих browser/protocol-тестов.
 
 ## Уровни автоматизации
 
