@@ -22,6 +22,9 @@ describe('Web Push outbox processing', (): void => {
       claim: jest.fn<DirectCallsDeliveryStore['claim']>().mockResolvedValue([job as any]),
       complete: jest.fn<DirectCallsDeliveryStore['complete']>().mockResolvedValue(undefined),
       retry: jest.fn<DirectCallsDeliveryStore['retry']>().mockResolvedValue(undefined),
+      repeatWebPush: jest
+        .fn<DirectCallsDeliveryStore['repeatWebPush']>()
+        .mockResolvedValue(undefined),
     };
     const devices = {
       resolveWebPushTarget: jest.fn<DevicesService['resolveWebPushTarget']>().mockResolvedValue({
@@ -44,14 +47,16 @@ describe('Web Push outbox processing', (): void => {
       } as any),
     };
     const client = {
-      send: jest.fn<WebPushClient['send']>().mockResolvedValue({ status: 201, retryAfterSeconds: 0 }),
+      send: jest
+        .fn<WebPushClient['send']>()
+        .mockResolvedValue({ status: 201, retryAfterSeconds: 0 }),
     };
     const worker = new WebPushWorker(
       store as any,
       calls as any,
       devices as any,
       client as any,
-      new ConfigService({ WEB_PUSH_ENABLED: webPushEnabled,  }),
+      new ConfigService({ WEB_PUSH_ENABLED: webPushEnabled }),
       new LoggerService(),
     );
 
@@ -73,13 +78,28 @@ describe('Web Push outbox processing', (): void => {
     }
   });
 
-  it('marks provider acceptance done without changing call state', async (): Promise<void> => {
+  it('schedules another notification after provider acceptance', async (): Promise<void> => {
     const f = fixture();
 
     await f.worker.tick();
-    expect(f.store.complete).toHaveBeenCalledWith('job', 'lease');
+    expect(f.store.repeatWebPush).toHaveBeenCalledWith('job', 'lease');
+    expect(f.store.complete).not.toHaveBeenCalled();
     expect(f.client.send).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['connecting', 'active', 'ended'])(
+    'stops repeating once the call is %s',
+    async (state): Promise<void> => {
+      const f = fixture();
+
+      await f.worker.tick();
+      f.calls.get.mockResolvedValue({ state });
+      await f.worker.tick();
+      expect(f.client.send).toHaveBeenCalledTimes(1);
+      expect(f.store.repeatWebPush).toHaveBeenCalledTimes(1);
+      expect(f.store.complete).toHaveBeenCalledWith('job', 'lease', 'cancelled');
+    },
+  );
 
   it('cancels an obsolete call or revoked target without sending', async (): Promise<void> => {
     const f = fixture();
@@ -88,7 +108,10 @@ describe('Web Push outbox processing', (): void => {
     await f.worker.tick();
     expect(f.store.complete).toHaveBeenCalledWith('job', 'lease', 'cancelled');
     expect(f.client.send).not.toHaveBeenCalled();
-    f.calls.get.mockResolvedValue({ state: 'ringing', ringing_deadline: new Date(Date.now() - 1).toISOString() });
+    f.calls.get.mockResolvedValue({
+      state: 'ringing',
+      ringing_deadline: new Date(Date.now() - 1).toISOString(),
+    });
     await f.worker.tick();
     expect(f.client.send).not.toHaveBeenCalled();
     f.devices.resolveWebPushTarget.mockResolvedValue(undefined);
@@ -109,6 +132,7 @@ describe('Web Push outbox processing', (): void => {
 
   it('invalidates only the exact subscription version on 404/410', async (): Promise<void> => {
     const f = fixture();
+
     f.client.send.mockResolvedValue({ status: 410 });
     await f.worker.tick();
     expect(f.devices.invalidateWebPushTarget).toHaveBeenCalledWith('session', 'version');

@@ -494,6 +494,54 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
     ).toBe('done');
   });
 
+  it('reschedules Web Push after 2.5 seconds without reviving cancelled jobs or stale leases', async (): Promise<void> => {
+    const call = await calls.create(actors[0], actors[1].userId);
+
+    await pool.query(
+      `INSERT INTO gchat_direct_call_deliveries (call_id,kind,version,device_id,session_id)
+       VALUES ($1,'web_push',0,$2,$3)`,
+      [call.call_id, actors[1].deviceId, actors[1].sessionId],
+    );
+    const [first] = await store.claim('web_push');
+
+    await pool.query(
+      "UPDATE gchat_direct_call_deliveries SET lease_until=now()-interval '1 second' WHERE id=$1",
+      [first.id],
+    );
+    const [second] = await store.claim('web_push');
+
+    await store.repeatWebPush(first.id, first.leaseToken!);
+    expect(await store.claim('web_push')).toEqual([]);
+
+    const before = Date.now();
+
+    await store.repeatWebPush(second.id, second.leaseToken!);
+    const after = Date.now();
+    const row = (
+      await pool.query('SELECT * FROM gchat_direct_call_deliveries WHERE id=$1', [first.id])
+    ).rows[0];
+
+    expect(row.status).toBe('pending');
+    expect(row.attempts).toBe(0);
+    expect(row.next_attempt_at.getTime()).toBeGreaterThanOrEqual(before + 2500);
+    expect(row.next_attempt_at.getTime()).toBeLessThanOrEqual(after + 2500);
+    expect(await store.claim('web_push')).toEqual([]);
+
+    await pool.query(
+      "UPDATE gchat_direct_call_deliveries SET next_attempt_at=now()-interval '1 second' WHERE id=$1",
+      [first.id],
+    );
+    const [third] = await store.claim('web_push');
+
+    await calls.accept(actors[1], call.call_id);
+    await store.repeatWebPush(third.id, third.leaseToken!);
+    expect(
+      (await pool.query('SELECT status FROM gchat_direct_call_deliveries WHERE id=$1', [first.id]))
+        .rows[0].status,
+    ).toBe('cancelled');
+    expect(await store.claim('web_push')).toEqual([]);
+  });
+
   it('resolves an unknown create commit without releasing or duplicating the call', async (): Promise<void> => {
     const original = db.db.transaction.bind(db.db);
     const spy = jest.spyOn(db.db, 'transaction');

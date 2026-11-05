@@ -110,6 +110,7 @@ self.addEventListener('push', (event) => {
         icon: config.icon,
         badge: config.icon,
         tag: valid ? 'gchat-call-' + payload.call_id : 'gchat-calls',
+        renotify: !expired,
         data: { url: config.startUrl },
       });
     })(),

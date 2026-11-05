@@ -104,4 +104,24 @@ export class DirectCallsDeliveryStore {
         ),
       );
   }
+
+  async repeatWebPush(id: string, leaseToken: string): Promise<void> {
+    await this.database.db
+      .update(callDeliveries)
+      .set({
+        status: 'pending',
+        attempts: 0,
+        leaseUntil: null,
+        nextAttemptAt: new Date(Date.now() + 2500),
+      })
+      .where(
+        and(
+          eq(callDeliveries.id, id),
+          eq(callDeliveries.kind, 'web_push'),
+          eq(callDeliveries.leaseToken, leaseToken),
+          eq(callDeliveries.status, 'processing'),
+          sql`${callDeliveries.leaseUntil} > now()`,
+        ),
+      );
+  }
 }

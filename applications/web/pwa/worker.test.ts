@@ -132,6 +132,7 @@ describe('PWA worker', (): void => {
       'GChat',
       expect.objectContaining({
         tag: `gchat-call-${call_id}`,
+        renotify: true,
         body: expect.stringContaining('Входящий звонок'),
       }),
     );
@@ -140,7 +141,10 @@ describe('PWA worker', (): void => {
     });
     expect(f.self.registration.showNotification).toHaveBeenLastCalledWith(
       'GChat',
-      expect.objectContaining({ body: expect.stringContaining('проверить звонки') }),
+      expect.objectContaining({
+        body: expect.stringContaining('проверить звонки'),
+        renotify: false,
+      }),
     );
   });
   it('focuses an existing call client without reloading it and never follows payload URLs', async (): Promise<void> => {
