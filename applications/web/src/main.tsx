@@ -6,9 +6,9 @@ import { BrowserRouter } from 'react-router';
 
 import { App } from './app/App';
 import { embedded } from './shared/native/bridge';
-import { pwaSupported, registerPwa } from './shared/pwa';
+import { startUpdates } from './shared/pwa-update';
 
-if (pwaSupported()) void registerPwa().catch((): void => {});
+startUpdates();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30000, retry: 1 } },

@@ -10,16 +10,19 @@ export function pwaSupported(): boolean {
 
 export function registerPwa(): Promise<ServiceWorkerRegistration> {
   if (!pwaSupported()) return Promise.reject(new Error('PWA доступна в HTTPS-сборке приложения.'));
+
   registration ??= navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, {
     scope: import.meta.env.BASE_URL,
     updateViaCache: 'none',
   });
+
   return registration;
 }
 
 export async function readyPwa(): Promise<ServiceWorkerRegistration> {
   await registerPwa();
   let timer: ReturnType<typeof setTimeout> | undefined;
+
   try {
     return await Promise.race([
       navigator.serviceWorker.ready,

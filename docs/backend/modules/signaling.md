@@ -27,7 +27,7 @@ tests: ["applications/backend/test/signaling.e2e.spec.ts", "applications/backend
 | `rtc.ice` | `{call_id, negotiation_id, candidate}` | ICE от выбранного участника |
 | `rtc.restart` | `{call_id}` | Просьба выбранного получателя к инициатору начать новую согласованную попытку |
 
-Проект браузерных команд `device.web_push_config` и `device.web_push` находится в [Devices](devices.md#web-push--проект-расширения); это предлагаемое расширение после `device.register`, не принятая часть таблицы выше.
+Браузерные команды `device.web_push_config` и `device.web_push` реализованы после `device.register`; их DTO, ограничения и ответы принадлежат [Devices](devices.md#web-push).
 
 `call_id` и `negotiation_id` — UUID. Последний создаёт клиент-инициатор для каждой новой попытки, включая ICE restart. SDP — непустая строка до 64 KiB UTF-8; тип SDP определяется командой, аудиосессия допускает только audio, видео и data channel не разрешаются. `candidate` — объект `{candidate: string, sdp_mid: string | null, sdp_mline_index: number | null}` либо `null` (конец кандидатов); строка до 4096 байт, индекс — целое от 0 до 65535, `sdp_mid` — до 256 символов; хотя бы один из mid/index задан для ненулевого кандидата. Незнакомые поля отклоняются. При преобразовании в WebRTC API клиент использует соответствующие camelCase-имена SDK.
 

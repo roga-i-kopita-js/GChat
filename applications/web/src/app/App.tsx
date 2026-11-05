@@ -14,6 +14,7 @@ import { embedded } from '../shared/native/bridge';
 import { nativeRuntime } from '../shared/native/runtime';
 import { AppLayout } from './AppLayout';
 import { NativeBoundary } from './NativeBoundary';
+import { PwaUpdate } from './PwaUpdate';
 
 function RequireSession(): JSX.Element {
   const { session } = useAuth();
@@ -159,6 +160,7 @@ export function App(): JSX.Element {
 
   const content = (
     <AuthProvider>
+      <PwaUpdate />
       <CallsProvider>
         <ApplicationRoutes
           credentials={credentials?.value ?? null}

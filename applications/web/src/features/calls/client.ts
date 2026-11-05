@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
-import { pwaSupported, readyPwa } from '../../shared/pwa';
 import { ClientError, errorMessage, retryAfter } from '../../shared/api/client';
+import { pwaSupported } from '../../shared/pwa';
+import { prepareUpdate, updateChannel, updateLock, updateRequested } from '../../shared/pwa-update';
+import { pushConfig, syncWebPush } from '../../shared/web-push';
 import { identity, logout, readSession, saveSession } from '../auth/session';
 import type { Call } from './protocol';
 import {
@@ -88,6 +90,27 @@ export class GChatClient {
   private pingRunning = false;
   private connectionGeneration = 0;
   private retryCount = 0;
+  private updatePending = false;
+  private hydrated = false;
+
+  private prepareFrontendUpdate = (): void => {
+    this.updatePending = true;
+    this.yieldForUpdate();
+  };
+
+  private yieldForUpdate(): void {
+    if (
+      this.updatePending &&
+      this.state.owner &&
+      this.hydrated &&
+      !this.state.busy &&
+      (!this.state.call || this.state.call.state === 'ended')
+    ) {
+      this.stopConnection();
+      this.set({ owner: false, connection: 'offline' });
+      this.release?.();
+    }
+  }
 
   constructor() {
     this.transport = new Signaling(
@@ -115,10 +138,32 @@ export class GChatClient {
     for (const listener of this.listeners) listener();
 
     if (this.state.owner) this.channel?.postMessage({ type: 'state', state: this.state });
+
+    this.yieldForUpdate();
   }
 
   start(): () => void {
     this.stopped = false;
+    const updates = new BroadcastChannel(updateChannel);
+
+    updates.onmessage = (event: MessageEvent<unknown>): void => {
+      if (event.data === 'prepare') this.prepareFrontendUpdate();
+    };
+    const finished = (): void => {
+      this.updatePending = false;
+    };
+
+    window.addEventListener(prepareUpdate, this.prepareFrontendUpdate);
+    window.addEventListener('gchat-update-finished', finished);
+    const updateMonitor = setInterval((): void => {
+      if (this.updatePending)
+        void updateRequested()
+          .then((pending): void => {
+            if (!pending) this.updatePending = false;
+          })
+          .catch((): void => {});
+    }, 1000);
+
     this.channel = new BroadcastChannel('gchat-client');
     this.channel.onmessage = (event: MessageEvent<unknown>): void => {
       const message = event.data;
@@ -151,6 +196,10 @@ export class GChatClient {
 
     return (): void => {
       this.stopped = true;
+      updates.close();
+      clearInterval(updateMonitor);
+      window.removeEventListener(prepareUpdate, this.prepareFrontendUpdate);
+      window.removeEventListener('gchat-update-finished', finished);
       this.lockAbort?.abort();
       this.release?.();
       this.stopConnection();
@@ -191,14 +240,27 @@ export class GChatClient {
       .request('gchat-ws-owner', { signal: controller.signal }, async (): Promise<void> => {
         if (this.stopped || this.sid !== sid) return;
 
-        this.set({ owner: true });
-        void this.connect();
-        await new Promise<void>((resolve): void => {
-          this.release = resolve;
-        });
-        this.release = undefined;
-        this.stopConnection();
-        this.set({ owner: false, selected: false });
+        await navigator.locks.request(
+          updateLock,
+          { mode: 'shared', signal: controller.signal },
+          async (): Promise<void> => {
+            if (this.stopped || this.sid !== sid) return;
+
+            this.updatePending = false;
+            this.hydrated = false;
+            // Install the release function before any asynchronous connection work.
+            const lifetime = new Promise<void>((resolve): void => {
+              this.release = resolve;
+            });
+
+            this.set({ owner: true });
+            void this.connect();
+            await lifetime;
+            this.release = undefined;
+            this.stopConnection();
+            this.set({ owner: false, connection: 'offline', selected: false });
+          },
+        );
       })
       .catch((): void => {})
       .finally((): void => {
@@ -221,6 +283,7 @@ export class GChatClient {
       return Promise.reject(
         new Error('Откройте GChat в основной вкладке и дождитесь подключения.'),
       );
+
     return this.transport.send(type, payload);
   }
 
@@ -228,6 +291,8 @@ export class GChatClient {
     if (!this.state.owner || !readSession()) return;
 
     const generation = ++this.connectionGeneration;
+
+    this.hydrated = false;
 
     this.set({ connection: 'connecting' });
 
@@ -248,6 +313,7 @@ export class GChatClient {
       saveSession({ ...session, deviceId: registered.device_id });
       this.set({ connection: 'online', error: null });
       this.retryCount = 0;
+
       // Rebind existing consent after login/reconnect; never request permission automatically.
       if (
         pwaSupported() &&
@@ -256,24 +322,23 @@ export class GChatClient {
         Notification.permission === 'granted'
       ) {
         void (async (): Promise<void> => {
-          const registration = await readyPwa();
-          const subscription = await registration.pushManager.getSubscription();
-          if (!subscription || generation !== this.connectionGeneration) return;
-          const config = z
-            .object({ public_key: z.string().nullable() })
-            .parse(await this.webPush('device.web_push_config', {}));
+          const config = pushConfig.parse(await this.webPush('device.web_push_config', {}));
+
           if (!config.public_key || generation !== this.connectionGeneration) return;
-          const value = subscription.toJSON();
-          await this.webPush('device.web_push', {
-            subscription: {
-              endpoint: value.endpoint,
-              p256dh: value.keys?.p256dh,
-              auth: value.keys?.auth,
-            },
-          });
-        })().catch((): void => {});
+
+          await syncWebPush(
+            config.public_key,
+            (): boolean => generation === this.connectionGeneration && this.state.owner,
+            (subscription): Promise<unknown> => this.webPush('device.web_push', { subscription }),
+          );
+        })().catch((cause: unknown): void => {
+          if (generation === this.connectionGeneration) this.fail(cause);
+        });
       }
+
       const current = currentResponse.parse(await this.transport.send('call.current', {})).call;
+
+      if (generation !== this.connectionGeneration) return;
 
       if (current) {
         await this.update(current);
@@ -283,6 +348,9 @@ export class GChatClient {
         this.disposeMedia();
         this.set({ call: null, selected: false });
       }
+
+      this.hydrated = true;
+      this.yieldForUpdate();
     } catch (cause) {
       if (generation !== this.connectionGeneration) return;
 
@@ -366,6 +434,8 @@ export class GChatClient {
   }
 
   private async event(type: string, payload: unknown): Promise<void> {
+    if (!this.state.owner) return;
+
     if (type === 'call.updated') {
       const call = callResponse.parse(payload).call;
 
@@ -846,6 +916,8 @@ export class GChatClient {
   }
 
   async dial(recipientId: string): Promise<void> {
+    if (this.updatePending) return;
+
     await this.action(async (): Promise<void> => {
       await this.microphone();
       const call = callResponse.parse(
@@ -913,7 +985,9 @@ export class GChatClient {
 
           if (current) await this.update(current);
         } catch {
-          /* Reconnect will fetch the authoritative state. */
+          // Keep the update barrier until reconnect resolves the unknown command outcome.
+          this.hydrated = false;
+          this.scheduleReconnect();
         }
       }
     } finally {

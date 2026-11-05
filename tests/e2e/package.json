@@ -16,7 +16,9 @@
     "style:check": "oxlint --config ../../.oxlintrc.json --deny-warnings .",
     "style:fix": "oxlint --config ../../.oxlintrc.json --fix --deny-warnings .",
     "lint": "pnpm style:check && pnpm format:check",
-    "lint:fix": "pnpm format && pnpm style:fix && pnpm format"
+    "lint:fix": "pnpm format && pnpm style:fix && pnpm format",
+    "test:pwa": "pnpm --filter @gchat/web exec vite build --emptyOutDir --outDir ../../tests/e2e/.local/pwa/root && pnpm --filter @gchat/web exec vite build --mode server --emptyOutDir --outDir ../../tests/e2e/.local/pwa/server && playwright test --config pwa.config.ts",
+    "pretest:pwa": "pnpm --filter @gchat/web typecheck"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",

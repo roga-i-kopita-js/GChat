@@ -15,7 +15,12 @@ RUN pnpm --filter @gchat/backend build \
 FROM dependencies AS web-build
 RUN pnpm --filter @gchat/web build:server \
     && test -s applications/web/dist/index.html \
-    && test -d applications/web/dist/static
+    && test -d applications/web/dist/static \
+    && test -s applications/web/dist/sw.js \
+    && test -s applications/web/dist/site.webmanifest \
+    && test -s applications/web/dist/icons/icon-192.png \
+    && test -s applications/web/dist/icons/icon-512.png \
+    && test -s applications/web/dist/icons/maskable-512.png
 
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 GCHAT_WEB_ROOT=/app/web

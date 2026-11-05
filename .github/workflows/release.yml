@@ -69,6 +69,10 @@ jobs:
           pnpm docs:check
           python3 -m unittest discover -s deployment/gchat/tests -p 'test_*.py'
           for script in deployment/gchat/*.sh; do bash -n "$script"; done
+      - name: Check production PWA in Chromium
+        run: |
+          pnpm --filter @gchat/e2e exec playwright install --with-deps chromium
+          pnpm --filter @gchat/e2e test:pwa
       - name: Build server Web client
         run: pnpm --filter @gchat/web build:server
       - uses: docker/setup-qemu-action@v3
@@ -78,7 +82,7 @@ jobs:
           docker buildx build --load --platform "$PLATFORM" \
             --build-arg "NODE_VERSION=$(cat .nvmrc)" \
             -f deployment/gchat/Dockerfile -t "$IMAGE" .
-      - name: Verify backend serves packaged Web, API and WSS over HTTPS
+      - name: Verify packaged PWA, API and Web Push registration over HTTPS
         run: bash deployment/gchat/smoke.sh
       - name: Package the exact tested image
         run: bash deployment/gchat/package-release.sh

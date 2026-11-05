@@ -3,7 +3,7 @@ doc_type: module
 decision_status: accepted
 implementation_status: partial
 source: applications/backend/src/push/
-tests: ["applications/backend/src/push/push.client.spec.ts", "applications/backend/src/push/push.worker.spec.ts"]
+tests: ["applications/backend/src/push/push.client.spec.ts", "applications/backend/src/push/push.worker.spec.ts", "applications/backend/src/push/web-push.config.spec.ts", "applications/backend/src/push/web-push.worker.spec.ts"]
 ---
 
 # Push
@@ -50,9 +50,9 @@ tests: ["applications/backend/src/push/push.client.spec.ts", "applications/backe
 
 Unit-тесты `push.client.spec.ts` и `push.worker.spec.ts` проверяют подпись и заголовки, обработку ответов провайдера и повторы с подменённым HTTP/2-транспортом. Обращения к настоящему APNs и проверки iPhone в них нет; критерии не являются отчётом этих проверок.
 
-### Web Push — проект расширения
+### Web Push
 
-Предложение по [D010](../../architecture/decisions/D010-web-push-pwa.md); существующий APNs-контракт выше сохраняется. Браузерные подписки принадлежат [Devices](devices.md#web-push--проект-расширения), задания — [DirectCalls](direct-calls/README.md#web-push-в-outbox--проект-расширения). Сам Push публичных команд не добавляет.
+Реализация по принятому [D010](../../architecture/decisions/D010-web-push-pwa.md); существующий APNs-контракт выше сохраняется. Браузерные подписки принадлежат [Devices](devices.md#web-push), задания — [DirectCalls](direct-calls/README.md#web-push-в-outbox). Сам Push публичных команд не добавляет.
 
 #### Доставка
 
@@ -66,7 +66,7 @@ Payload: `{call_id, ringing_deadline}`. Профильные данные, то�
 
 #### Настройки
 
-Предлагается независимый от APNs `WEB_PUSH_ENABLED=true/false`, по умолчанию `false`. При выключении worker не забирает задания и клиент получает `public_key: null`; WSS и кеш фронта продолжают работать. Включение требует:
+Используется независимый от APNs `WEB_PUSH_ENABLED=true/false`, по умолчанию `false`. При выключении worker не забирает задания и клиент получает `public_key: null`; WSS и кеш фронта продолжают работать. Включение требует:
 
 | Переменная             | Назначение                                       |
 | ---------------------- | ------------------------------------------------ |

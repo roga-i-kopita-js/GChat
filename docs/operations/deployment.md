@@ -31,7 +31,7 @@ implementation_status: partial
 - Есть локальный Compose PostgreSQL/Redis: [запуск backend](../../applications/backend/README.md). Это окружение разработки, не production-комплект.
 - Есть отдельные команды миграций и создания администратора. [Миграции](../backend/operations/migrations.md) выполняются до запуска новой версии HTTP-приложения.
 - Есть [CI для backend-api и Web](../../.github/workflows/backend-api.yml) и отдельные ручные workflow [сборки релиза](../../.github/workflows/release.yml) и [деплоя готового релиза](../../.github/workflows/deploy.yml). [Комплект](../../deployment/gchat/) содержит Dockerfile, Compose, шаблон nginx и сценарии упаковки, проверки и установки релиза.
-- Backend раздаёт `build:server` под `/apps/client`, `/apps/static/` и `/apps/` при заданном `GCHAT_WEB_ROOT`; HTTP-ответ HTML имеет `no-store`. Проект кеширования публичной оболочки через service worker описан в [Web](../web/README.md#pwa-web-push-и-кеширование--проект). Проверки маршрутов находятся в `applications/backend/test/server-web.e2e.spec.ts`. Это не закрывает проверку production remote loading в Capacitor по [D008](../architecture/decisions/D008-capacitor-bridge.md).
+- Backend раздаёт `build:server` под `/apps/client`, `/apps/static/` и `/apps/` при заданном `GCHAT_WEB_ROOT`; HTTP-ответ HTML имеет `no-store`. Правила кеширования публичной оболочки через service worker описан в [Web](../web/README.md#pwa-web-push-и-кеширование). Проверки маршрутов находятся в `applications/backend/test/server-web.e2e.spec.ts`. Это не закрывает проверку production remote loading в Capacitor по [D008](../architecture/decisions/D008-capacitor-bridge.md).
 - Изолированный `deployment/gchat/smoke.sh` проверяет образ, повторное применение миграций, readiness, HTTPS через nginx, Web assets, SPA и авторизованный WSS. Он не проверяет APNs, TURN-аудио или ёмкость восьми звонков. Настройка сервера и реальная SSH-выкладка выполняются отдельно.
 
 ## Состав окружения
@@ -289,11 +289,18 @@ SSH запускает сценарий через `nohup`, затем опра�
 
 Эти вопросы не меняют согласованный ручной способ доставки, но не считаются уже принятыми решениями.
 
-## Проект развёртывания PWA и Web Push
+## Развёртывание PWA и Web Push
 
-Контур ещё не прошёл полную приёмку; [D010](../architecture/decisions/D010-web-push-pwa.md) имеет статус draft. Предложенные правила установки и кеша принадлежат [Web](../web/README.md#pwa-web-push-и-кеширование--проект), настройки VAPID и процедура получения ключей — [Push](../backend/modules/push.md#web-push--проект-расширения). Это не инструкция немедленного включения на рабочем сервере.
+Контур реализован по принятому [D010](../architecture/decisions/D010-web-push-pwa.md); настоящая фоновая доставка требует отдельной приёмки. Правила установки и кеша принадлежат [Web](../web/README.md#pwa-web-push-и-кеширование), настройки VAPID и процедура получения ключей — [Push](../backend/modules/push.md#web-push). Это не инструкция немедленного включения на рабочем сервере.
 
-Для будущего включения требуется применить подготовленную миграцию подписок/outbox штатной командой до запуска новой версии, опубликовать полную `build:server` и задать VAPID-настройки в защищённом окружении backend. Ключи сохраняются между релизами; в Docker image и frontend попадает только публичная часть через конфигурацию сервиса. Web Push не требует включения APNs.
+Релизная проверка должна подтверждать комплектность PWA до публикации образа:
+
+- Docker-сборка проверяет наличие `sw.js`, `site.webmanifest` и основных иконок вместе с HTML и JS/CSS.
+- Отдельный Chromium-прогон обеих сборок проверяет офлайн-навигацию, согласованное обновление окон, откат и сохранение предыдущего кеша при неполной публикации. Он не использует звонковый стенд; команда и границы описаны в [E2E](../../tests/e2e/README.md#проверки-production-pwa-без-звонкового-стенда).
+- Изолированный smoke-тест образа через nginx проверяет доступность worker, manifest и всех объявленных иконок, корректный MIME и `Cache-Control: no-cache` для worker/manifest; HTML сохраняет `no-store`, хешированные JS/CSS — `immutable`. HTML вместо статики считается ошибкой.
+- В smoke-тесте Web Push включается с одноразовой тестовой VAPID-парой, APNs выключен. Авторизованный WSS выполняет `device.register`, чтение публичной конфигурации, регистрацию и удаление тестовой подписки. Создание вызова и отправка настоящему push-провайдеру не выполняются. Эти проверки подтверждают конфигурацию, миграцию и регистрационный путь, но не доставку.
+
+Для включения требуется применить подготовленную миграцию подписок/outbox штатной командой до запуска новой версии, опубликовать полную `build:server` и задать VAPID-настройки в защищённом окружении backend. Ключи сохраняются между релизами; в Docker image и frontend попадает только публичная часть через конфигурацию сервиса. Web Push не требует включения APNs.
 
 Reverse proxy должен пропускать `/apps/sw.js`, `/apps/site.webmanifest` и иконки как статические файлы, сохраняя MIME и заголовки свежести backend. SPA fallback не подставляется вместо worker и assets. HTTPS обязателен вне доверенного localhost. Backend требуется исходящий HTTPS к разрешённым браузерным push-провайдерам.
 

@@ -3,27 +3,17 @@ import { useEffect, useState } from 'react';
 import { z } from 'zod';
 
 import { errorMessage } from '../../shared/api/client';
+import { embedded } from '../../shared/native/bridge';
 import { pwaSupported, readyPwa } from '../../shared/pwa';
+import { matchesVapid, syncWebPush } from '../../shared/web-push';
 import { useAuth } from '../auth/AuthProvider';
 import { identity, readSession } from '../auth/session';
+import { useCalls } from './CallsProvider';
 
 function currentSession(sid: string | undefined): boolean {
   const session = readSession();
-  return !!session && identity(session).sid === sid;
-}
-import { useCalls } from './CallsProvider';
 
-function address(subscription: PushSubscription): {
-  endpoint: string;
-  p256dh: string;
-  auth: string;
-} {
-  const json = subscription.toJSON();
-  return z.object({ endpoint: z.string(), p256dh: z.string(), auth: z.string() }).parse({
-    endpoint: json.endpoint,
-    p256dh: json.keys?.p256dh,
-    auth: json.keys?.auth,
-  });
+  return !!session && identity(session).sid === sid;
 }
 
 export function WebPushControls(): JSX.Element | null {
@@ -38,69 +28,81 @@ export function WebPushControls(): JSX.Element | null {
 
   useEffect((): (() => void) => {
     let stopped = false;
+
     setEnabled(false);
     setServerKey(null);
     setError('');
+
     if (supported && online && client.webPush) {
       void (async (): Promise<void> => {
         const { public_key } = z
           .object({ public_key: z.string().nullable() })
           .parse(await client.webPush?.('device.web_push_config', {}));
+
         if (stopped || !currentSession(user?.sid)) return;
+
         setServerKey(public_key);
         const registration = await readyPwa();
         const subscription = await registration.pushManager.getSubscription();
+
         if (stopped || !currentSession(user?.sid)) return;
+
         if (public_key && subscription && Notification.permission === 'granted') {
-          await client.webPush?.('device.web_push', { subscription: address(subscription) });
-          if (!stopped) setEnabled(true);
-        } else if (public_key) {
-          await client.webPush?.('device.web_push', { subscription: null });
+          setEnabled(matchesVapid(subscription, public_key));
         }
       })().catch((cause: unknown): void => {
         if (!stopped) setError(errorMessage(cause, 'Не удалось настроить уведомления.'));
       });
     }
+
     return (): void => {
       stopped = true;
     };
   }, [client, supported, online, user?.sid]);
 
-  if (!client.webPush || !pwaSupported()) return null;
+  if (!client.webPush || embedded) return null;
 
   async function toggle(): Promise<void> {
     if (!client.webPush || !serverKey) return;
+
     setBusy(true);
     setError('');
     const sid = user?.sid;
+
     try {
       // Permission must be requested directly in the click handler, before awaiting registration.
       const permission = enabled ? Notification.permission : await Notification.requestPermission();
+
       if (!enabled && permission !== 'granted')
         throw new Error('Разрешите уведомления GChat в настройках браузера или устройства.');
+
       const registration = await readyPwa();
+
       if (!currentSession(sid)) return;
+
       if (enabled) {
-        await client.webPush('device.web_push', { subscription: null });
-        const subscription = await registration.pushManager.getSubscription();
-        if (subscription && !(await subscription.unsubscribe()))
-          throw new Error('Не удалось отключить подписку браузера. Повторите попытку.');
+        await navigator.locks.request('gchat-web-push', async (): Promise<void> => {
+          if (!currentSession(sid)) return;
+
+          await client.webPush?.('device.web_push', { subscription: null });
+          const subscription = await registration.pushManager.getSubscription();
+
+          if (subscription && !(await subscription.unsubscribe()))
+            throw new Error('Не удалось отключить подписку браузера. Повторите попытку.');
+        });
         setEnabled(false);
       } else {
-        const key = Uint8Array.from(
-          atob(serverKey.replace(/-/g, '+').replace(/_/g, '/')),
-          (char): number => char.charCodeAt(0),
+        const active = await syncWebPush(
+          serverKey,
+          (): boolean =>
+            currentSession(sid) &&
+            client.getSnapshot().owner &&
+            client.getSnapshot().connection === 'online',
+          (subscription): Promise<unknown> => client.webPush!('device.web_push', { subscription }),
+          true,
         );
-        const subscription =
-          (await registration.pushManager.getSubscription()) ??
-          (await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: key,
-          }));
-        // The call client also verifies current session ownership before sending.
-        if (!currentSession(sid)) return;
-        await client.webPush('device.web_push', { subscription: address(subscription) });
-        setEnabled(true);
+
+        if (currentSession(sid)) setEnabled(active);
       }
     } catch (cause) {
       setError(errorMessage(cause, 'Не удалось настроить уведомления.'));

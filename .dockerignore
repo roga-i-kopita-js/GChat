@@ -19,6 +19,9 @@
 !applications/web/index.html
 !applications/web/src/
 !applications/web/src/**
+!applications/web/pwa/
+!applications/web/pwa/plugin.ts
+!applications/web/pwa/worker.js
 !applications/web/public/
 !applications/web/public/**
 !packages/

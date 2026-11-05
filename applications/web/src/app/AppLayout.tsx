@@ -5,8 +5,8 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '../features/auth/AuthProvider';
 import { useCalls } from '../features/calls/CallsProvider';
-import { WebPushControls } from '../features/calls/WebPushControls';
 import { DiagnosticsDialog } from '../features/calls/DiagnosticsDialog';
+import { WebPushControls } from '../features/calls/WebPushControls';
 import { errorMessage } from '../shared/api/client';
 import { embedded } from '../shared/native/bridge';
 import { nativeRuntime } from '../shared/native/runtime';

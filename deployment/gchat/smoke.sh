@@ -19,10 +19,12 @@ trap cleanup EXIT
 mkdir -p "$GCHAT_SHARED_DIR/secrets" "$GCHAT_SHARED_DIR/tls/live/smoke.invalid"
 export SMOKE_DIR="$GCHAT_SHARED_DIR"
 node --input-type=module <<'JS'
-import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { createECDH, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 const root = process.env.SMOKE_DIR;
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+const vapid = createECDH('prime256v1');
+vapid.generateKeys();
 const config = {
   DATABASE_URL: 'postgresql://smoke:smoke@postgres:5432/smoke',
   REDIS_URL: 'redis://:smoke@redis:6379/0', REDIS_KEY_PREFIX: 'gchat:release-smoke:',
@@ -33,6 +35,9 @@ const config = {
   AUTH_ROTATION_KEYS: JSON.stringify({ smoke: randomBytes(32).toString('base64') }),
   DIRECT_CALLS_TURN_URLS: '["turn:smoke.invalid:3478"]',
   DIRECT_CALLS_TURN_SHARED_SECRET: randomBytes(32).toString('hex'),
+  WEB_PUSH_ENABLED: 'true', WEB_PUSH_SUBJECT: 'mailto:smoke@example.invalid',
+  WEB_PUSH_PUBLIC_KEY: vapid.getPublicKey().toString('base64url'),
+  WEB_PUSH_PRIVATE_KEY: vapid.getPrivateKey().toString('base64url'),
   APNS_ENABLED: 'false', SIGNALING_BROWSER_ORIGINS: '["https://smoke.invalid"]',
 };
 // Compose single quotes preserve JSON and literal backslash-n sequences.
@@ -46,7 +51,7 @@ dc run --rm --no-deps migrate
 dc run --rm --no-deps migrate
 dc up -d --no-deps --wait --wait-timeout 120 app
 APP=$(dc ps -q app)
-docker exec "$APP" sh -ec 'test -s web/index.html && test -s drizzle/meta/_journal.json && test "$(id -u)" != 0 && test ! -d node_modules/typescript && test ! -f .env'
+docker exec "$APP" sh -ec 'test -s web/index.html && test -s web/sw.js && test -s web/site.webmanifest && test -s drizzle/meta/_journal.json && test "$(id -u)" != 0 && test ! -d node_modules/typescript && test ! -f .env'
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=smoke.invalid \
   -keyout "$GCHAT_SHARED_DIR/tls/live/smoke.invalid/privkey.pem" \
   -out "$GCHAT_SHARED_DIR/tls/live/smoke.invalid/fullchain.pem" >/dev/null 2>&1
@@ -70,4 +75,4 @@ if docker logs "$TURN" 2>&1 | grep -Ei 'unknown|unrecognized|bad configuration|e
   echo 'coturn configuration rejected'
   exit 1
 fi
-echo 'Packaged migrations, readiness, HTTPS, Web assets, SPA and authenticated WSS passed.'
+echo 'Packaged migrations, readiness, HTTPS, Web assets, PWA files, SPA and authenticated Web Push registration over WSS passed.'
