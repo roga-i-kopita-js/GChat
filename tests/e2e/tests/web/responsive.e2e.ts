@@ -66,37 +66,40 @@ async function setup(page: Page, authenticated = true): Promise<() => void> {
     );
   }
 
-  await page.route('**/api/**', async (route): Promise<void> => {
-    const path = new URL(route.request().url()).pathname;
-    let body: unknown;
+  await page.route(
+    (url): boolean => url.pathname.startsWith('/api/'),
+    async (route): Promise<void> => {
+      const path = new URL(route.request().url()).pathname;
+      let body: unknown;
 
-    if (path === '/api/auth/ws-ticket')
-      body = { ticket: 'test-ticket', expires_at: new Date(Date.now() + 60000).toISOString() };
-    else if (path === '/api/groups') body = { groups: [{ id: 'family', name: 'близкие' }] };
-    else if (path === '/api/groups/family/members')
-      body = {
-        members: [
-          { id: adminId, display_name: 'Admin' },
-          anna,
-          { id: 'maxim', display_name: 'Максим Волков' },
-        ],
-      };
-    else if (path === '/api/admin/users')
-      body = {
-        users: [anna, { ...anna, id: 'maxim', display_name: 'Максим Волков', login: 'maxim' }],
-        total: 2,
-      };
-    else if (path.startsWith('/api/admin/users/')) body = { user: anna };
-    else if (path === '/api/admin/groups')
-      body = { groups: [{ id: 'family', name: 'близкие' }], total: 1 };
-    else {
-      await route.fulfill({ status: 404, json: {} });
+      if (path === '/api/auth/ws-ticket')
+        body = { ticket: 'test-ticket', expires_at: new Date(Date.now() + 60000).toISOString() };
+      else if (path === '/api/groups') body = { groups: [{ id: 'family', name: 'близкие' }] };
+      else if (path === '/api/groups/family/members')
+        body = {
+          members: [
+            { id: adminId, display_name: 'Admin' },
+            anna,
+            { id: 'maxim', display_name: 'Максим Волков' },
+          ],
+        };
+      else if (path === '/api/admin/users')
+        body = {
+          users: [anna, { ...anna, id: 'maxim', display_name: 'Максим Волков', login: 'maxim' }],
+          total: 2,
+        };
+      else if (path.startsWith('/api/admin/users/')) body = { user: anna };
+      else if (path === '/api/admin/groups')
+        body = { groups: [{ id: 'family', name: 'близкие' }], total: 1 };
+      else {
+        await route.fulfill({ status: 404, json: {} });
 
-      return;
-    }
+        return;
+      }
 
-    await route.fulfill({ json: body });
-  });
+      await route.fulfill({ json: body });
+    },
+  );
   await page.goto(authenticated ? '/admin/users' : '/login');
 
   return (): void => {
@@ -130,6 +133,27 @@ for (const viewport of [
   { width: 390, height: 844 },
   { width: 430, height: 932 },
 ]) {
+  test(`audio settings fit a ${viewport.width}px phone`, async ({ page }, info): Promise<void> => {
+    await page.setViewportSize(viewport);
+    await setup(page);
+    await page.getByTitle('Мой аккаунт', { exact: true }).click();
+    const account = page.getByRole('dialog', { name: 'Мой аккаунт', exact: true });
+    const microphone = account.getByRole('button', {
+      name: /Проверить микрофон|Разрешить микрофон/,
+    });
+
+    await expect(microphone).toBeEnabled();
+    await microphone.click();
+    await expect(account.getByText('Захват звука доступен.', { exact: false })).toBeVisible();
+    await account.getByRole('button', { name: 'Проверить звук', exact: true }).click();
+    await account.getByRole('button', { name: 'Не слышу', exact: true }).click();
+    await expect(account.getByText('Проверьте громкость,', { exact: false })).toBeVisible();
+    await noOverflow(page);
+    await page.screenshot({ path: info.outputPath('audio-settings.png') });
+    await account.getByRole('button', { name: 'Закрыть', exact: true }).click();
+    await expect(account).not.toBeVisible();
+  });
+
   test(`compact account, forms, contacts and incoming call at ${viewport.width}px`, async ({
     page,
   }, info): Promise<void> => {

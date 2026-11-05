@@ -22,7 +22,12 @@ export type CallsClient = Pick<
   | 'accept'
   | 'end'
   | 'mute'
-> & { webPush?: GChatClient['webPush'] };
+> & {
+  webPush?: GChatClient['webPush'];
+  audioPreparation?: GChatClient['audioPreparation'];
+  setAudioOutput?: GChatClient['setAudioOutput'];
+  testSound?: GChatClient['testSound'];
+};
 
 /** Contains no browser signaling, audio, locks, device registration or session storage. */
 export class NativeCallsClient implements CallsClient {

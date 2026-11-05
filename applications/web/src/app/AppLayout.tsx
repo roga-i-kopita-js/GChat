@@ -4,6 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '../features/auth/AuthProvider';
+import { AudioControls } from '../features/calls/AudioControls';
 import { useCalls } from '../features/calls/CallsProvider';
 import { DiagnosticsDialog } from '../features/calls/DiagnosticsDialog';
 import { WebPushControls } from '../features/calls/WebPushControls';
@@ -141,6 +142,7 @@ export function AppLayout(): JSX.Element {
               : 'Вы сможете снова войти с теми же логином и паролем.'}
           </p>
           <WebPushControls />
+          <AudioControls />
           {accountError && (
             <p role="alert" className="form-error">
               {accountError}

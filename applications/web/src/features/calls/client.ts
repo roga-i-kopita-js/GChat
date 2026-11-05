@@ -5,6 +5,7 @@ import { pwaSupported } from '../../shared/pwa';
 import { prepareUpdate, updateChannel, updateLock, updateRequested } from '../../shared/pwa-update';
 import { pushConfig, syncWebPush } from '../../shared/web-push';
 import { identity, logout, readSession, saveSession } from '../auth/session';
+import { audioError, AudioPreparation, canRouteContext } from './audio-preparation';
 import type { Call } from './protocol';
 import {
   callResponse,
@@ -60,6 +61,34 @@ const stateSchema = z.object({
 });
 
 export class GChatClient {
+  readonly audioPreparation = new AudioPreparation(
+    (): boolean =>
+      this.state.owner &&
+      !this.state.busy &&
+      (!this.state.call || this.state.call.state === 'ended'),
+  );
+  private outputId = '';
+
+  testSound(): Promise<void> {
+    return this.audioPreparation.sound(this.outputId);
+  }
+
+  async setAudioOutput(id: string): Promise<void> {
+    if (
+      !this.state.owner ||
+      this.state.busy ||
+      (this.state.call && this.state.call.state !== 'ended')
+    )
+      throw new Error('Настройка доступна в основной вкладке вне звонка.');
+
+    this.audioPreparation.stop();
+
+    if (this.audioContext && canRouteContext(this.audioContext))
+      await this.audioContext.setSinkId(id);
+
+    this.outputId = id;
+  }
+
   private state: ClientState = initial;
   private listeners = new Set<() => void>();
   private channel: BroadcastChannel | null = null;
@@ -134,6 +163,13 @@ export class GChatClient {
 
   private set(patch: Partial<ClientState>): void {
     this.state = { ...this.state, ...patch };
+
+    if (
+      !this.state.owner ||
+      this.state.busy ||
+      (this.state.call && this.state.call.state !== 'ended')
+    )
+      this.audioPreparation.stop();
 
     for (const listener of this.listeners) listener();
 
@@ -552,16 +588,22 @@ export class GChatClient {
   }
 
   private async microphone(): Promise<void> {
+    this.audioPreparation.stop();
+
     if (!navigator.mediaDevices?.getUserMedia)
       throw new Error('Для микрофона нужен HTTPS или localhost.');
 
     if (this.stream) return;
 
     const epoch = this.mediaEpoch;
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true },
-      video: false,
-    });
+    const stream = await navigator.mediaDevices
+      .getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+        video: false,
+      })
+      .catch((cause: unknown): never => {
+        throw new Error(audioError(cause));
+      });
 
     if (epoch !== this.mediaEpoch) {
       for (const track of stream.getTracks()) track.stop();
@@ -602,7 +644,21 @@ export class GChatClient {
 
     for (const track of this.stream!.getTracks()) pc.addTrack(track, this.stream!);
 
-    this.audio = new Audio();
+    const audio = new Audio();
+
+    this.audio = audio;
+
+    if (this.outputId) {
+      try {
+        await audio.setSinkId(this.outputId);
+      } catch {
+        this.set({ error: 'Аудиовыход недоступен. Используется системное устройство.' });
+        this.outputId = '';
+      }
+    }
+
+    if (epoch !== this.mediaEpoch || this.audio !== audio) return;
+
     this.audio.autoplay = true;
     pc.ontrack = (event): void => {
       if (!this.audio) return;
@@ -853,7 +909,14 @@ export class GChatClient {
   async enableRingtone(): Promise<void> {
     try {
       this.audioContext ??= new AudioContext();
+      this.audioContext.onstatechange = (): void => {
+        this.set({ audible: this.audioContext?.state === 'running' });
+      };
       await this.audioContext.resume();
+
+      if (this.outputId && canRouteContext(this.audioContext))
+        await this.audioContext.setSinkId(this.outputId);
+
       this.set({ audible: this.audioContext.state === 'running' });
 
       if (this.state.call?.state === 'ringing' && !this.isCaller() && !this.ringtone) {
@@ -1004,6 +1067,7 @@ export class GChatClient {
   }
 
   private disposeMedia(): void {
+    this.audioPreparation.stop();
     this.mediaEpoch++;
     clearInterval(this.ringtone);
     this.ringtone = undefined;
