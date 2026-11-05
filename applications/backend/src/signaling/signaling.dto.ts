@@ -37,6 +37,20 @@ export class PushTokenDto {
   @IsIn(['sandbox', 'production']) environment!: string;
 }
 
+export class WebPushSubscriptionDto {
+  @IsString() @Length(1, 4096) endpoint!: string;
+  @IsString() @Length(87, 87) p256dh!: string;
+  @IsString() @Length(22, 22) auth!: string;
+}
+
+export class WebPushDto {
+  @ValidateIf((_object, value): boolean => value !== null)
+  @IsObject()
+  @ValidateNested()
+  @Type((): typeof WebPushSubscriptionDto => WebPushSubscriptionDto)
+  subscription!: WebPushSubscriptionDto | null;
+}
+
 export class RtcAttemptDto extends CallIdDto {
   @IsUUID() negotiation_id!: string;
 }

@@ -43,6 +43,13 @@
       "when": 1793865259902,
       "tag": "0005_native_websocket_restrictions",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793894016452,
+      "tag": "0006_web_push",
+      "breakpoints": true
     }
   ]
 }

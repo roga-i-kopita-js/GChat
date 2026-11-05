@@ -1,0 +1,1494 @@
+{
+  "id": "9c1fb93f-7a32-463d-a6bb-1e01c71062ba",
+  "prevId": "e5901740-7612-474f-88f5-589eb3eeef77",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.gchat_auth_sessions": {
+      "name": "gchat_auth_sessions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token_hash": {
+          "name": "refresh_token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "rotation_request_id": {
+          "name": "rotation_request_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rotation_token_hash": {
+          "name": "rotation_token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rotation_encrypted": {
+          "name": "rotation_encrypted",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rotation_expires_at": {
+          "name": "rotation_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ws_ticket_window_started_at": {
+          "name": "ws_ticket_window_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ws_ticket_count": {
+          "name": "ws_ticket_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "gchat_auth_sessions_user_id_idx": {
+          "name": "gchat_auth_sessions_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_auth_sessions_rotation_expiry_idx": {
+          "name": "gchat_auth_sessions_rotation_expiry_idx",
+          "columns": [
+            {
+              "expression": "rotation_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"gchat_auth_sessions\".\"rotation_expires_at\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_auth_sessions_ticket_window_idx": {
+          "name": "gchat_auth_sessions_ticket_window_idx",
+          "columns": [
+            {
+              "expression": "ws_ticket_window_started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"gchat_auth_sessions\".\"ws_ticket_window_started_at\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gchat_auth_sessions_user_id_gchat_users_id_fk": {
+          "name": "gchat_auth_sessions_user_id_gchat_users_id_fk",
+          "tableFrom": "gchat_auth_sessions",
+          "tableTo": "gchat_users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "gchat_auth_sessions_rotation_check": {
+          "name": "gchat_auth_sessions_rotation_check",
+          "value": "num_nonnulls(\"gchat_auth_sessions\".\"rotation_request_id\", \"gchat_auth_sessions\".\"rotation_token_hash\", \"gchat_auth_sessions\".\"rotation_encrypted\", \"gchat_auth_sessions\".\"rotation_expires_at\") in (0, 4)"
+        },
+        "gchat_auth_sessions_ticket_window_check": {
+          "name": "gchat_auth_sessions_ticket_window_check",
+          "value": "(\"gchat_auth_sessions\".\"ws_ticket_window_started_at\" is null and \"gchat_auth_sessions\".\"ws_ticket_count\" = 0) or (\"gchat_auth_sessions\".\"ws_ticket_window_started_at\" is not null and \"gchat_auth_sessions\".\"ws_ticket_count\" > 0)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.gchat_auth_ws_tickets": {
+      "name": "gchat_auth_ws_tickets",
+      "schema": "",
+      "columns": {
+        "ticket_hash": {
+          "name": "ticket_hash",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "origin": {
+          "name": "origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "gchat_auth_ws_tickets_session_id_idx": {
+          "name": "gchat_auth_ws_tickets_session_id_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_auth_ws_tickets_expiry_idx": {
+          "name": "gchat_auth_ws_tickets_expiry_idx",
+          "columns": [
+            {
+              "expression": "expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gchat_auth_ws_tickets_session_id_gchat_auth_sessions_id_fk": {
+          "name": "gchat_auth_ws_tickets_session_id_gchat_auth_sessions_id_fk",
+          "tableFrom": "gchat_auth_ws_tickets",
+          "tableTo": "gchat_auth_sessions",
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "gchat_auth_ws_tickets_expiry_check": {
+          "name": "gchat_auth_ws_tickets_expiry_check",
+          "value": "\"gchat_auth_ws_tickets\".\"expires_at\" > \"gchat_auth_ws_tickets\".\"issued_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.gchat_users": {
+      "name": "gchat_users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "login": {
+          "name": "login",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "varchar(80)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'user'"
+        },
+        "password_hash": {
+          "name": "password_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "disabled_at": {
+          "name": "disabled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "gchat_users_login_unique": {
+          "name": "gchat_users_login_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "login"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "gchat_users_role_check": {
+          "name": "gchat_users_role_check",
+          "value": "\"gchat_users\".\"role\" in ('user', 'admin')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.gchat_device_sessions": {
+      "name": "gchat_device_sessions",
+      "schema": "",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "inactive_since": {
+          "name": "inactive_since",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "gchat_device_sessions_user_id_gchat_users_id_fk": {
+          "name": "gchat_device_sessions_user_id_gchat_users_id_fk",
+          "tableFrom": "gchat_device_sessions",
+          "tableTo": "gchat_users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "gchat_device_sessions_device_id_user_id_gchat_devices_id_user_id_fk": {
+          "name": "gchat_device_sessions_device_id_user_id_gchat_devices_id_user_id_fk",
+          "tableFrom": "gchat_device_sessions",
+          "tableTo": "gchat_devices",
+          "columnsFrom": [
+            "device_id",
+            "user_id"
+          ],
+          "columnsTo": [
+            "id",
+            "user_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "gchat_device_session_pair": {
+          "name": "gchat_device_session_pair",
+          "nullsNotDistinct": false,
+          "columns": [
+            "device_id",
+            "session_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.gchat_devices": {
+      "name": "gchat_devices",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "gchat_devices_user_id_gchat_users_id_fk": {
+          "name": "gchat_devices_user_id_gchat_users_id_fk",
+          "tableFrom": "gchat_devices",
+          "tableTo": "gchat_users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "gchat_devices_owner": {
+          "name": "gchat_devices_owner",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "user_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.gchat_device_voip_tokens": {
+      "name": "gchat_device_voip_tokens",
+      "schema": "",
+      "columns": {
+        "device_id": {
+          "name": "device_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "environment": {
+          "name": "environment",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "gchat_device_voip_tokens_device_id_session_id_gchat_device_sessions_device_id_session_id_fk": {
+          "name": "gchat_device_voip_tokens_device_id_session_id_gchat_device_sessions_device_id_session_id_fk",
+          "tableFrom": "gchat_device_voip_tokens",
+          "tableTo": "gchat_device_sessions",
+          "columnsFrom": [
+            "device_id",
+            "session_id"
+          ],
+          "columnsTo": [
+            "device_id",
+            "session_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "gchat_device_voip_tokens_device_id_session_id_pk": {
+          "name": "gchat_device_voip_tokens_device_id_session_id_pk",
+          "columns": [
+            "device_id",
+            "session_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {
+        "gchat_voip_address": {
+          "name": "gchat_voip_address",
+          "nullsNotDistinct": false,
+          "columns": [
+            "environment",
+            "token"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "gchat_voip_environment": {
+          "name": "gchat_voip_environment",
+          "value": "\"gchat_device_voip_tokens\".\"environment\" in ('sandbox', 'production')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.gchat_device_web_push": {
+      "name": "gchat_device_web_push",
+      "schema": "",
+      "columns": {
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "endpoint": {
+          "name": "endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "p256dh": {
+          "name": "p256dh",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth": {
+          "name": "auth",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "gchat_device_web_push_device_id_session_id_gchat_device_sessions_device_id_session_id_fk": {
+          "name": "gchat_device_web_push_device_id_session_id_gchat_device_sessions_device_id_session_id_fk",
+          "tableFrom": "gchat_device_web_push",
+          "tableTo": "gchat_device_sessions",
+          "columnsFrom": [
+            "device_id",
+            "session_id"
+          ],
+          "columnsTo": [
+            "device_id",
+            "session_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "gchat_web_push_endpoint": {
+          "name": "gchat_web_push_endpoint",
+          "nullsNotDistinct": false,
+          "columns": [
+            "endpoint"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.gchat_direct_call_deliveries": {
+      "name": "gchat_direct_call_deliveries",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "call_id": {
+          "name": "call_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot": {
+          "name": "snapshot",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "lease_token": {
+          "name": "lease_token",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "gchat_delivery_state_version": {
+          "name": "gchat_delivery_state_version",
+          "columns": [
+            {
+              "expression": "call_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "version",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"gchat_direct_call_deliveries\".\"kind\" = 'state'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_delivery_voip_target": {
+          "name": "gchat_delivery_voip_target",
+          "columns": [
+            {
+              "expression": "call_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "device_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"gchat_direct_call_deliveries\".\"kind\" = 'voip'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_delivery_web_push_target": {
+          "name": "gchat_delivery_web_push_target",
+          "columns": [
+            {
+              "expression": "call_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "device_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"gchat_direct_call_deliveries\".\"kind\" = 'web_push'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_delivery_pending": {
+          "name": "gchat_delivery_pending",
+          "columns": [
+            {
+              "expression": "next_attempt_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"gchat_direct_call_deliveries\".\"status\" = 'pending'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_delivery_processing": {
+          "name": "gchat_delivery_processing",
+          "columns": [
+            {
+              "expression": "lease_until",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"gchat_direct_call_deliveries\".\"status\" = 'processing'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gchat_direct_call_deliveries_call_id_gchat_direct_calls_id_fk": {
+          "name": "gchat_direct_call_deliveries_call_id_gchat_direct_calls_id_fk",
+          "tableFrom": "gchat_direct_call_deliveries",
+          "tableTo": "gchat_direct_calls",
+          "columnsFrom": [
+            "call_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "gchat_delivery_kind": {
+          "name": "gchat_delivery_kind",
+          "value": "\"gchat_direct_call_deliveries\".\"kind\" in ('state','voip','web_push')"
+        },
+        "gchat_delivery_status": {
+          "name": "gchat_delivery_status",
+          "value": "\"gchat_direct_call_deliveries\".\"status\" in ('pending','processing','done','cancelled')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.gchat_direct_call_participants": {
+      "name": "gchat_direct_call_participants",
+      "schema": "",
+      "columns": {
+        "call_id": {
+          "name": "call_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "device_id": {
+          "name": "device_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "connected_at": {
+          "name": "connected_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "connected_negotiation_id": {
+          "name": "connected_negotiation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_sequence": {
+          "name": "last_sequence",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_ping_at": {
+          "name": "last_ping_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "audio_connected": {
+          "name": "audio_connected",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "confirmed_recovery_id": {
+          "name": "confirmed_recovery_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "released_at": {
+          "name": "released_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "gchat_call_participant_busy": {
+          "name": "gchat_call_participant_busy",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"gchat_direct_call_participants\".\"released_at\" is null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_call_participant_session": {
+          "name": "gchat_call_participant_session",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gchat_direct_call_participants_call_id_gchat_direct_calls_id_fk": {
+          "name": "gchat_direct_call_participants_call_id_gchat_direct_calls_id_fk",
+          "tableFrom": "gchat_direct_call_participants",
+          "tableTo": "gchat_direct_calls",
+          "columnsFrom": [
+            "call_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "gchat_direct_call_participants_user_id_gchat_users_id_fk": {
+          "name": "gchat_direct_call_participants_user_id_gchat_users_id_fk",
+          "tableFrom": "gchat_direct_call_participants",
+          "tableTo": "gchat_users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "gchat_direct_call_participants_device_id_session_id_gchat_device_sessions_device_id_session_id_fk": {
+          "name": "gchat_direct_call_participants_device_id_session_id_gchat_device_sessions_device_id_session_id_fk",
+          "tableFrom": "gchat_direct_call_participants",
+          "tableTo": "gchat_device_sessions",
+          "columnsFrom": [
+            "device_id",
+            "session_id"
+          ],
+          "columnsTo": [
+            "device_id",
+            "session_id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "gchat_direct_call_participants_call_id_role_pk": {
+          "name": "gchat_direct_call_participants_call_id_role_pk",
+          "columns": [
+            "call_id",
+            "role"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "gchat_call_participant_role": {
+          "name": "gchat_call_participant_role",
+          "value": "\"gchat_direct_call_participants\".\"role\" in ('caller','recipient')"
+        },
+        "gchat_call_participant_binding": {
+          "name": "gchat_call_participant_binding",
+          "value": "(\"gchat_direct_call_participants\".\"device_id\" is null) = (\"gchat_direct_call_participants\".\"session_id\" is null)"
+        },
+        "gchat_call_participant_sequence": {
+          "name": "gchat_call_participant_sequence",
+          "value": "\"gchat_direct_call_participants\".\"last_sequence\" between 0 and 9007199254740991"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.gchat_direct_calls": {
+      "name": "gchat_direct_calls",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "caller_id": {
+          "name": "caller_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipient_id": {
+          "name": "recipient_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_reason": {
+          "name": "end_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "version": {
+          "name": "version",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "ringing_deadline": {
+          "name": "ringing_deadline",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "connecting_started_at": {
+          "name": "connecting_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "connecting_deadline": {
+          "name": "connecting_deadline",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recovery_id": {
+          "name": "recovery_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recovery_started_at": {
+          "name": "recovery_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recovery_deadline": {
+          "name": "recovery_deadline",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "negotiation_id": {
+          "name": "negotiation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "gchat_calls_caller": {
+          "name": "gchat_calls_caller",
+          "columns": [
+            {
+              "expression": "caller_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_calls_recipient": {
+          "name": "gchat_calls_recipient",
+          "columns": [
+            {
+              "expression": "recipient_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_calls_ringing_deadline": {
+          "name": "gchat_calls_ringing_deadline",
+          "columns": [
+            {
+              "expression": "ringing_deadline",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"gchat_direct_calls\".\"state\" = 'ringing'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_calls_connecting_deadline": {
+          "name": "gchat_calls_connecting_deadline",
+          "columns": [
+            {
+              "expression": "connecting_deadline",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"gchat_direct_calls\".\"state\" = 'connecting'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "gchat_calls_recovery_deadline": {
+          "name": "gchat_calls_recovery_deadline",
+          "columns": [
+            {
+              "expression": "recovery_deadline",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"gchat_direct_calls\".\"state\" = 'active'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gchat_direct_calls_caller_id_gchat_users_id_fk": {
+          "name": "gchat_direct_calls_caller_id_gchat_users_id_fk",
+          "tableFrom": "gchat_direct_calls",
+          "tableTo": "gchat_users",
+          "columnsFrom": [
+            "caller_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "gchat_direct_calls_recipient_id_gchat_users_id_fk": {
+          "name": "gchat_direct_calls_recipient_id_gchat_users_id_fk",
+          "tableFrom": "gchat_direct_calls",
+          "tableTo": "gchat_users",
+          "columnsFrom": [
+            "recipient_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "gchat_calls_different_users": {
+          "name": "gchat_calls_different_users",
+          "value": "\"gchat_direct_calls\".\"caller_id\" <> \"gchat_direct_calls\".\"recipient_id\""
+        },
+        "gchat_calls_state": {
+          "name": "gchat_calls_state",
+          "value": "\"gchat_direct_calls\".\"state\" in ('ringing','connecting','active','ended')"
+        },
+        "gchat_calls_version": {
+          "name": "gchat_calls_version",
+          "value": "\"gchat_direct_calls\".\"version\" between 0 and 9007199254740991"
+        },
+        "gchat_calls_ended": {
+          "name": "gchat_calls_ended",
+          "value": "(\"gchat_direct_calls\".\"state\" = 'ended') = (\"gchat_direct_calls\".\"ended_at\" is not null and \"gchat_direct_calls\".\"end_reason\" is not null)"
+        },
+        "gchat_calls_ended_fields": {
+          "name": "gchat_calls_ended_fields",
+          "value": "(\"gchat_direct_calls\".\"state\" = 'ended') = (\"gchat_direct_calls\".\"ended_at\" is not null) and (\"gchat_direct_calls\".\"state\" = 'ended') = (\"gchat_direct_calls\".\"end_reason\" is not null)"
+        },
+        "gchat_calls_deadlines": {
+          "name": "gchat_calls_deadlines",
+          "value": "(\"gchat_direct_calls\".\"state\" = 'ringing') = (\"gchat_direct_calls\".\"ringing_deadline\" is not null) and (\"gchat_direct_calls\".\"state\" = 'connecting') = (\"gchat_direct_calls\".\"connecting_deadline\" is not null)"
+        },
+        "gchat_calls_reason": {
+          "name": "gchat_calls_reason",
+          "value": "\"gchat_direct_calls\".\"end_reason\" is null or \"gchat_direct_calls\".\"end_reason\" in ('cancelled','rejected','no_answer','connection_timeout','hangup','connection_lost','session_revoked','account_disabled')"
+        },
+        "gchat_calls_recovery": {
+          "name": "gchat_calls_recovery",
+          "value": "(\"gchat_direct_calls\".\"recovery_id\" is null) = (\"gchat_direct_calls\".\"recovery_deadline\" is null) and (\"gchat_direct_calls\".\"recovery_id\" is null or \"gchat_direct_calls\".\"state\" = 'active')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.gchat_group_members": {
+      "name": "gchat_group_members",
+      "schema": "",
+      "columns": {
+        "group_id": {
+          "name": "group_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "gchat_group_members_user_id_idx": {
+          "name": "gchat_group_members_user_id_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "gchat_group_members_group_id_gchat_groups_id_fk": {
+          "name": "gchat_group_members_group_id_gchat_groups_id_fk",
+          "tableFrom": "gchat_group_members",
+          "tableTo": "gchat_groups",
+          "columnsFrom": [
+            "group_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "gchat_group_members_user_id_gchat_users_id_fk": {
+          "name": "gchat_group_members_user_id_gchat_users_id_fk",
+          "tableFrom": "gchat_group_members",
+          "tableTo": "gchat_users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "gchat_group_members_group_id_user_id_pk": {
+          "name": "gchat_group_members_group_id_user_id_pk",
+          "columns": [
+            "group_id",
+            "user_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.gchat_groups": {
+      "name": "gchat_groups",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "gchat_groups_name_unique": {
+          "name": "gchat_groups_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "gchat_groups_name_check": {
+          "name": "gchat_groups_name_check",
+          "value": "\"gchat_groups\".\"name\" <> '' and \"gchat_groups\".\"name\" = lower(btrim(\"gchat_groups\".\"name\"))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.gchat_native_websocket_restrictions": {
+      "name": "gchat_native_websocket_restrictions",
+      "schema": "",
+      "columns": {
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message_pattern": {
+          "name": "message_pattern",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "gchat_native_websocket_restrictions_direction_message_pattern_pk": {
+          "name": "gchat_native_websocket_restrictions_direction_message_pattern_pk",
+          "columns": [
+            "direction",
+            "message_pattern"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "gchat_native_ws_direction_check": {
+          "name": "gchat_native_ws_direction_check",
+          "value": "\"gchat_native_websocket_restrictions\".\"direction\" in ('send', 'receive')"
+        },
+        "gchat_native_ws_pattern_check": {
+          "name": "gchat_native_ws_pattern_check",
+          "value": "\"gchat_native_websocket_restrictions\".\"message_pattern\" ~ '^[a-z][a-z0-9_]*([.][a-z][a-z0-9_]*)*([.][*])?$' and length(\"gchat_native_websocket_restrictions\".\"message_pattern\") <= 128"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

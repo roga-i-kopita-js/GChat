@@ -11,7 +11,7 @@ import { callDeliveries } from './direct-calls.schema.js';
 export class DirectCallsDeliveryStore {
   constructor(private readonly database: DatabaseService) {}
 
-  async claim(kind: 'state' | 'voip', limit = 20): Promise<Delivery[]> {
+  async claim(kind: 'state' | 'voip' | 'web_push', limit = 20): Promise<Delivery[]> {
     return this.database.db.transaction(async (tx): Promise<Delivery[]> => {
       const now = new Date();
       const rows = await tx

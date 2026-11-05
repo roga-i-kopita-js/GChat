@@ -123,6 +123,7 @@ export class DirectCallsService {
           );
 
         const targets = await this.devices.listVoipTargets(recipientId);
+        const webTargets = await this.devices.listWebPushTargets(recipientId);
 
         await this.devices.assertAccess(actor.userId, actor.sessionId);
         const now = new Date();
@@ -159,6 +160,17 @@ export class DirectCallsService {
             targets.map((target): typeof callDeliveries.$inferInsert => ({
               callId: id,
               kind: 'voip',
+              version: 0,
+              deviceId: target.deviceId,
+              sessionId: target.sessionId,
+            })),
+          );
+
+        if (webTargets.length)
+          await tx.insert(callDeliveries).values(
+            webTargets.map((target): typeof callDeliveries.$inferInsert => ({
+              callId: id,
+              kind: 'web_push',
               version: 0,
               deviceId: target.deviceId,
               sessionId: target.sessionId,

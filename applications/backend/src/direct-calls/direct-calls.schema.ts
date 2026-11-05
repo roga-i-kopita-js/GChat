@@ -128,7 +128,7 @@ export const callDeliveries = pgTable(
     callId: uuid('call_id')
       .notNull()
       .references((): AnyPgColumn => directCalls.id, { onDelete: 'cascade' }),
-    kind: text('kind').$type<'state' | 'voip'>().notNull(),
+    kind: text('kind').$type<'state' | 'voip' | 'web_push'>().notNull(),
     version: bigint('version', { mode: 'number' }).notNull(),
     snapshot: jsonb('snapshot').$type<CallDto>(),
     deviceId: uuid('device_id'),
@@ -151,13 +151,16 @@ export const callDeliveries = pgTable(
     uniqueIndex('gchat_delivery_voip_target')
       .on(t.callId, t.deviceId, t.sessionId)
       .where(sql`${t.kind} = 'voip'`),
+    uniqueIndex('gchat_delivery_web_push_target')
+      .on(t.callId, t.deviceId, t.sessionId)
+      .where(sql`${t.kind} = 'web_push'`),
     index('gchat_delivery_pending')
       .on(t.nextAttemptAt)
       .where(sql`${t.status} = 'pending'`),
     index('gchat_delivery_processing')
       .on(t.leaseUntil)
       .where(sql`${t.status} = 'processing'`),
-    check('gchat_delivery_kind', sql`${t.kind} in ('state','voip')`),
+    check('gchat_delivery_kind', sql`${t.kind} in ('state','voip','web_push')`),
     check('gchat_delivery_status', sql`${t.status} in ('pending','processing','done','cancelled')`),
   ],
 );

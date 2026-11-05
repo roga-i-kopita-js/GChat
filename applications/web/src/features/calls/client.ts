@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { pwaSupported, readyPwa } from '../../shared/pwa';
 import { ClientError, errorMessage, retryAfter } from '../../shared/api/client';
 import { identity, logout, readSession, saveSession } from '../auth/session';
 import type { Call } from './protocol';
@@ -210,6 +211,19 @@ export class GChatClient {
     this.channel?.postMessage({ type: 'takeover' });
   }
 
+  webPush(type: 'device.web_push_config' | 'device.web_push', payload: object): Promise<unknown> {
+    if (
+      !this.state.owner ||
+      this.state.connection !== 'online' ||
+      !readSession() ||
+      identity(readSession()!).sid !== this.sid
+    )
+      return Promise.reject(
+        new Error('Откройте GChat в основной вкладке и дождитесь подключения.'),
+      );
+    return this.transport.send(type, payload);
+  }
+
   private async connect(): Promise<void> {
     if (!this.state.owner || !readSession()) return;
 
@@ -234,6 +248,31 @@ export class GChatClient {
       saveSession({ ...session, deviceId: registered.device_id });
       this.set({ connection: 'online', error: null });
       this.retryCount = 0;
+      // Rebind existing consent after login/reconnect; never request permission automatically.
+      if (
+        pwaSupported() &&
+        'PushManager' in window &&
+        'Notification' in window &&
+        Notification.permission === 'granted'
+      ) {
+        void (async (): Promise<void> => {
+          const registration = await readyPwa();
+          const subscription = await registration.pushManager.getSubscription();
+          if (!subscription || generation !== this.connectionGeneration) return;
+          const config = z
+            .object({ public_key: z.string().nullable() })
+            .parse(await this.webPush('device.web_push_config', {}));
+          if (!config.public_key || generation !== this.connectionGeneration) return;
+          const value = subscription.toJSON();
+          await this.webPush('device.web_push', {
+            subscription: {
+              endpoint: value.endpoint,
+              p256dh: value.keys?.p256dh,
+              auth: value.keys?.auth,
+            },
+          });
+        })().catch((): void => {});
+      }
       const current = currentResponse.parse(await this.transport.send('call.current', {})).call;
 
       if (current) {

@@ -22,7 +22,7 @@ export type CallsClient = Pick<
   | 'accept'
   | 'end'
   | 'mute'
->;
+> & { webPush?: GChatClient['webPush'] };
 
 /** Contains no browser signaling, audio, locks, device registration or session storage. */
 export class NativeCallsClient implements CallsClient {

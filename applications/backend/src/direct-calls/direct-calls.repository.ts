@@ -50,7 +50,7 @@ export class DirectCallsRepository {
         .where(
           and(
             eq(callDeliveries.callId, call.id),
-            eq(callDeliveries.kind, 'voip'),
+            or(eq(callDeliveries.kind, 'voip'), eq(callDeliveries.kind, 'web_push')),
             or(eq(callDeliveries.status, 'pending'), eq(callDeliveries.status, 'processing')),
           ),
         );

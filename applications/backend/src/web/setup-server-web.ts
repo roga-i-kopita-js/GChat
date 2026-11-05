@@ -42,5 +42,16 @@ export function setupServerWeb(app: NestExpressApplication, directory: string | 
     next();
   });
 
-  app.useStaticAssets(root, { prefix: '/apps/', index: false, dotfiles: 'deny' });
+  app.useStaticAssets(root, {
+    prefix: '/apps/',
+    index: false,
+    dotfiles: 'deny',
+    setHeaders: (res, file): void => {
+      if (file.endsWith('/sw.js') || file.endsWith('/site.webmanifest'))
+        res.setHeader('Cache-Control', 'no-cache');
+      else if (file.startsWith(resolve(root, 'static') + '/'))
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    },
+  });
 }

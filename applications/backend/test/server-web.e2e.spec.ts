@@ -16,6 +16,8 @@ describe('Server Web delivery', (): void => {
     root = mkdtempSync(join(tmpdir(), 'gchat-web-'));
     mkdirSync(join(root, 'static'));
     mkdirSync(join(root, 'icons'));
+    writeFileSync(join(root, 'sw.js'), 'self.addEventListener("push", () => {});');
+    writeFileSync(join(root, 'site.webmanifest'), '{}');
     writeFileSync(join(root, 'index.html'), '<html>GChat client</html>');
     writeFileSync(join(root, 'static', 'client.js'), 'console.log("GChat");');
     writeFileSync(join(root, 'icons', 'icon.svg'), '<svg/>');
@@ -51,8 +53,14 @@ describe('Server Web delivery', (): void => {
     await request(app.getHttpServer())
       .get('/apps/static/client.js')
       .expect(200)
+      .expect('Cache-Control', 'public, max-age=31536000, immutable')
       .expect(/console.log/);
     await request(app.getHttpServer()).get('/apps/icons/icon.svg').expect(200);
+  });
+
+  it('revalidates the worker and manifest without returning the SPA shell', async (): Promise<void> => {
+    await request(app.getHttpServer()).get('/apps/sw.js').expect(200).expect('Cache-Control', 'no-cache').expect(/self.addEventListener/);
+    await request(app.getHttpServer()).get('/apps/site.webmanifest').expect(200).expect('Cache-Control', 'no-cache');
   });
 
   it.each(['/apps/static/missing.js', '/apps/icons/missing.svg', '/api/ready', '/ws', '/unknown'])(

@@ -1,3 +1,5 @@
+import { validateWebPushConfig } from '../push/web-push.config.js';
+
 import { parseAuthKeys } from '../auth/auth.crypto.js';
 import { parsePasswordPepper } from '../auth/auth.password.js';
 import { parseBrowserOrigins } from '../auth/browser-origin.js';
@@ -141,6 +143,7 @@ export function validateEnvironment(
     SIGNALING_BROWSER_ORIGINS: parseBrowserOrigins(env.SIGNALING_BROWSER_ORIGINS),
     DIRECT_CALLS_TURN_URLS: turnUrls,
     APNS_ENABLED: apnsEnabled,
+    WEB_PUSH_ENABLED: validateWebPushConfig(env),
     LOG_REDACTION_ENABLED: redaction,
     PORT: port,
     HOST: host,

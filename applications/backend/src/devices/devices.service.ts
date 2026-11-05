@@ -8,6 +8,8 @@ import { AuthService } from '../auth/auth.service.js';
 import { DatabaseService } from '../database/database.service.js';
 import { ErrorService } from '../error/error.service.js';
 import { devices, deviceSessions, voipTokens } from './devices.schema.js';
+import { webPushSubscriptions } from './web-push.schema.js';
+import { validWebPushAddress, type WebPushAddress } from './web-push.validation.js';
 
 export type VoipTarget = typeof voipTokens.$inferSelect & { userId: string };
 
@@ -19,6 +21,88 @@ export class DevicesService {
     private readonly error: ErrorService,
     private readonly config: ConfigService,
   ) {}
+
+  webPushConfig(): { public_key: string | null } {
+    return {
+      public_key: this.config.get<boolean>('WEB_PUSH_ENABLED', false)
+        ? this.config.getOrThrow<string>('WEB_PUSH_PUBLIC_KEY')
+        : null,
+    };
+  }
+
+  async setWebPush(
+    userId: string,
+    sessionId: string,
+    deviceId: string,
+    subscription: WebPushAddress | null,
+  ): Promise<void> {
+    await this.assertBinding(userId, sessionId, deviceId);
+    if (subscription && (!this.webPushConfig().public_key || !validWebPushAddress(subscription)))
+      throw this.error.validation();
+    await this.database.db.transaction(async (tx): Promise<void> => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${sessionId}, 1))`);
+      if (subscription) {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${subscription.endpoint}, 3))`,
+        );
+        await tx
+          .delete(webPushSubscriptions)
+          .where(eq(webPushSubscriptions.endpoint, subscription.endpoint));
+      }
+      await tx.delete(webPushSubscriptions).where(eq(webPushSubscriptions.sessionId, sessionId));
+      if (subscription)
+        await tx.insert(webPushSubscriptions).values({ sessionId, deviceId, ...subscription });
+    });
+  }
+
+  async listWebPushTargets(
+    userId: string,
+  ): Promise<(typeof webPushSubscriptions.$inferSelect & { userId: string })[]> {
+    if (!this.webPushConfig().public_key) return [];
+    const rows = await this.database.db
+      .select({ address: webPushSubscriptions })
+      .from(webPushSubscriptions)
+      .innerJoin(deviceSessions, eq(deviceSessions.sessionId, webPushSubscriptions.sessionId))
+      .where(eq(deviceSessions.userId, userId));
+    const result: (typeof webPushSubscriptions.$inferSelect & { userId: string })[] = [];
+    for (const { address } of rows) {
+      const access = await this.auth.checkSession(userId, address.sessionId);
+      if (access.accountActive && access.sessionActive) result.push({ ...address, userId });
+    }
+    return result;
+  }
+
+  async resolveWebPushTarget(
+    deviceId: string,
+    sessionId: string,
+  ): Promise<(typeof webPushSubscriptions.$inferSelect & { userId: string }) | undefined> {
+    const [row] = await this.database.db
+      .select({ address: webPushSubscriptions, userId: deviceSessions.userId })
+      .from(webPushSubscriptions)
+      .innerJoin(deviceSessions, eq(deviceSessions.sessionId, webPushSubscriptions.sessionId))
+      .where(
+        and(
+          eq(webPushSubscriptions.sessionId, sessionId),
+          eq(webPushSubscriptions.deviceId, deviceId),
+        ),
+      );
+    if (!row) return undefined;
+    const access = await this.auth.checkSession(row.userId, sessionId);
+    return access.accountActive && access.sessionActive
+      ? { ...row.address, userId: row.userId }
+      : undefined;
+  }
+
+  async invalidateWebPushTarget(sessionId: string, version: string): Promise<void> {
+    await this.database.db
+      .delete(webPushSubscriptions)
+      .where(
+        and(
+          eq(webPushSubscriptions.sessionId, sessionId),
+          eq(webPushSubscriptions.version, version),
+        ),
+      );
+  }
 
   async bind(userId: string, sessionId: string, deviceId: string | null): Promise<string> {
     await this.assertAccess(userId, sessionId);

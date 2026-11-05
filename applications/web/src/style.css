@@ -1949,3 +1949,12 @@ button svg {
 .admin-list-caption {
   letter-spacing: normal;
 }
+
+.push-settings {
+  margin-block: 20px;
+  padding-block: 16px;
+  border-block: 1px solid var(--border, #dce3ed);
+}
+.push-settings p {
+  margin-block: 10px;
+}

@@ -5,6 +5,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '../features/auth/AuthProvider';
 import { useCalls } from '../features/calls/CallsProvider';
+import { WebPushControls } from '../features/calls/WebPushControls';
 import { DiagnosticsDialog } from '../features/calls/DiagnosticsDialog';
 import { errorMessage } from '../shared/api/client';
 import { embedded } from '../shared/native/bridge';
@@ -139,6 +140,7 @@ export function AppLayout(): JSX.Element {
               ? 'При выходе текущая сессия будет завершена. Активный разговор закончится.'
               : 'Вы сможете снова войти с теми же логином и паролем.'}
           </p>
+          <WebPushControls />
           {accountError && (
             <p role="alert" className="form-error">
               {accountError}
