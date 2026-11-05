@@ -12,7 +12,7 @@ FILES = {
 }
 
 
-def verify(directory):
+def verify(directory, expected_version=None):
     directory = pathlib.Path(directory)
     entries = {}
     for line in (directory / "SHA256SUMS").read_text().splitlines():
@@ -35,6 +35,8 @@ def verify(directory):
     manifest = json.loads((directory / "release.json").read_text())
     if manifest["formatVersion"] != 1:
         raise ValueError("Unsupported release format")
+    if expected_version is not None and manifest["version"] != expected_version:
+        raise ValueError("Selected version does not match release manifest")
     for field, pattern in {
         "releaseId": r"[a-f0-9]{40}-[0-9]+-[0-9]+",
         "sourceSha": r"[a-f0-9]{40}",
@@ -54,7 +56,7 @@ def verify(directory):
 
 if __name__ == "__main__":
     try:
-        manifest = verify(sys.argv[1])
+        manifest = verify(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
         print(manifest["releaseId"], manifest["image"], manifest["imageId"], manifest["platform"])
     except (ValueError, KeyError, OSError):
         sys.exit("Release verification failed")

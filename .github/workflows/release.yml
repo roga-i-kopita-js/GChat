@@ -1,4 +1,4 @@
-name: GChat release and manual deployment
+name: GChat build release
 
 on:
   workflow_dispatch:
@@ -14,10 +14,6 @@ on:
         type: choice
         options: [linux/amd64, linux/arm64]
         default: linux/amd64
-      deploy:
-        description: 'Also deploy to the configured production server'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -93,13 +89,3 @@ jobs:
             --title "GChat $VERSION" --notes "Source: $SOURCE_SHA. Build: $GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT. Platform: $PLATFORM. Load gchat-image.tar.gz with docker load."
           gh release edit "$VERSION" --draft=false --latest=false
           echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION" >> "$GITHUB_STEP_SUMMARY"
-      - name: Deliver and deploy the same release
-        if: ${{ inputs.deploy }}
-        env:
-          SSH_HOST: ${{ vars.GCHAT_SSH_HOST }}
-          SSH_PORT: ${{ vars.GCHAT_SSH_PORT }}
-          SSH_USER: ${{ vars.GCHAT_SSH_USER }}
-          INSTALL_ROOT: ${{ vars.GCHAT_INSTALL_ROOT }}
-          SSH_KEY: ${{ secrets.GCHAT_SSH_KEY }}
-          SSH_KNOWN_HOSTS: ${{ secrets.GCHAT_SSH_KNOWN_HOSTS }}
-        run: bash deployment/gchat/deliver.sh

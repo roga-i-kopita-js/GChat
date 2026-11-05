@@ -49,6 +49,61 @@ class ReleaseTests(unittest.TestCase):
     def test_complete_release(self):
         self.assertEqual(VERIFY["verify"](self.release), self.manifest)
 
+    def test_selected_version_must_match_manifest(self):
+        self.assertEqual(VERIFY["verify"](self.release, "v0.1.0"), self.manifest)
+        with self.assertRaises(ValueError):
+            VERIFY["verify"](self.release, "v0.2.0")
+
+    def test_delivery_reuses_bundle_and_does_not_return_stale_success(self):
+        # Exercise delivery against a local fake SSH transport; no real host or keys.
+        (self.release / "deploy.sh").write_text('''#!/usr/bin/env bash
+echo attempt >> "$1/attempts"
+if [[ -f "$1/fail" ]]; then
+  echo 'failed stage=test' > "$2/result"
+else
+  echo success > "$2/result"
+fi
+''')
+        self.checksums()
+        work = self.root / "actions"
+        work.mkdir()
+        shutil.copytree(self.release, work / "release")
+        server = self.root / "server"
+        server.mkdir()
+        tools = self.root / "transport"
+        tools.mkdir()
+        mocks = {
+            "ssh": '''
+while [[ "$1" == -* ]]; do shift 2; done
+shift
+exec bash -c "$1"
+''',
+            "scp": '''
+while [[ "$1" == -* ]]; do shift 2; done
+args=("$@")
+destination=${args[${#args[@]}-1]#*:}
+for ((i=0; i<${#args[@]}-1; i++)); do cp "${args[i]}" "$destination"; done
+''',
+            "flock": 'shift 2; exec "$@"',
+            "sleep": '/bin/sleep 0.02',
+        }
+        for name, content in mocks.items():
+            path = tools / name
+            path.write_text("#!/usr/bin/env bash\nset -euo pipefail\n" + content + "\n")
+            path.chmod(0o755)
+        env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
+                   SSH_HOST="test.invalid", SSH_PORT="22", SSH_USER="deploy",
+                   SSH_KEY="fake-key", SSH_KNOWN_HOSTS="fake-host-key", INSTALL_ROOT=str(server))
+        command = ["bash", str(SOURCE / "deliver.sh")]
+        first = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        (server / "fail").touch()
+        second = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=20)
+        self.assertNotEqual(second.returncode, 0)
+        self.assertIn("failed stage=test", second.stdout)
+        self.assertEqual((server / "attempts").read_text().splitlines(), ["attempt", "attempt"])
+        self.assertTrue((server / "incoming" / RELEASE_ID / "release.json").is_file())
+
     def test_corrupt_or_partial_transfer(self):
         (self.release / "gchat-image.tar.gz").write_bytes(b"truncated")
         with self.assertRaises(ValueError):

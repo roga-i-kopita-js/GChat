@@ -1,0 +1,56 @@
+name: GChat deploy release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Published release tag to deploy, e.g. v0.0.2'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gchat-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the selected published release
+        shell: bash
+        run: |
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$ ]]
+          [[ "$(gh release view "$VERSION" --json isDraft --jq '.isDraft')" == false ]]
+          gh release download "$VERSION" --dir release \
+            --pattern gchat-image.tar.gz --pattern compose.yaml \
+            --pattern nginx.conf.template --pattern deploy.sh \
+            --pattern render-nginx.py --pattern verify-release.py \
+            --pattern release.json --pattern SHA256SUMS
+      - name: Verify checksums and selected version
+        run: |
+          python3 deployment/gchat/verify-release.py release "$VERSION"
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('release/release.json').read_text())
+          print('### GChat deployment')
+          for field in ('version', 'sourceSha', 'releaseId', 'platform'):
+              print(f'\n{field}: {manifest[field]}')
+          PY
+      - name: Deliver and deploy without rebuilding
+        env:
+          SSH_HOST: ${{ vars.GCHAT_SSH_HOST }}
+          SSH_PORT: ${{ vars.GCHAT_SSH_PORT }}
+          SSH_USER: ${{ vars.GCHAT_SSH_USER }}
+          INSTALL_ROOT: ${{ vars.GCHAT_INSTALL_ROOT }}
+          SSH_KEY: ${{ secrets.GCHAT_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.GCHAT_SSH_KNOWN_HOSTS }}
+        run: bash deployment/gchat/deliver.sh
