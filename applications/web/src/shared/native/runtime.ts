@@ -2,7 +2,14 @@ import { z } from 'zod';
 
 import { callSchema } from '../api/call';
 import { identity } from '../identity';
-import { bridgeError, bridgeVersion, invoke, nativePlugin, serverUrl } from './bridge';
+import {
+  bridgeError,
+  bridgeVersion,
+  invoke,
+  nativePlugin,
+  serverUrl,
+  type WsRequest,
+} from './bridge';
 
 export const nativeCallSchema = callSchema.strict();
 
@@ -26,10 +33,13 @@ const capabilitiesSchema = z.strictObject({
   platform: z.literal('ios'),
   nativeAuth: z.literal(true),
   nativeCalls: z.boolean(),
+  nativeWebSocket: z.boolean().optional(),
 });
 
 export interface NativeState {
   nativeCalls: boolean | null;
+  nativeWebSocket: boolean;
+  wsStatus: 'offline' | 'connecting' | 'online';
   cycleId: string;
   epoch: number;
   phase: 'waiting' | 'ready' | 'error';
@@ -43,6 +53,8 @@ export interface NativeState {
 export class NativeRuntime {
   private state: NativeState = {
     nativeCalls: null,
+    nativeWebSocket: false,
+    wsStatus: 'offline',
     cycleId: '',
     epoch: 0,
     phase: 'waiting',
@@ -53,6 +65,7 @@ export class NativeRuntime {
   };
   private token: string | null = null;
   private listeners = new Set<() => void>();
+  private wsListeners = new Set<(message: Record<string, unknown>) => void>();
   private handles: { remove(): Promise<void> }[] = [];
   private generation = 0;
   private snapshotReceived = false;
@@ -70,6 +83,45 @@ export class NativeRuntime {
       this.listeners.delete(listener);
     };
   };
+
+  subscribeWs = (listener: (message: Record<string, unknown>) => void): (() => void) => {
+    this.wsListeners.add(listener);
+
+    return (): void => {
+      this.wsListeners.delete(listener);
+    };
+  };
+
+  async sendWsMessage(message: WsRequest): Promise<void> {
+    const { cycleId, phase, nativeWebSocket, wsStatus } = this.state;
+    const signal = this.controller.signal;
+
+    if (phase !== 'ready' || !this.token) throw bridgeError({ code: 'UNAUTHENTICATED' });
+
+    if (!nativeWebSocket || wsStatus !== 'online')
+      throw bridgeError({ code: 'BRIDGE_UNAVAILABLE' });
+
+    const parsed = z
+      .strictObject({
+        type: z.string().min(1).max(64),
+        request_id: z.string().min(1).max(128),
+        payload: z.record(z.string(), z.json()),
+      })
+      .safeParse(message);
+
+    if (
+      !parsed.success ||
+      new TextEncoder().encode(JSON.stringify(parsed.data)).byteLength > 131072
+    )
+      throw bridgeError({ code: 'VALIDATION_ERROR' });
+
+    await invoke((): Promise<void> =>
+      nativePlugin.sendWsMessage({ cycleId, message: parsed.data }),
+    );
+
+    if (signal.aborted || cycleId !== this.state.cycleId)
+      throw new DOMException('Aborted', 'AbortError');
+  }
 
   private set(patch: Partial<NativeState>): void {
     this.state = { ...this.state, ...patch };
@@ -92,6 +144,7 @@ export class NativeRuntime {
       route: null,
       call: null,
       runtime: { status: 'offline', muted: false },
+      wsStatus: 'offline',
     });
   }
 
@@ -125,8 +178,32 @@ export class NativeRuntime {
 
     if (!envelope.success || envelope.data.cycleId !== this.state.cycleId) return;
 
+    if (name === 'wsMessage') {
+      if (this.state.phase !== 'ready' || !this.token) return;
+
+      const parsed = z
+        .strictObject({ cycleId: z.string(), message: z.record(z.string(), z.json()) })
+        .safeParse(value);
+
+      if (!parsed.success || typeof parsed.data.message.type !== 'string') return;
+
+      // Raw messages never enter React/Query snapshots or call UI state.
+      for (const listener of this.wsListeners) listener(parsed.data.message);
+
+      return;
+    }
+
     try {
-      if (name === 'route') {
+      if (name === 'wsState') {
+        const event = z
+          .strictObject({
+            cycleId: z.string(),
+            status: z.enum(['offline', 'connecting', 'online']),
+          })
+          .parse(value);
+
+        this.set({ wsStatus: this.token ? event.status : 'offline' });
+      } else if (name === 'route') {
         const route = routeSchema.parse(value);
         // Decode before validating so encoded separators, control characters and URLs cannot escape the router.
         const path = decodeURIComponent(route.path);
@@ -201,7 +278,12 @@ export class NativeRuntime {
     const generation = ++this.generation;
 
     this.clear();
-    this.set({ cycleId: crypto.randomUUID(), error: null, nativeCalls: null });
+    this.set({
+      cycleId: crypto.randomUUID(),
+      error: null,
+      nativeCalls: null,
+      nativeWebSocket: false,
+    });
     this.deadline = setTimeout((): void => {
       if (generation === this.generation) {
         this.fail({ code: 'BRIDGE_UNAVAILABLE' });
@@ -223,7 +305,10 @@ export class NativeRuntime {
 
       if (!parsedCapabilities.success) throw bridgeError({ code: 'UNSUPPORTED_VERSION' });
 
-      this.set({ nativeCalls: parsedCapabilities.data.nativeCalls });
+      this.set({
+        nativeCalls: parsedCapabilities.data.nativeCalls,
+        nativeWebSocket: parsedCapabilities.data.nativeWebSocket ?? false,
+      });
 
       for (const name of [
         'route',
@@ -231,6 +316,7 @@ export class NativeRuntime {
         'callSnapshot',
         'callStateChanged',
         'callRuntimeChanged',
+        ...(parsedCapabilities.data.nativeWebSocket ? ['wsMessage', 'wsState'] : []),
       ]) {
         const handle = await invoke((): ReturnType<typeof nativePlugin.addListener> =>
           nativePlugin.addListener(name, (value): void => this.receive(name, value, generation)),

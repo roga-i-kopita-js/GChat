@@ -5,7 +5,7 @@
   "description": "GChat Capacitor iOS shell and native session",
   "scripts": {
     "open": "open App/App.xcodeproj",
-    "build": "xcodebuild -project App/App.xcodeproj -scheme GChat -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build",
+    "build": "xcodebuild -project App/App.xcodeproj -scheme GChat -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData CODE_SIGN_IDENTITY=- build",
     "test": "swift test --package-path NativeCore",
     "build:core": "swift build --package-path NativeCore"
   }

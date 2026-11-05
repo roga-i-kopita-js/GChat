@@ -7,6 +7,7 @@ public enum NativeError: String, Error {
     case invalidSession = "SESSION_INVALID"
     case network = "NETWORK_ERROR"
     case unavailable = "BRIDGE_UNAVAILABLE"
+    case forbidden = "FORBIDDEN"
 }
 
 /// A configured HTTPS origin, independent of the Web document's query string.

@@ -11,7 +11,9 @@
 - Основной документ ограничен выбранным HTTPS-origin и путями `/apps/client`. Внешние переходы, вложенные документы и новые окна блокируются; native Auth не следует HTTP-редиректам. Перед Capacitor проверяются источник сообщения и main frame, допускается только плагин `GChat`. Браузерный микрофон, встроенные HTTP/cookie-плагины, инспекция WebView и Capacitor-логи отключены.
 - Иконки из [каталога ресурсов](Resources/Assets.xcassets/) подключены к target приложения.
 
-Оболочка возвращает `nativeCalls: false`, снимок `call: null` и runtime `offline`. Web показывает недоступность звонков и не включает браузерный engine. `placeCall` отклоняется: libwebrtc, WSS, устройства, CallKit и PushKit ещё не реализованы. Это не закрывает Gate 1/2 или приёмку production-загрузки.
+Оболочка возвращает `nativeCalls: false`, снимок `call: null` и runtime `offline`. Web показывает недоступность звонков и не включает браузерный engine. `placeCall` отклоняется: libwebrtc, CallKit и PushKit ещё не реализованы. Это не закрывает Gate 1/2 или приёмку production-загрузки.
+
+Реализовано [расширение bridge общим нативным WebSocket](../../docs/web/README.md#общий-websocket-через-native): NativeCore владеет WSS, авторизацией, регистрацией устройства, переподключением и применением политики из БД. `wsState` отделён от runtime звонка. UUID устройства сохраняется отдельно для выбранного сервера и native-сессии; чужая учётная запись не использует прежнюю привязку. Соединение восстанавливается из сохранённой сессии независимо от загрузки Web и переживает навигацию/перезапуск WebView. Фоновая работа требует отдельного контура звонков и проверки iOS. Мотивация — в [D008](../../docs/architecture/decisions/D008-capacitor-bridge.md#общий-нативный-wss-и-доступ-web-через-bridge).
 
 ## Запуск
 
@@ -24,7 +26,7 @@ pnpm --filter @gchat/ios build:core
 pnpm --filter @gchat/ios test
 ```
 
-`open` открывает `App/App.xcodeproj`. Выберите схему `GChat` и iOS Simulator либо физический iPhone. Для устройства настройте свой Signing Team; `com.gchat.app` в target и Capacitor config — идентификатор текущего каркаса, provisioning и APNs не настроены. Команда `build` собирает Simulator без подписи. `test` выполняет XCTest-пакет NativeCore на macOS; это не UI-тесты iOS. Полный Xcode нужен для XCTest и Simulator; Command Line Tools позволяют отдельно собрать NativeCore. pnpm не устанавливает Xcode и Swift-зависимости.
+`open` открывает `App/App.xcodeproj`. Выберите схему `GChat` и iOS Simulator либо физический iPhone. Для устройства настройте свой Signing Team; `com.gchat.app` в target и Capacitor config — идентификатор текущего каркаса, provisioning и APNs не настроены. Команда `build` собирает Simulator с локальной ad-hoc подписью без Signing Team. Не отключайте `CODE_SIGNING_ALLOWED`: Xcode должен сформировать simulator entitlements для доступа к Keychain, иначе native-сессия получает `errSecMissingEntitlement` (`-34018`). `test` выполняет XCTest-пакет NativeCore на macOS; это не UI-тесты iOS. Полный Xcode нужен для XCTest и Simulator; Command Line Tools позволяют отдельно собрать NativeCore. pnpm не устанавливает Xcode и Swift-зависимости.
 
 Перед загрузкой основного Web нужен HTTPS-стенд с валидным системным сертификатом, API под `/api`, HTML/SPA fallback под `/apps/client` и assets под `/apps/static`. Сборка Web:
 
@@ -40,7 +42,7 @@ pnpm --filter @gchat/web build:server
 
 [NativeCore](NativeCore/) не зависит от Capacitor/UIKit: XCTest проверяет доверенный origin, повтор неопределённой ротации после перезапуска, конкуренцию refresh/logout, отказ Keychain через fixture, подтверждённый отзыв и привязку к серверу. Реальный Keychain, WKWebView/Capacitor, редиректы и холодный запуск требуют отдельных интеграционных тестов в Xcode.
 
-Production remote loading пока является реализацией для технического spike, а не подтверждённым механизмом релиза. Наличие исходников и успешная сборка NativeCore не подтверждают сборку iOS-target, работу bridge или приёмку на устройстве. Native/UI Simulator runner ещё не создан.
+Production remote loading пока является реализацией для технического spike, а не подтверждённым механизмом релиза. iOS-target собирается для Simulator; сборка и тесты NativeCore не подтверждают работу bridge в запущенном WKWebView или приёмку на устройстве. Native/UI Simulator runner ещё не создан. [Тесты общего WSS](NativeCore/Tests/GChatCoreTests/SharedWebSocketTests.swift) используют сетевой fixture: проверяют фильтрацию, корреляцию, циклы WebView, закрытие сессии и ограничения. Они не подтверждают URLSession/WSS на iOS или реальный Capacitor.
 
 - [План автоматизации](automated-tests.md).
 - [Ручная приёмка](manual-tests.md): физические iPhone, аудио, CallKit/PushKit, фон и Gate 1/2.

@@ -12,10 +12,17 @@ interface NativePlugin {
   logout(): Promise<void>;
   getAccessToken(options: { forceRefresh: boolean }): Promise<unknown>;
   placeCall(options: { peerId: string }): Promise<void>;
+  sendWsMessage(options: { cycleId: string; message: WsRequest }): Promise<void>;
   addListener(name: string, listener: (event: unknown) => void): Promise<PluginListenerHandle>;
 }
 
 export const nativePlugin = registerPlugin<NativePlugin>('GChat');
+
+export interface WsRequest {
+  type: string;
+  request_id: string;
+  payload: Record<string, unknown>;
+}
 
 declare global {
   interface Window {
@@ -40,6 +47,7 @@ const messages: Record<string, string> = {
   SESSION_INVALID: 'Сессия завершена. Войдите снова',
   NETWORK_ERROR: 'Проверьте соединение и повторите попытку',
   RATE_LIMITED: 'Слишком много запросов. Попробуйте позже',
+  FORBIDDEN: 'Действие недоступно',
 };
 
 export function bridgeError(cause: unknown): ClientError {

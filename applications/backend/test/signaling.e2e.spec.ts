@@ -11,6 +11,7 @@ import { AuthWsTickets } from '../src/auth/auth.ws-tickets.js';
 import { DevicesService } from '../src/devices/devices.service.js';
 import { DirectCallsService } from '../src/direct-calls/direct-calls.service.js';
 import { ErrorService } from '../src/error/error.service.js';
+import { NativeWebsocketPolicyService } from '../src/signaling/native-websocket-policy.service.js';
 import { SignalingAdapter } from '../src/signaling/signaling.adapter.js';
 import { SignalingGateway } from '../src/signaling/signaling.gateway.js';
 
@@ -46,6 +47,7 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
   const deviceId = randomUUID();
   const callId = randomUUID();
   const error = new ErrorService();
+  const policy = { read: jest.fn<NativeWebsocketPolicyService['read']>() };
   const auth = {
     authenticate: jest.fn<AuthService['authenticate']>(),
     checkSession: jest.fn<AuthService['checkSession']>(),
@@ -75,6 +77,7 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
           },
         },
         SignalingGateway,
+        { provide: NativeWebsocketPolicyService, useValue: policy },
         { provide: AuthService, useValue: auth },
         { provide: DevicesService, useValue: devices },
         { provide: DirectCallsService, useValue: calls },
@@ -89,6 +92,7 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
   });
 
   beforeEach((): void => {
+    policy.read.mockReset().mockResolvedValue({ restrictions: [] });
     auth.authenticate
       .mockReset()
       .mockResolvedValue({ userId, sessionId, login: 'test', displayName: 'Test', role: 'user' });
@@ -122,6 +126,38 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
 
     return socket;
   }
+
+  it('delivers current native bridge policy only after device registration and validates payload', async (): Promise<void> => {
+    const socket = await connect(false);
+
+    expect((await message(socket, 'native.bridge_policy', {})).error.code).toBe('FORBIDDEN');
+    expect(policy.read).not.toHaveBeenCalled();
+    await message(socket, 'device.register', { device_id: deviceId });
+    policy.read.mockResolvedValueOnce({
+      restrictions: [{ direction: 'send', message_pattern: 'rtc.*' }],
+    });
+    expect((await message(socket, 'native.bridge_policy', {})).payload).toEqual({
+      restrictions: [{ direction: 'send', message_pattern: 'rtc.*' }],
+    });
+    expect((await message(socket, 'native.bridge_policy', {})).payload).toEqual({
+      restrictions: [],
+    });
+    expect((await message(socket, 'native.bridge_policy', { extra: true })).error.code).toBe(
+      'VALIDATION_ERROR',
+    );
+  });
+
+  it('closes the native connection when bridge policy cannot be read', async (): Promise<void> => {
+    const socket = await connect();
+
+    policy.read.mockRejectedValueOnce(error.serviceUnavailable());
+    const closed = once(socket, 'close');
+
+    expect((await message(socket, 'native.bridge_policy', {})).error.code).toBe(
+      'SERVICE_UNAVAILABLE',
+    );
+    expect((await closed)[0]).toBe(1011);
+  });
 
   it('routes SDP/ICE only to the selected peer and rejects stale or conflicting attempts', async (): Promise<void> => {
     const peerUser = randomUUID();

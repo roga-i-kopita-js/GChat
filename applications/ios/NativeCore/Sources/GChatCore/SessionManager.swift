@@ -21,6 +21,16 @@ public struct NativeSession: Codable, Sendable {
     public let server: ServerOrigin
     public var tokens: Tokens
     public var pending: PendingRefresh?
+
+    public var sessionID: String? {
+        let parts = tokens.access_token.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 3 else { return nil }
+        var value = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        value += String(repeating: "=", count: (4 - value.count % 4) % 4)
+        guard let data = Data(base64Encoded: value),
+              let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return claims["sid"] as? String
+    }
 }
 
 public protocol SessionStorage: Sendable {
@@ -41,6 +51,7 @@ public actor SessionManager {
         case login(String, String)
         case logout
         case changeServer
+        case invalidate
     }
 
     private let server: ServerOrigin
@@ -70,6 +81,9 @@ public actor SessionManager {
     public func prepareServerChange() async throws {
         _ = try await enqueue(.changeServer)
     }
+
+    /// Only for a confirmed SESSION_INVALID response from the authenticated transport.
+    public func invalidate() async throws { _ = try await enqueue(.invalidate) }
 
     private func enqueue(_ operation: Operation) async throws -> NativeSession? {
         let previous = tail
@@ -102,6 +116,9 @@ public actor SessionManager {
         if let session, session.server != server { throw NativeError.validation }
 
         switch operation {
+        case .invalidate:
+            try storage.write(nil)
+            return nil
         case .changeServer:
             guard session == nil else { throw NativeError.validation }
             return nil

@@ -20,6 +20,7 @@ import {
 import { DirectCallsService } from '../direct-calls/direct-calls.service.js';
 import { AppError } from '../error/app.error.js';
 import { ErrorService } from '../error/error.service.js';
+import { NativeWebsocketPolicyService } from './native-websocket-policy.service.js';
 import { wsIdentities } from './signaling.adapter.js';
 import {
   EmptyDto,
@@ -60,6 +61,7 @@ export class SignalingGateway implements OnModuleDestroy {
     private readonly devices: DevicesService,
     private readonly calls: DirectCallsService,
     private readonly error: ErrorService,
+    private readonly nativePolicy: NativeWebsocketPolicyService,
   ) {
     this.pipe = new ValidationPipe({
       transform: true,
@@ -243,6 +245,12 @@ export class SignalingGateway implements OnModuleDestroy {
     }
 
     const actor = this.actor(connection);
+
+    if (type === 'native.bridge_policy') {
+      await this.validate(payload, EmptyDto);
+
+      return this.nativePolicy.read();
+    }
 
     if (type === 'device.push_token') {
       const input = await this.validate(payload, PushTokenDto);

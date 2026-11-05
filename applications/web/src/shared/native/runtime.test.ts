@@ -9,6 +9,7 @@ type Mocks = {
     | 'login'
     | 'logout'
     | 'placeCall'
+    | 'sendWsMessage'
     | 'addListener',
     ReturnType<typeof vi.fn>
   >;
@@ -23,6 +24,7 @@ const mock = vi.hoisted((): Mocks => ({
     login: vi.fn(),
     logout: vi.fn(),
     placeCall: vi.fn(),
+    sendWsMessage: vi.fn(),
     addListener: vi.fn(),
   },
 }));
@@ -403,4 +405,107 @@ it('uses only placeCall, does not fabricate call state on acknowledgement, and n
   expect(mock.plugin.placeCall).toHaveBeenCalledTimes(2);
   expect(client.getSnapshot().error).toBe('Проверьте соединение и повторите попытку');
   stop();
+});
+
+describe('shared native WebSocket', (): void => {
+  async function socketReady(): Promise<void> {
+    mock.plugin.getCapabilities.mockResolvedValueOnce({
+      bridgeVersion: 1,
+      platform: 'ios',
+      nativeAuth: true,
+      nativeCalls: false,
+      nativeWebSocket: true,
+    });
+    await ready();
+    emit('wsState', { status: 'online' });
+  }
+
+  it('subscribes before webReady, sends the current cycle and keeps raw messages out of snapshots', async (): Promise<void> => {
+    await socketReady();
+    const listener = vi.fn();
+    const unsubscribe = nativeRuntime.subscribeWs(listener);
+    const message = { type: 'chat.list', request_id: 'web-1', payload: {} };
+
+    await nativeRuntime.sendWsMessage(message);
+    expect(mock.plugin.sendWsMessage).toHaveBeenCalledWith({
+      cycleId: nativeRuntime.getSnapshot().cycleId,
+      message,
+    });
+    emit('wsMessage', {
+      message: { type: 'response', request_id: 'web-1', payload: { secret: 'content' } },
+    });
+    expect(listener).toHaveBeenCalledOnce();
+    expect(JSON.stringify(nativeRuntime.getSnapshot())).not.toContain('content');
+    expect(nativeRuntime.getSnapshot().call).toBeNull();
+    unsubscribe();
+    emit('wsMessage', { message: { type: 'chat.updated', payload: {} } });
+    expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it('ignores previous-cycle and logged-out delivery and cannot resurrect connection state', async (): Promise<void> => {
+    await socketReady();
+    const oldCycle = nativeRuntime.getSnapshot().cycleId;
+    const listener = vi.fn();
+    const unsubscribe = nativeRuntime.subscribeWs(listener);
+
+    await socketReady();
+    emit('wsMessage', { message: { type: 'chat.updated', payload: {} } }, oldCycle);
+    emit('wsState', { status: 'offline' }, oldCycle);
+    expect(listener).not.toHaveBeenCalled();
+    expect(nativeRuntime.getSnapshot().wsStatus).toBe('online');
+    emit('loggedOut', {});
+    emit('wsState', { status: 'online' });
+    emit('wsMessage', { message: { type: 'chat.updated', payload: {} } });
+    expect(listener).not.toHaveBeenCalled();
+    expect(nativeRuntime.getSnapshot().wsStatus).toBe('offline');
+    await expect(
+      nativeRuntime.sendWsMessage({ type: 'chat.list', request_id: '1', payload: {} }),
+    ).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    unsubscribe();
+  });
+
+  it('rejects offline, invalid and excessive messages before calling native', async (): Promise<void> => {
+    await socketReady();
+    await expect(
+      nativeRuntime.sendWsMessage({ type: '', request_id: '1', payload: {} }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      nativeRuntime.sendWsMessage({
+        type: 'chat.send',
+        request_id: '1',
+        payload: { text: 'я'.repeat(70000) },
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    emit('wsState', { status: 'connecting' });
+    await expect(
+      nativeRuntime.sendWsMessage({ type: 'chat.list', request_id: '1', payload: {} }),
+    ).rejects.toMatchObject({ code: 'BRIDGE_UNAVAILABLE' });
+    expect(mock.plugin.sendWsMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not apply a send result after a cycle reset and does not retry a denied command', async (): Promise<void> => {
+    await socketReady();
+    let complete!: () => void;
+
+    mock.plugin.sendWsMessage.mockReturnValueOnce(
+      new Promise<void>((resolve): void => {
+        complete = resolve;
+      }),
+    );
+    const pending = nativeRuntime.sendWsMessage({
+      type: 'chat.send',
+      request_id: '1',
+      payload: {},
+    });
+    const assertion = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+
+    await socketReady();
+    complete();
+    await assertion;
+    mock.plugin.sendWsMessage.mockRejectedValueOnce({ code: 'FORBIDDEN', message: 'raw secret' });
+    await expect(
+      nativeRuntime.sendWsMessage({ type: 'call.create', request_id: '2', payload: {} }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN', message: 'Действие недоступно' });
+    expect(mock.plugin.sendWsMessage).toHaveBeenCalledTimes(2);
+  });
 });

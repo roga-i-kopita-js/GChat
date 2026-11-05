@@ -36,6 +36,13 @@
       "when": 1793818467716,
       "tag": "0004_backoffice",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793865259902,
+      "tag": "0005_native_websocket_restrictions",
+      "breakpoints": true
     }
   ]
 }

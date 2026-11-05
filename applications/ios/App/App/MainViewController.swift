@@ -7,14 +7,16 @@ import WebKit
 final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let server: ServerOrigin
     let sessions: SessionManager
+    let transport: SharedWebSocket
     var onChangeServer: (() -> Void)?
     private var capacitorDelegate: WebViewDelegationHandler?
     private var plugin: GChatPlugin?
     private var retryView: UIView?
 
-    init(server: ServerOrigin, sessions: SessionManager) {
+    init(server: ServerOrigin, sessions: SessionManager, transport: SharedWebSocket) {
         self.server = server
         self.sessions = sessions
+        self.transport = transport
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -43,7 +45,7 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
         content.add(WeakMessageHandler(self), name: "bridge")
         content.addUserScript(WKUserScript(source: "window.GChatRuntime = 'native';",
                                            injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        let plugin = GChatPlugin(server: server, sessions: sessions)
+        let plugin = GChatPlugin(server: server, sessions: sessions, transport: transport)
         self.plugin = plugin
         bridge.registerPluginInstance(plugin)
     }

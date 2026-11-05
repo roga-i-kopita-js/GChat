@@ -18,6 +18,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 final class ShellViewController: UIViewController {
     private var child: UIViewController?
     private let serverKey = "gchat.server.v1"
+    private var transport: SharedWebSocket?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -37,7 +38,22 @@ final class ShellViewController: UIViewController {
             storage: KeychainSessionStorage(service: Bundle.main.bundleIdentifier! + ".auth"),
             transport: HTTPAuthTransport()
         )
-        let main = MainViewController(server: server, sessions: manager)
+        let deviceKey = "gchat.device.v1." + server.url.absoluteString
+        let transport = SharedWebSocket(
+            server: server,
+            access: { force in try await manager.restore(force: force)?.tokens.access_token },
+            readDevice: { UserDefaults.standard.string(forKey: deviceKey + "." + $0) },
+            saveDevice: { sessionID, deviceID in UserDefaults.standard.set(deviceID, forKey: deviceKey + "." + sessionID) }
+        )
+        self.transport?.stop()
+        self.transport = transport
+        // Restore native connectivity even when the remote Web cannot load.
+        Task { @MainActor in
+            if let session = try? await manager.restore(), let id = session.sessionID {
+                transport.start(sessionID: id)
+            }
+        }
+        let main = MainViewController(server: server, sessions: manager, transport: transport)
         main.onChangeServer = { [weak self] in
             guard let self else { return }
             UserDefaults.standard.removeObject(forKey: self.serverKey)
@@ -47,6 +63,8 @@ final class ShellViewController: UIViewController {
     }
 
     private func selectServer() {
+        transport?.stop()
+        transport = nil
         let startup = ServerViewController()
         startup.onSelect = { [weak self] server in self?.open(server) }
         show(startup)
