@@ -51,6 +51,7 @@ export function setupServerWeb(app: NestExpressApplication, directory: string | 
         res.setHeader('Cache-Control', 'no-cache');
       else if (file.startsWith(resolve(root, 'static') + '/'))
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
       res.setHeader('X-Content-Type-Options', 'nosniff');
     },
   });
