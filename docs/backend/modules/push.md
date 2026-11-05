@@ -36,7 +36,9 @@ tests: ["applications/backend/src/push/push.client.spec.ts", "applications/backe
 
 ## Конфигурация
 
-Переменные: `APNS_TEAM_ID`, `APNS_KEY_ID`, `APNS_PRIVATE_KEY_FILE`, `APNS_BUNDLE_ID`, `APNS_ENVIRONMENT` (`sandbox/production`). При включённом Push обязательны, не имеют production-default; ключ хранится вне репозитория. Отсутствующая/некорректная конфигурация не даёт запустить включённый модуль. Окружения не смешиваются; HTTP/2-запрос имеет бюджет 5 секунд, дополнительно ограниченный остатком ringing_deadline. Секреты никогда не передаются клиенту. Подключение APNs и реальные iPhone проверяются отдельно, credentials этой задачей не создаются.
+`APNS_ENABLED` принимает `true/false`, по умолчанию `true`. При `false` backend запускается без Apple credentials: ключ не читается, APNs-соединения не создаются, worker не забирает VoIP-задания. Браузерные звонки продолжают работать через Signaling и TURN; фоновые iOS push недоступны. VoIP-задания сохраняют свои сроки и при включении worker проверяются по обычным правилам актуальности.
+
+Переменные включённого APNs: `APNS_TEAM_ID`, `APNS_KEY_ID`, `APNS_PRIVATE_KEY_FILE`, `APNS_BUNDLE_ID`, `APNS_ENVIRONMENT` (`sandbox/production`). При включённом Push обязательны, не имеют production-default; ключ хранится вне репозитория. Отсутствующая/некорректная конфигурация не даёт запустить включённый модуль. Окружения не смешиваются; HTTP/2-запрос имеет бюджет 5 секунд, дополнительно ограниченный остатком ringing_deadline. Секреты никогда не передаются клиенту. Подключение APNs и реальные iPhone проверяются отдельно, credentials этой задачей не создаются.
 
 ## Критерии приёмки и проверки
 

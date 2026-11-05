@@ -107,12 +107,22 @@ export function validateEnvironment(
   )
     throw new Error('DIRECT_CALLS_TURN_SHARED_SECRET is required');
 
-  for (const name of ['APNS_TEAM_ID', 'APNS_KEY_ID', 'APNS_PRIVATE_KEY_FILE', 'APNS_BUNDLE_ID']) {
-    if (typeof env[name] !== 'string' || !env[name].trim()) throw new Error(name + ' is required');
-  }
+  const rawApnsEnabled = String(env.APNS_ENABLED ?? 'true');
 
-  if (!['sandbox', 'production'].includes(String(env.APNS_ENVIRONMENT)))
-    throw new Error('APNS_ENVIRONMENT must be sandbox or production');
+  if (!['true', 'false'].includes(rawApnsEnabled))
+    throw new Error('APNS_ENABLED must be true or false');
+
+  const apnsEnabled = rawApnsEnabled === 'true';
+
+  if (apnsEnabled) {
+    for (const name of ['APNS_TEAM_ID', 'APNS_KEY_ID', 'APNS_PRIVATE_KEY_FILE', 'APNS_BUNDLE_ID']) {
+      if (typeof env[name] !== 'string' || !env[name].trim())
+        throw new Error(name + ' is required');
+    }
+
+    if (!['sandbox', 'production'].includes(String(env.APNS_ENVIRONMENT)))
+      throw new Error('APNS_ENVIRONMENT must be sandbox or production');
+  }
 
   const drift = Math.ceil(timeouts.REDLOCK_LEASE_MS! * 0.01) + 2;
 
@@ -130,6 +140,7 @@ export function validateEnvironment(
     ...timeouts,
     SIGNALING_BROWSER_ORIGINS: parseBrowserOrigins(env.SIGNALING_BROWSER_ORIGINS),
     DIRECT_CALLS_TURN_URLS: turnUrls,
+    APNS_ENABLED: apnsEnabled,
     LOG_REDACTION_ENABLED: redaction,
     PORT: port,
     HOST: host,

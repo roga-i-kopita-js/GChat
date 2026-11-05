@@ -9,7 +9,7 @@ import { PushClient } from './push.client.js';
 import { PushWorker } from './push.worker.js';
 
 describe('VoIP outbox processing', (): void => {
-  function fixture(): any {
+  function fixture(apnsEnabled = true): any {
     const job = {
       id: 'job',
       callId: 'call',
@@ -51,12 +51,27 @@ describe('VoIP outbox processing', (): void => {
       calls as any,
       devices as any,
       client as any,
-      new ConfigService({ APNS_ENVIRONMENT: 'sandbox' }),
+      new ConfigService({ APNS_ENABLED: apnsEnabled, APNS_ENVIRONMENT: 'sandbox' }),
       new LoggerService(),
     );
 
     return { worker, store, devices, calls, client };
   }
+
+  it('does not consume VoIP jobs when disabled', async (): Promise<void> => {
+    jest.useFakeTimers();
+    const f = fixture(false);
+
+    try {
+      f.worker.onApplicationBootstrap();
+      await jest.advanceTimersByTimeAsync(1000);
+      expect(f.store.claim).not.toHaveBeenCalled();
+      expect(f.client.send).not.toHaveBeenCalled();
+    } finally {
+      await f.worker.onModuleDestroy();
+      jest.useRealTimers();
+    }
+  });
 
   it('marks provider acceptance done without changing call state', async (): Promise<void> => {
     const f = fixture();

@@ -23,8 +23,6 @@ import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 const root = process.env.SMOKE_DIR;
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');
-const apns = generateKeyPairSync('ec', { namedCurve: 'P-256' });
-writeFileSync(root + '/secrets/apns.p8', apns.privateKey.export({ type: 'pkcs8', format: 'pem' }));
 const config = {
   DATABASE_URL: 'postgresql://smoke:smoke@postgres:5432/smoke',
   REDIS_URL: 'redis://:smoke@redis:6379/0', REDIS_KEY_PREFIX: 'gchat:release-smoke:',
@@ -35,15 +33,13 @@ const config = {
   AUTH_ROTATION_KEYS: JSON.stringify({ smoke: randomBytes(32).toString('base64') }),
   DIRECT_CALLS_TURN_URLS: '["turn:smoke.invalid:3478"]',
   DIRECT_CALLS_TURN_SHARED_SECRET: randomBytes(32).toString('hex'),
-  APNS_TEAM_ID: 'smoke', APNS_KEY_ID: 'smoke', APNS_BUNDLE_ID: 'invalid.smoke.gchat',
-  APNS_ENVIRONMENT: 'sandbox', SIGNALING_BROWSER_ORIGINS: '["https://smoke.invalid"]',
+  APNS_ENABLED: 'false', SIGNALING_BROWSER_ORIGINS: '["https://smoke.invalid"]',
 };
 // Compose single quotes preserve JSON and literal backslash-n sequences.
 writeFileSync(root + '/backend.env', Object.entries(config).map(([k, v]) => `${k}='${v}'`).join('\n') + '\n');
 writeFileSync(root + '/compose.env', `GCHAT_IMAGE=${process.env.IMAGE}\nGCHAT_HTTP_PORT=38080\nPOSTGRES_DB=smoke\nPOSTGRES_USER=smoke\nPOSTGRES_PASSWORD=smoke\nREDIS_PASSWORD=smoke\n`);
 JS
 chmod 755 "$GCHAT_SHARED_DIR" "$GCHAT_SHARED_DIR/secrets"
-chmod 644 "$GCHAT_SHARED_DIR/secrets/apns.p8"
 dc config --quiet
 dc --profile infrastructure up -d --wait postgres redis
 dc run --rm --no-deps migrate

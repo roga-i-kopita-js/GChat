@@ -41,15 +41,26 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 read -r RELEASE_ID IMAGE IMAGE_ID PLATFORM < <(python3 "$RELEASE/verify-release.py" "$RELEASE")
 [[ -n "$IMAGE" && "${RELEASE##*/}" == "$RELEASE_ID" ]]
+STAGE=config
 export GCHAT_SHARED_DIR="$ROOT/shared"
 SETTINGS="$GCHAT_SHARED_DIR/compose.env"
+MISSING_CONFIG=false
+for file in compose.env backend.env turnserver.conf; do
+  if [[ ! -r "$GCHAT_SHARED_DIR/$file" || ! -s "$GCHAT_SHARED_DIR/$file" ]]; then
+    printf 'Missing or unreadable server configuration: %s/%s\n' "$GCHAT_SHARED_DIR" "$file" >&2
+    MISSING_CONFIG=true
+  fi
+done
+if [[ "$MISSING_CONFIG" == true ]]; then
+  echo 'Prepare the server configuration before deploying; GitHub SSH variables and secrets do not create these files.' >&2
+  exit 1
+fi
 # Only nonsecret, single-line plain values are consumed by this script.
 setting() { sed -n "s/^$1=//p" "$SETTINGS"; }
 DOMAIN=$(setting GCHAT_DOMAIN)
 PORT=$(setting GCHAT_HTTP_PORT)
 TIMEOUT=$(setting GCHAT_READY_TIMEOUT)
 [[ "$PORT" =~ ^[0-9]+$ && "$TIMEOUT" =~ ^[0-9]+$ && "$TIMEOUT" -ge 10 && "$TIMEOUT" -le 1800 ]]
-[[ -f "$GCHAT_SHARED_DIR/backend.env" && -r "$GCHAT_SHARED_DIR/secrets/apns.p8" ]]
 python3 "$RELEASE/render-nginx.py" "$RELEASE/nginx.conf.template" "$RELEASE/nginx.conf" "$DOMAIN" "$PORT"
 printf 'GCHAT_IMAGE=%s\n' "$IMAGE" > "$RELEASE/image.env"
 dc() { docker compose -p gchat --env-file "$SETTINGS" --env-file "$RELEASE/image.env" -f "$RELEASE/compose.yaml" "$@"; }
@@ -63,6 +74,18 @@ STAGE=load
 docker load -i "$RELEASE/gchat-image.tar.gz" >/dev/null
 [[ "$(docker image inspect "$IMAGE" --format '{{.Id}}')" == "$IMAGE_ID" ]]
 [[ "$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')" == "$PLATFORM" ]]
+STAGE=config
+dc run --rm --no-deps app node --input-type=module -e '
+  import { ConfigService } from "@nestjs/config";
+  import { validateEnvironment } from "./dist/config/environment.js";
+  import { PushClient } from "./dist/push/push.client.js";
+  try {
+    new PushClient(new ConfigService(validateEnvironment(process.env)));
+  } catch {
+    console.error("Backend configuration validation failed; inspect server settings and APNs key if enabled");
+    process.exit(1);
+  }
+'
 STAGE=preflight
 sudo -n test -d /etc/nginx/conf.d
 if sudo -n test -f "$NGINX_TARGET"; then

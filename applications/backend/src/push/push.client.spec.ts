@@ -10,6 +10,19 @@ import { jwtVerify } from 'jose';
 
 import { PushClient } from './push.client.js';
 
+describe('Disabled APNs', (): void => {
+  it('does not read a key and refuses sending when disabled', async (): Promise<void> => {
+    const client = new PushClient(
+      new ConfigService({ APNS_ENABLED: false, APNS_PRIVATE_KEY_FILE: '/nonexistent/key.p8' }),
+    );
+
+    await expect(client.send('job', 'device', {}, new Date(Date.now() + 1000))).rejects.toThrow(
+      'APNs is disabled',
+    );
+    client.onModuleDestroy();
+  });
+});
+
 describe('APNs HTTP/2 requests', (): void => {
   let folder: string;
   let client: PushClient;

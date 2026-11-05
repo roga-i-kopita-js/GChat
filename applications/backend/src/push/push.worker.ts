@@ -23,6 +23,8 @@ export class PushWorker implements OnApplicationBootstrap, OnModuleDestroy {
   ) {}
 
   onApplicationBootstrap(): void {
+    if (!this.config.get<boolean>('APNS_ENABLED', true)) return;
+
     this.timer = setInterval((): void => {
       if (this.running) return;
 

@@ -81,6 +81,8 @@ services:
     image: coturn/coturn:4.18.0-r0
     restart: unless-stopped
     network_mode: host
+    group_add:
+      - '${GCHAT_CONFIG_GID:-65534}'
     volumes:
       - ${GCHAT_SHARED_DIR}/turnserver.conf:/etc/coturn/turnserver.conf:ro
     command: [-c, /etc/coturn/turnserver.conf]

@@ -1,4 +1,4 @@
-import { createPrivateKey } from 'node:crypto';
+import { createPrivateKey, type KeyObject } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { ClientHttp2Session } from 'node:http2';
 import { connect } from 'node:http2';
@@ -19,9 +19,11 @@ export interface PushResult {
 export class PushClient implements OnModuleDestroy {
   private session?: ClientHttp2Session;
   private signing?: { token: string; expires: number };
-  private readonly key;
+  private readonly key?: KeyObject;
 
   constructor(private readonly config: ConfigService) {
+    if (!this.config.get<boolean>('APNS_ENABLED', true)) return;
+
     this.key = createPrivateKey(
       readFileSync(this.config.getOrThrow<string>('APNS_PRIVATE_KEY_FILE')),
     );
@@ -34,6 +36,8 @@ export class PushClient implements OnModuleDestroy {
   }
 
   private async token(): Promise<string> {
+    if (!this.key) throw new Error('APNs is disabled');
+
     if (this.signing && this.signing.expires > Date.now()) return this.signing.token;
 
     const token = await new SignJWT({})

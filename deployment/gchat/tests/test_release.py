@@ -88,7 +88,8 @@ class ReleaseTests(unittest.TestCase):
         shared = self.root / "shared"
         (shared / "secrets").mkdir(parents=True, exist_ok=True)
         (shared / "secrets/apns.p8").write_text("test")
-        (shared / "backend.env").write_text("")
+        (shared / "backend.env").write_text("# test configuration\n")
+        (shared / "turnserver.conf").write_text("# test configuration\n")
         (shared / "compose.env").write_text(
             "GCHAT_DOMAIN=chat.example.com\nGCHAT_HTTP_PORT=3000\nGCHAT_READY_TIMEOUT=120\n"
         )
@@ -156,6 +157,27 @@ esac
         result, trace = self.run_deploy()
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(trace, "")
+
+    def test_missing_server_configuration_is_reported_before_docker(self):
+        shared = self.root / "shared"
+        shared.mkdir()
+        result = subprocess.run(
+            ["bash", str(self.release / "deploy.sh"), str(self.root), str(self.release)],
+            capture_output=True, text=True, timeout=15,
+            env=dict(os.environ, PATH=str(self.create_lock_stub()) + os.pathsep + os.environ["PATH"]),
+        )
+        self.assertNotEqual(result.returncode, 0)
+        for file in ["compose.env", "backend.env", "turnserver.conf"]:
+            self.assertIn(str(shared / file), result.stderr)
+        self.assertIn("failed stage=config", (self.release / "result").read_text())
+
+    def create_lock_stub(self):
+        tools = self.root / "bin"
+        tools.mkdir()
+        flock = tools / "flock"
+        flock.write_text("#!/usr/bin/env bash\nexit 0\n")
+        flock.chmod(0o755)
+        return tools
 
     def test_lock_refusal_does_not_start_migrator(self):
         result, trace = self.run_deploy("lock")

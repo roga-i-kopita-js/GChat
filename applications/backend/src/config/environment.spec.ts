@@ -1,5 +1,32 @@
 import { validateEnvironment } from './environment.js';
 
+describe('Optional APNs configuration', (): void => {
+  function withoutCredentials(): Record<string, unknown> {
+    return Object.fromEntries(
+      Object.entries(process.env).filter(([key]): boolean => !key.startsWith('APNS_')),
+    );
+  }
+
+  it('allows Web-only operation without APNs credentials', (): void => {
+    expect(
+      validateEnvironment({ ...withoutCredentials(), APNS_ENABLED: 'false' }).APNS_ENABLED,
+    ).toBe(false);
+  });
+
+  it('requires credentials by default and when explicitly enabled', (): void => {
+    expect((): unknown => validateEnvironment(withoutCredentials())).toThrow('APNS_TEAM_ID');
+    expect((): unknown =>
+      validateEnvironment({ ...withoutCredentials(), APNS_ENABLED: 'true' }),
+    ).toThrow('APNS_TEAM_ID');
+  });
+
+  it.each(['', '0', 'no', 'FALSE'])('rejects ambiguous APNS_ENABLED=%s', (value): void => {
+    expect((): unknown => validateEnvironment({ ...process.env, APNS_ENABLED: value })).toThrow(
+      'APNS_ENABLED',
+    );
+  });
+});
+
 describe('JWT lifetime configuration', (): void => {
   it('defaults to 120 seconds and parses a custom integer lifetime', (): void => {
     const env = { ...process.env };

@@ -48,7 +48,7 @@ jobs:
           test -d "$root/shared" && test -w "$root/shared"
           echo 'SSH, Docker, nginx and release directories: OK'
           missing=false
-          for file in compose.env backend.env secrets/apns.p8 turnserver.conf; do
+          for file in compose.env backend.env turnserver.conf; do
             if test -s "$root/shared/$file"; then
               printf 'PRESENT shared/%s\n' "$file"
             else

@@ -1,25 +1,30 @@
 # syntax=docker/dockerfile:1
 ARG NODE_VERSION
-FROM node:${NODE_VERSION}-bookworm-slim AS build
+FROM node:${NODE_VERSION}-bookworm-slim AS dependencies
 WORKDIR /src
 COPY . .
 RUN corepack enable && corepack install \
-    && pnpm install --frozen-lockfile \
-    && pnpm --filter @gchat/backend build \
-    && pnpm --filter @gchat/web build:server \
+    && pnpm install --frozen-lockfile
+
+FROM dependencies AS backend-build
+RUN pnpm --filter @gchat/backend build \
     && pnpm --config.inject-workspace-packages=true --filter @gchat/backend --prod deploy /out \
     && cp -r applications/backend/dist /out/dist \
-    && cp -r applications/backend/drizzle /out/drizzle \
-    && cp -r applications/web/dist /out/web
+    && cp -r applications/backend/drizzle /out/drizzle
+
+FROM dependencies AS web-build
+RUN pnpm --filter @gchat/web build:server \
+    && test -s applications/web/dist/index.html \
+    && test -d applications/web/dist/static
 
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000 GCHAT_WEB_ROOT=/app/web
 WORKDIR /app
-COPY --from=build --chown=node:node /out/package.json ./package.json
-COPY --from=build --chown=node:node /out/node_modules ./node_modules
-COPY --from=build --chown=node:node /out/dist ./dist
-COPY --from=build --chown=node:node /out/drizzle ./drizzle
-COPY --from=build --chown=node:node /out/web ./web
+COPY --from=backend-build --chown=node:node /out/package.json ./package.json
+COPY --from=backend-build --chown=node:node /out/node_modules ./node_modules
+COPY --from=backend-build --chown=node:node /out/dist ./dist
+COPY --from=backend-build --chown=node:node /out/drizzle ./drizzle
+COPY --from=web-build --chown=node:node /src/applications/web/dist ./web
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=5s --timeout=4s --start-period=20s --retries=12 \

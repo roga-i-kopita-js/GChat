@@ -70,10 +70,11 @@ jobs:
           pnpm --filter @gchat/web lint
           pnpm --filter @gchat/web typecheck
           pnpm --filter @gchat/web test
-          pnpm --filter @gchat/web build:server
           pnpm docs:check
           python3 -m unittest discover -s deployment/gchat/tests -p 'test_*.py'
           for script in deployment/gchat/*.sh; do bash -n "$script"; done
+      - name: Build server Web client
+        run: pnpm --filter @gchat/web build:server
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Build the release image
@@ -81,7 +82,7 @@ jobs:
           docker buildx build --load --platform "$PLATFORM" \
             --build-arg "NODE_VERSION=$(cat .nvmrc)" \
             -f deployment/gchat/Dockerfile -t "$IMAGE" .
-      - name: Test packaged image and nginx
+      - name: Verify backend serves packaged Web, API and WSS over HTTPS
         run: bash deployment/gchat/smoke.sh
       - name: Package the exact tested image
         run: bash deployment/gchat/package-release.sh
