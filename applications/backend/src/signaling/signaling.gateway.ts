@@ -28,8 +28,8 @@ import {
   RegisterDeviceDto,
   RtcIceDto,
   RtcSdpDto,
-  WsRequestDto,
   WebPushDto,
+  WsRequestDto,
 } from './signaling.dto.js';
 
 interface Connection {
@@ -255,17 +255,20 @@ export class SignalingGateway implements OnModuleDestroy {
 
     if (type === 'device.web_push_config') {
       await this.validate(payload, EmptyDto);
+
       return this.devices.webPushConfig();
     }
 
     if (type === 'device.web_push') {
       const input = await this.validate(payload, WebPushDto);
+
       await this.devices.setWebPush(
         actor.userId,
         actor.sessionId,
         actor.deviceId,
         input.subscription,
       );
+
       return {};
     }
 

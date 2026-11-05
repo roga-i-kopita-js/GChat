@@ -109,7 +109,11 @@ for (const server of [false, true]) {
     await page.evaluate(async (): Promise<void> => {
       await (await navigator.serviceWorker.ready).update();
     });
+    const rollbackNavigation = page.waitForEvent('load');
+    const otherRollbackNavigation = other.waitForEvent('load');
+
     await page.getByRole('button', { name: 'Обновить', exact: true }).click();
+    await Promise.all([rollbackNavigation, otherRollbackNavigation]);
     await expect
       .poll((): Promise<string[]> => page.evaluate((): Promise<string[]> => caches.keys()))
       .toEqual([expect.stringContaining('-one')]);

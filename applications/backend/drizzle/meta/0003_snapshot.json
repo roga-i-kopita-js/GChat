@@ -61,9 +61,7 @@
         "gchat_users_login_unique": {
           "name": "gchat_users_login_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "login"
-          ]
+          "columns": ["login"]
         }
       },
       "policies": {},
@@ -112,12 +110,8 @@
           "name": "gchat_device_sessions_user_id_gchat_users_id_fk",
           "tableFrom": "gchat_device_sessions",
           "tableTo": "gchat_users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -125,14 +119,8 @@
           "name": "gchat_device_sessions_device_id_user_id_gchat_devices_id_user_id_fk",
           "tableFrom": "gchat_device_sessions",
           "tableTo": "gchat_devices",
-          "columnsFrom": [
-            "device_id",
-            "user_id"
-          ],
-          "columnsTo": [
-            "id",
-            "user_id"
-          ],
+          "columnsFrom": ["device_id", "user_id"],
+          "columnsTo": ["id", "user_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -142,10 +130,7 @@
         "gchat_device_session_pair": {
           "name": "gchat_device_session_pair",
           "nullsNotDistinct": false,
-          "columns": [
-            "device_id",
-            "session_id"
-          ]
+          "columns": ["device_id", "session_id"]
         }
       },
       "policies": {},
@@ -183,12 +168,8 @@
           "name": "gchat_devices_user_id_gchat_users_id_fk",
           "tableFrom": "gchat_devices",
           "tableTo": "gchat_users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -198,10 +179,7 @@
         "gchat_devices_owner": {
           "name": "gchat_devices_owner",
           "nullsNotDistinct": false,
-          "columns": [
-            "id",
-            "user_id"
-          ]
+          "columns": ["id", "user_id"]
         }
       },
       "policies": {},
@@ -257,14 +235,8 @@
           "name": "gchat_device_voip_tokens_device_id_session_id_gchat_device_sessions_device_id_session_id_fk",
           "tableFrom": "gchat_device_voip_tokens",
           "tableTo": "gchat_device_sessions",
-          "columnsFrom": [
-            "device_id",
-            "session_id"
-          ],
-          "columnsTo": [
-            "device_id",
-            "session_id"
-          ],
+          "columnsFrom": ["device_id", "session_id"],
+          "columnsTo": ["device_id", "session_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -272,20 +244,14 @@
       "compositePrimaryKeys": {
         "gchat_device_voip_tokens_device_id_session_id_pk": {
           "name": "gchat_device_voip_tokens_device_id_session_id_pk",
-          "columns": [
-            "device_id",
-            "session_id"
-          ]
+          "columns": ["device_id", "session_id"]
         }
       },
       "uniqueConstraints": {
         "gchat_voip_address": {
           "name": "gchat_voip_address",
           "nullsNotDistinct": false,
-          "columns": [
-            "environment",
-            "token"
-          ]
+          "columns": ["environment", "token"]
         }
       },
       "policies": {},
@@ -480,12 +446,8 @@
           "name": "gchat_direct_call_deliveries_call_id_gchat_direct_calls_id_fk",
           "tableFrom": "gchat_direct_call_deliveries",
           "tableTo": "gchat_direct_calls",
-          "columnsFrom": [
-            "call_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["call_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -622,12 +584,8 @@
           "name": "gchat_direct_call_participants_call_id_gchat_direct_calls_id_fk",
           "tableFrom": "gchat_direct_call_participants",
           "tableTo": "gchat_direct_calls",
-          "columnsFrom": [
-            "call_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["call_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -635,12 +593,8 @@
           "name": "gchat_direct_call_participants_user_id_gchat_users_id_fk",
           "tableFrom": "gchat_direct_call_participants",
           "tableTo": "gchat_users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -648,14 +602,8 @@
           "name": "gchat_direct_call_participants_device_id_session_id_gchat_device_sessions_device_id_session_id_fk",
           "tableFrom": "gchat_direct_call_participants",
           "tableTo": "gchat_device_sessions",
-          "columnsFrom": [
-            "device_id",
-            "session_id"
-          ],
-          "columnsTo": [
-            "device_id",
-            "session_id"
-          ],
+          "columnsFrom": ["device_id", "session_id"],
+          "columnsTo": ["device_id", "session_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -663,10 +611,7 @@
       "compositePrimaryKeys": {
         "gchat_direct_call_participants_call_id_role_pk": {
           "name": "gchat_direct_call_participants_call_id_role_pk",
-          "columns": [
-            "call_id",
-            "role"
-          ]
+          "columns": ["call_id", "role"]
         }
       },
       "uniqueConstraints": {},
@@ -886,12 +831,8 @@
           "name": "gchat_direct_calls_caller_id_gchat_users_id_fk",
           "tableFrom": "gchat_direct_calls",
           "tableTo": "gchat_users",
-          "columnsFrom": [
-            "caller_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["caller_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -899,12 +840,8 @@
           "name": "gchat_direct_calls_recipient_id_gchat_users_id_fk",
           "tableFrom": "gchat_direct_calls",
           "tableTo": "gchat_users",
-          "columnsFrom": [
-            "recipient_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["recipient_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -987,12 +924,8 @@
           "name": "gchat_group_members_group_id_gchat_groups_id_fk",
           "tableFrom": "gchat_group_members",
           "tableTo": "gchat_groups",
-          "columnsFrom": [
-            "group_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["group_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1000,12 +933,8 @@
           "name": "gchat_group_members_user_id_gchat_users_id_fk",
           "tableFrom": "gchat_group_members",
           "tableTo": "gchat_users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1013,10 +942,7 @@
       "compositePrimaryKeys": {
         "gchat_group_members_group_id_user_id_pk": {
           "name": "gchat_group_members_group_id_user_id_pk",
-          "columns": [
-            "group_id",
-            "user_id"
-          ]
+          "columns": ["group_id", "user_id"]
         }
       },
       "uniqueConstraints": {},

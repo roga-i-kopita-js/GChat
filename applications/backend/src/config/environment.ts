@@ -1,10 +1,9 @@
-import { validateWebPushConfig } from '../push/web-push.config.js';
-
 import { parseAuthKeys } from '../auth/auth.crypto.js';
 import { parsePasswordPepper } from '../auth/auth.password.js';
 import { parseBrowserOrigins } from '../auth/browser-origin.js';
 import { validateDatabaseUrl } from '../database/database-url.js';
 import { parseLogRedaction } from '../logger/logger-settings.js';
+import { validateWebPushConfig } from '../push/web-push.config.js';
 
 export function validateEnvironment(
   env: Record<string, unknown>,

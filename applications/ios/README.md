@@ -34,7 +34,7 @@ pnpm --filter @gchat/ios test
 pnpm --filter @gchat/web build:server
 ```
 
-Серверная раздача `/apps/client` в backend пока не реализована. Используйте отдельный настроенный reverse proxy; детали сборки — в [README Web](../web/README.md#сборка-для-серверного-web). Не отключайте TLS-проверку для стенда.
+Backend раздаёт `/apps/client` и статику из каталога, заданного в `GCHAT_WEB_ROOT`; детали сборки — в [README Web](../web/README.md#сборка-для-серверного-web). Для HTTPS используйте настроенный reverse proxy. Не отключайте TLS-проверку для стенда.
 
 Проект ведётся вручную: локальные стартовые assets уже находятся в `App/App/public`. Не запускайте `cap sync/copy`: эти команды могут перезаписать assets и SPM-манифест, заменив стартовый экран основным Web. Основной Web доставляется сервером, в bundle он не копируется.
 

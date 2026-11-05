@@ -15,7 +15,9 @@ export class WebPushClient {
 
   async send(address: WebPushAddress, callId: string, deadline: string): Promise<WebPushResult> {
     const remaining = Date.parse(deadline) - Date.now();
+
     if (remaining <= 0 || !validWebPushAddress(address)) return { status: 410 };
+
     try {
       const result = await webPush.sendNotification(
         { endpoint: address.endpoint, keys: { p256dh: address.p256dh, auth: address.auth } },
@@ -31,6 +33,7 @@ export class WebPushClient {
           timeout: Math.min(5000, remaining),
         },
       );
+
       return { status: result.statusCode };
     } catch (cause) {
       if (cause instanceof webPush.WebPushError) {
@@ -39,11 +42,13 @@ export class WebPushClient {
         const seconds = /^\d+$/.test(raw)
           ? Number(raw)
           : Math.ceil((Date.parse(raw) - Date.now()) / 1000);
+
         return {
           status: cause.statusCode,
           retryAfterSeconds: Number.isFinite(seconds) ? Math.max(0, seconds) : 0,
         };
       }
+
       throw new Error('Web Push delivery unavailable');
     }
   }

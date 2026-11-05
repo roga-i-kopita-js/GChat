@@ -59,8 +59,15 @@ describe('Server Web delivery', (): void => {
   });
 
   it('revalidates the worker and manifest without returning the SPA shell', async (): Promise<void> => {
-    await request(app.getHttpServer()).get('/apps/sw.js').expect(200).expect('Cache-Control', 'no-cache').expect(/self.addEventListener/);
-    await request(app.getHttpServer()).get('/apps/site.webmanifest').expect(200).expect('Cache-Control', 'no-cache');
+    await request(app.getHttpServer())
+      .get('/apps/sw.js')
+      .expect(200)
+      .expect('Cache-Control', 'no-cache')
+      .expect(/self.addEventListener/);
+    await request(app.getHttpServer())
+      .get('/apps/site.webmanifest')
+      .expect(200)
+      .expect('Cache-Control', 'no-cache');
   });
 
   it.each(['/apps/static/missing.js', '/apps/icons/missing.svg', '/api/ready', '/ws', '/unknown'])(
