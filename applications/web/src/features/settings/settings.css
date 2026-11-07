@@ -1,0 +1,266 @@
+.app-shell:has(.settings-page) {
+  background: #f2f2f7;
+}
+.app-shell > .workspace.settings-active {
+  max-width: 704px;
+  padding: 0 12px 24px;
+}
+.settings-page {
+  width: 100%;
+  color: #111;
+}
+.settings-heading {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  gap: 4px;
+}
+.settings-heading h1 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.settings-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  color: #007aff;
+  margin-left: -8px;
+}
+.settings-group {
+  margin: 0 0 20px;
+}
+.settings-group h2 {
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: #65656b;
+  margin: 0 16px 6px;
+}
+.settings-surface {
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  position: relative;
+  gap: 12px;
+  min-height: 52px;
+  padding: 10px 16px;
+}
+.settings-row + .settings-row::before,
+.settings-surface > div + div > .settings-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 56px;
+  right: 0;
+  height: 1px;
+  background: #e5e5ea;
+}
+.settings-row[href]:active,
+.settings-action:active {
+  background: #e9e9ef;
+}
+.settings-icon {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+.settings-row-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+  flex: 1;
+}
+.settings-row-copy small {
+  font-size: 12px;
+  color: #65656b;
+  padding-top: 2px;
+}
+.settings-value {
+  color: #65656b;
+  font-size: 14px;
+  max-width: 42%;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+.settings-chevron {
+  color: #b6b6bd;
+  flex: 0 0 17px;
+}
+.settings-note {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #65656b;
+  margin: -10px 16px 20px;
+}
+.settings-intro {
+  margin: 2px 16px 20px;
+  color: #65656b;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.settings-action {
+  color: #007aff;
+  text-align: left;
+  min-height: 48px;
+  padding: 12px 16px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  font-size: 16px;
+}
+.settings-action + .settings-action {
+  border-top: 1px solid #e5e5ea;
+}
+.settings-danger {
+  color: #e53935;
+}
+.settings-profile {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  padding: 16px 12px 28px;
+  gap: 6px;
+}
+.settings-profile .avatar {
+  width: 76px;
+  height: 76px;
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+.settings-profile h2 {
+  font-size: 22px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.settings-profile p {
+  color: #65656b;
+  font-size: 14px;
+}
+.settings-test-status {
+  padding: 12px 16px;
+  font-size: 14px;
+}
+.settings-answers {
+  display: flex;
+  border-top: 1px solid #e5e5ea;
+}
+.settings-answers button {
+  min-height: 48px;
+  flex: 1;
+  color: #007aff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+}
+.settings-answers button + button {
+  border-left: 1px solid #e5e5ea;
+}
+.settings-error {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 14px;
+  margin: 16px 0;
+}
+.settings-error p {
+  color: #b42b30;
+}
+.settings-error button,
+.settings-file-actions button {
+  min-height: 44px;
+  background: transparent;
+  color: #007aff;
+  text-align: left;
+  padding: 8px 0;
+}
+.settings-file-actions {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 0 16px 0 56px;
+}
+.settings-spinner {
+  animation: settings-spin 1s linear infinite;
+}
+@keyframes settings-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 380px) {
+  .settings-row {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .settings-row .settings-value {
+    width: calc(100% - 60px);
+    margin-left: 38px;
+    text-align: left;
+    max-width: none;
+    font-size: 13px;
+  }
+  .settings-chevron {
+    margin-left: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-spinner {
+    animation: none;
+  }
+}
+
+/* Labels remain separate at large zoom, and reserve the measured navigation height. */
+.app-shell {
+  padding-bottom: var(
+    --navigation-height,
+    calc(var(--tabs-height) + env(safe-area-inset-bottom, 0px))
+  );
+}
+.bottom-tab span {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.settings-page {
+  container-type: inline-size;
+}
+@container (max-width: 320px) {
+  .settings-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .settings-row-copy {
+    flex-basis: calc(100% - 66px);
+  }
+  .settings-row[href] .settings-chevron {
+    position: absolute;
+    right: 12px;
+    top: 18px;
+  }
+  .settings-row .settings-value {
+    flex-basis: calc(100% - 38px);
+    max-width: none;
+    margin-left: 38px;
+    text-align: left;
+  }
+}

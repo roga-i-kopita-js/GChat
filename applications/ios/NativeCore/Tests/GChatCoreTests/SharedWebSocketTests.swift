@@ -194,6 +194,7 @@ import XCTest
             try await client.sendWeb(cycle: "cycle-1", message: ["type": "chat.list", "request_id": "1", "payload": [:]])
             XCTFail("Duplicate in-flight ID accepted")
         } catch { XCTAssertEqual(error as? NativeError, .validation) }
+        socket.automatic = false // Keep the request pending until logout; automatic replies race this assertion.
         let task = Task { try await client.request("call.current", payload: [:]) }
         await waitFor { socket.sent.last?["type"] as? String == "call.current" }
         client.stop()

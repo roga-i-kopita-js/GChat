@@ -66,6 +66,13 @@ public actor SessionManager {
         self.transport = transport
     }
 
+    /// Device commands need the local session boundary without refreshing over the network.
+    public func hasLocalDeviceSession() throws -> Bool {
+        guard let session = try storage.read() else { return false }
+        guard session.server == server else { throw NativeError.validation }
+        return true
+    }
+
     public func restore(force: Bool = false) async throws -> NativeSession? {
         try await enqueue(.restore(force))
     }

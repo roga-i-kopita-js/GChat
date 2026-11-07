@@ -13,9 +13,12 @@ import GChatCore
         CAPPluginMethod(name: "logout", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getAccessToken", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "placeCall", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "sendWsMessage", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "sendWsMessage", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "executeDeviceCommand", returnType: CAPPluginReturnPromise)
     ] }
 
+    private lazy var device = DeviceController(presenter: { [weak self] in self?.bridge?.viewController })
+    private var deviceRequests = Set<String>()
     private let server: ServerOrigin
     private let sessions: SessionManager
     private let transport: SharedWebSocket
@@ -54,7 +57,7 @@ import GChatCore
         }
     }
 
-    func invalidateCycle() { cycle = nil; transport.attach(cycle: nil) }
+    func invalidateCycle() { device.reset(); cycle = nil; transport.attach(cycle: nil) }
 
     // Capacitor invokes Objective-C selectors on its background bridge queue.
     @objc nonisolated func getCapabilities(_ call: CAPPluginCall) {
@@ -78,13 +81,14 @@ import GChatCore
             reject(call, NativeError.validation)
             return
         }
+        if self.cycle != cycle { device.reset() }
         self.cycle = cycle
         transport.attach(cycle: cycle)
         let revision = authRevision
         // Keep React Router's current page across foreground resynchronization.
         if let url = webView?.url, server.allowsDocument(url) {
             let path = String(url.path.dropFirst("/apps/client".count))
-            if path == "/calls" || path == "/admin" || path == "/admin/users" ||
+            if path == "/settings" || path == "/settings/general" || ["microphone", "audio", "push", "camera", "geolocation", "files"].contains(where: { path == "/settings/general/" + $0 }) || path == "/calls" || path == "/admin" || path == "/admin/users" ||
                 (path.hasPrefix("/admin/users/") && UUID(uuidString: String(path.dropFirst("/admin/users/".count))) != nil) {
                 lastRoute = path
             }
@@ -212,7 +216,43 @@ import GChatCore
         }
     }
 
+    @objc nonisolated func executeDeviceCommand(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            let envelope: DeviceCommandEnvelope
+            do { guard let options = call.options as? [String: Any] else { throw DeviceCommandError("INVALID_ARGUMENT") }; envelope = try DeviceCommandEnvelope(options) }
+            catch { call.reject("Invalid device command", (error as? DeviceCommandError)?.code ?? "INVALID_ARGUMENT"); return }
+            let cycle = envelope.cycle; let request = envelope.request
+            guard self.cycle == cycle else { call.reject("Inactive document", "CANCELLED"); return }
+            guard envelope.command.name == "device.changes.cancel" || (self.deviceRequests.count < 128 && !self.deviceRequests.contains(request)) else { call.reject("Too many device commands", "BUSY"); return }
+            if envelope.command.name == "device.changes.cancel", !self.deviceRequests.contains(request) {
+                call.resolve(["deviceBridgeVersion": 1, "cycleId": cycle, "requestId": request, "result": ["outcome": "completed"]]); return
+            }
+            let revision = self.authRevision
+            if envelope.command.name != "device.changes.cancel" { self.deviceRequests.insert(request) }
+            defer { if envelope.command.name != "device.changes.cancel" { self.deviceRequests.remove(request) } }
+            var response: [String: Any] = ["deviceBridgeVersion": 1, "cycleId": cycle, "requestId": request]
+            do {
+                let command = envelope.command
+                // Reading the local secure session avoids a network dependency for device settings.
+                guard try await self.sessions.hasLocalDeviceSession() else { throw DeviceCommandError("UNAUTHENTICATED") }
+                guard self.cycle == cycle, self.authRevision == revision else { throw DeviceCommandError("CANCELLED") }
+                let result = try await self.device.execute(command, requestId: request)
+                guard self.cycle == cycle, self.authRevision == revision else { throw DeviceCommandError("CANCELLED") }
+                response["result"] = result
+            } catch {
+                if let failure = error as? DeviceCommandError { response["error"] = ["code": failure.code].merging(failure.details) { _, next in next } }
+                else {
+                    let value = error as NSError
+                    let codes: [Int: String] = [NSFileNoSuchFileError: "NOT_FOUND", NSFileReadNoSuchFileError: "NOT_FOUND", NSFileReadNoPermissionError: "ACCESS_LOST", NSFileWriteNoPermissionError: "PERMISSION_DENIED", NSFileWriteOutOfSpaceError: "STORAGE_FULL", NSFileWriteFileExistsError: "ALREADY_EXISTS"]
+                    response["error"] = ["code": value.domain == NSCocoaErrorDomain ? (codes[value.code] ?? "IO_ERROR") : "IO_ERROR"]
+                }
+            }
+            call.resolve(response)
+        }
+    }
+
     private func sendLoggedOut(_ cycle: String) {
+        device.reset()
         transport.stop()
         lastRoute = "/calls"
         notifyListeners("loggedOut", data: ["cycleId": cycle])

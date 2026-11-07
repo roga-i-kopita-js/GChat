@@ -10,9 +10,11 @@ import { identity, readSession, saveSession } from '../features/auth/session';
 import { CallsPage } from '../features/calls/CallsPage';
 import { CallsProvider, useCalls } from '../features/calls/CallsProvider';
 import { IncomingCall } from '../features/calls/IncomingCall';
+import { SettingsPage } from '../features/settings/SettingsPage';
 import { embedded } from '../shared/native/bridge';
 import { nativeRuntime } from '../shared/native/runtime';
 import { AppLayout } from './AppLayout';
+import { DeviceProvider } from './DeviceProvider';
 import { NativeBoundary } from './NativeBoundary';
 import { PwaUpdate } from './PwaUpdate';
 
@@ -67,6 +69,7 @@ function ApplicationRoutes({
           <Route element={<AppLayout />}>
             <Route index element={<Navigate to="/calls" replace />} />
             <Route path="calls" element={<CallsPage />} />
+            <Route path="settings/*" element={<SettingsPage />} />
             <Route path="admin" element={<RequireAdmin />}>
               <Route index element={<Navigate to="users" replace />} />
               <Route
@@ -162,11 +165,13 @@ export function App(): JSX.Element {
     <AuthProvider>
       <PwaUpdate />
       <CallsProvider>
-        <ApplicationRoutes
-          credentials={credentials?.value ?? null}
-          onCredentials={(value, sid): void => setCredentials({ value, sid })}
-        />
-        <IncomingCall />
+        <DeviceProvider>
+          <ApplicationRoutes
+            credentials={credentials?.value ?? null}
+            onCredentials={(value, sid): void => setCredentials({ value, sid })}
+          />
+          <IncomingCall />
+        </DeviceProvider>
       </CallsProvider>
     </AuthProvider>
   );

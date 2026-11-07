@@ -6,6 +6,13 @@ import { ClientError } from '../api/client';
 export const bridgeVersion = 1;
 
 interface NativePlugin {
+  executeDeviceCommand(options: {
+    deviceBridgeVersion: number;
+    cycleId: string;
+    requestId: string;
+    command: string;
+    args: unknown;
+  }): Promise<unknown>;
   getCapabilities(): Promise<unknown>;
   webReady(options: { bridgeVersion: number; cycleId: string }): Promise<void>;
   login(options: { serverUrl: string; login: string; password: string }): Promise<void>;

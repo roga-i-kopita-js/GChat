@@ -22,6 +22,12 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>GChat использует микрофон для голосовых звонков и проверки доступа по вашему запросу.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>GChat проверяет разрешение камеры по вашему запросу в настройках устройства.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>GChat запрашивает разрешение геопозиции только по вашему действию в настройках. Координаты не сохраняются и не передаются.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

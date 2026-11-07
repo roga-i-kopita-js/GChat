@@ -136,22 +136,28 @@ for (const viewport of [
   test(`audio settings fit a ${viewport.width}px phone`, async ({ page }, info): Promise<void> => {
     await page.setViewportSize(viewport);
     await setup(page);
-    await page.getByTitle('Мой аккаунт', { exact: true }).click();
-    const account = page.getByRole('dialog', { name: 'Мой аккаунт', exact: true });
-    const microphone = account.getByRole('button', {
-      name: /Проверить микрофон|Разрешить микрофон/,
-    });
-
-    await expect(microphone).toBeEnabled();
-    await microphone.click();
-    await expect(account.getByText('Захват звука доступен.', { exact: false })).toBeVisible();
-    await account.getByRole('button', { name: 'Проверить звук', exact: true }).click();
-    await account.getByRole('button', { name: 'Не слышу', exact: true }).click();
-    await expect(account.getByText('Проверьте громкость,', { exact: false })).toBeVisible();
+    await page
+      .getByRole('navigation', { name: 'Основные разделы' })
+      .getByRole('link', { name: 'Настройки' })
+      .click();
+    await page.getByRole('link', { name: 'Основные', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Основные', exact: true })).toBeVisible();
+    await noOverflow(page);
+    await page.screenshot({ path: info.outputPath('settings-general.png') });
+    await page.getByRole('link', { name: /Микрофон/ }).click();
+    await page.getByRole('button', { name: 'Проверить микрофон', exact: true }).click();
+    await expect(
+      page.getByText('Микрофон доступен. Проверка завершена.', { exact: true }),
+    ).toBeVisible();
+    await page.getByRole('link', { name: 'Назад', exact: true }).click();
+    await page.getByRole('link', { name: /Динамики и звук/ }).click();
+    await page.getByRole('button', { name: 'Проверить звук', exact: true }).click();
+    await page.getByRole('button', { name: 'Не слышу', exact: true }).click();
+    await expect(page.getByText('Проверьте громкость устройства', { exact: false })).toBeVisible();
     await noOverflow(page);
     await page.screenshot({ path: info.outputPath('audio-settings.png') });
-    await account.getByRole('button', { name: 'Закрыть', exact: true }).click();
-    await expect(account).not.toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole('heading', { name: 'Основные', exact: true })).toBeVisible();
   });
 
   test(`compact account, forms, contacts and incoming call at ${viewport.width}px`, async ({
@@ -224,5 +230,56 @@ for (const viewport of [
     await expect(page.getByLabel('Пароль', { exact: true })).toHaveCSS('font-size', '16px');
     await noOverflow(page);
     await page.screenshot({ path: info.outputPath('login.png') });
+  });
+}
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1280, height: 800 },
+]) {
+  test(`settings routes, file access and large text at ${viewport.width}px`, async ({
+    page,
+  }, info): Promise<void> => {
+    await page.setViewportSize(viewport);
+    await page.addInitScript((): void => {
+      Object.defineProperty(window, 'showOpenFilePicker', { value: undefined });
+    });
+    await setup(page);
+    await page.goto('/settings/general');
+    await expect(page.getByRole('link', { name: /Камера/ })).toBeVisible();
+    await page.getByRole('link', { name: /Геопозиция/ }).click();
+    await expect(page.getByRole('heading', { name: 'Геопозиция', exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Геопозиция', exact: true })).toBeVisible();
+    await page.getByRole('link', { name: 'Назад', exact: true }).click();
+    await page.getByRole('link', { name: /Файлы и папки/ }).click();
+    const chooser = page.waitForEvent('filechooser');
+
+    await page.getByRole('button', { name: 'Выбрать файл', exact: true }).click();
+    await (
+      await chooser
+    ).setFiles({
+      name: 'Очень длинное имя выбранного файла для проверки переноса текста и доступности.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('fixture'),
+    });
+    await expect(page.getByText('До закрытия приложения', { exact: true })).toBeVisible();
+    await noOverflow(page);
+    await page.screenshot({ path: info.outputPath('settings-files.png') });
+    await page.getByRole('button', { name: 'Забыть доступ', exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('останется на устройстве');
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Забыть доступ', exact: true })
+      .click();
+    await expect(page.getByText('Пока нет выбранных файлов', { exact: false })).toBeVisible();
+    await page.getByRole('link', { name: 'Назад', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Основные', exact: true })).toBeVisible();
+    await page.evaluate((): void => {
+      document.documentElement.style.fontSize = '28px';
+      document.body.style.zoom = '2';
+    });
+    await noOverflow(page);
+    await page.screenshot({ path: info.outputPath('settings-large-text.png') });
   });
 }

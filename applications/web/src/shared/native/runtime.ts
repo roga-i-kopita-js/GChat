@@ -209,7 +209,9 @@ export class NativeRuntime {
         const path = decodeURIComponent(route.path);
 
         if (
-          !/^\/(?:login|calls|admin(?:\/users(?:\/[0-9a-f-]+)?)?)?(?:\?[^#]*)?$/.test(path) ||
+          !/^\/(?:login|calls|settings(?:\/general(?:\/(?:microphone|audio|push|camera|geolocation|files))?)?|admin(?:\/users(?:\/[0-9a-f-]+)?)?)?(?:\?[^#]*)?$/.test(
+            path,
+          ) ||
           /[\\\s\u0000-\u001f]/.test(path)
         )
           throw bridgeError({ code: 'VALIDATION_ERROR' });

@@ -9,8 +9,10 @@ import {
   WifiOff,
 } from 'lucide-react';
 import type { JSX } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { useDeviceBridge } from '../../shared/device/context';
+import { deviceErrorMessage } from '../../shared/device/messages';
 import { embedded } from '../../shared/native/bridge';
 import { Avatar, Modal, Select } from '../../shared/ui';
 import { useAuth } from '../auth/AuthProvider';
@@ -39,6 +41,40 @@ export function CallsPage(): JSX.Element {
     incoming,
   } = useCalls();
   const [confirm, setConfirm] = useState(false);
+  const [prepareError, setPrepareError] = useState('');
+  const [preparing, setPreparing] = useState(false);
+  const bridge = useDeviceBridge();
+  const attempt = useRef(0);
+  const preparingRef = useRef(false);
+
+  useEffect(
+    (): (() => void) => (): void => {
+      attempt.current++;
+    },
+    [],
+  );
+
+  async function dial(peer: string): Promise<void> {
+    if (preparingRef.current) return;
+
+    preparingRef.current = true;
+    const id = ++attempt.current;
+
+    setPreparing(true);
+    setPrepareError('');
+
+    try {
+      const result = await bridge.execute({ command: 'call.prepareOutgoing', args: {} });
+
+      if (result.outcome === 'completed' && id === attempt.current) await client.dial(peer);
+    } catch (error) {
+      if (id === attempt.current) setPrepareError(deviceErrorMessage(error));
+    } finally {
+      preparingRef.current = false;
+
+      if (id === attempt.current) setPreparing(false);
+    }
+  }
 
   useEffect((): void => {
     if (call && call.state !== 'ended') setConfirm(false);
@@ -54,6 +90,11 @@ export function CallsPage(): JSX.Element {
 
   return (
     <>
+      {prepareError && (
+        <p role="alert" className="error-banner">
+          {prepareError}
+        </p>
+      )}
       <div className="content-grid">
         <section className={'contact-panel' + (mobile ? ' mobile-hidden' : '')}>
           <div className="panel-title">
@@ -154,10 +195,10 @@ export function CallsPage(): JSX.Element {
                   <button
                     className="contact-call"
                     aria-label={`Позвонить: ${member.display_name}`}
-                    disabled={!enabled || ongoing}
+                    disabled={!enabled || ongoing || preparing}
                     onClick={(): void => {
                       setPerson(member);
-                      void client.dial(member.id);
+                      void dial(member.id);
                     }}
                   >
                     <Phone size={18} />
@@ -243,7 +284,7 @@ export function CallsPage(): JSX.Element {
               className="primary"
               onClick={(): void => {
                 setConfirm(false);
-                void client.dial(person.id);
+                void dial(person.id);
               }}
             >
               <Phone size={17} /> Позвонить
