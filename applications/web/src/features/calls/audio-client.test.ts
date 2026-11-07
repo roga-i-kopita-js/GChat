@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { GChatClient } from './client';
 
-vi.mock('./signaling', (): object => ({
-  Signaling: class {
-    send = vi.fn(async (): Promise<object> => ({ call: null }));
+vi.mock('../../shared/runtime/transport', (): object => ({
+  browserTransport: {
+    send: vi.fn(async (): Promise<object> => ({ call: null })),
+    isUpdating: (): boolean => false,
+    changed: (): void => {},
   },
 }));
 vi.mock('../auth/session', (): object => ({

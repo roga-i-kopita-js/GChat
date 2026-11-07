@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 import { ClientError, errorMessage, retryAfter } from '../../shared/api/client';
 import { pwaSupported } from '../../shared/pwa';
-import { prepareUpdate, updateChannel, updateLock, updateRequested } from '../../shared/pwa-update';
+import { browserTransport } from '../../shared/runtime/transport';
 import { pushConfig, syncWebPush } from '../../shared/web-push';
-import { identity, logout, readSession, saveSession } from '../auth/session';
+import { identity, logout, readSession } from '../auth/session';
 import { audioError, AudioPreparation, canRouteContext } from './audio-preparation';
 import type { Call } from './protocol';
 import {
@@ -17,7 +17,6 @@ import {
   pingResponse,
   sdpMessage,
 } from './protocol';
-import { Signaling } from './signaling';
 
 export interface ClientState {
   owner: boolean;
@@ -92,12 +91,14 @@ export class GChatClient {
   private state: ClientState = initial;
   private listeners = new Set<() => void>();
   private channel: BroadcastChannel | null = null;
-  private sid: string | null = null;
-  private lockAbort?: AbortController;
-  private release?: () => void;
-  private stopped = false;
-  private transport: Signaling;
-  private retry?: ReturnType<typeof setTimeout>;
+
+  private get sid(): string | null {
+    const session = readSession();
+
+    return session ? identity(session).sid : null;
+  }
+
+  private transport = browserTransport;
   private heartbeat?: ReturnType<typeof setInterval>;
   private statsTimer?: ReturnType<typeof setInterval>;
   private iceRefresh?: ReturnType<typeof setTimeout>;
@@ -118,40 +119,10 @@ export class GChatClient {
   private sequence = 0;
   private pingRunning = false;
   private connectionGeneration = 0;
-  private retryCount = 0;
-  private updatePending = false;
   private hydrated = false;
 
-  private prepareFrontendUpdate = (): void => {
-    this.updatePending = true;
-    this.yieldForUpdate();
-  };
-
-  private yieldForUpdate(): void {
-    if (
-      this.updatePending &&
-      this.state.owner &&
-      this.hydrated &&
-      !this.state.busy &&
-      (!this.state.call || this.state.call.state === 'ended')
-    ) {
-      // Media cleanup publishes state; prevent it from re-entering this shutdown.
-      this.hydrated = false;
-      this.stopConnection();
-      this.set({ owner: false, connection: 'offline' });
-      this.release?.();
-    }
-  }
-
-  constructor() {
-    this.transport = new Signaling(
-      (type, payload): void => {
-        this.events = this.events
-          .then((): Promise<void> => this.event(type, payload))
-          .catch((cause: unknown): void => this.fail(cause));
-      },
-      (code): void => this.disconnected(code),
-    );
+  private get updatePending(): boolean {
+    return this.transport.isUpdating();
   }
 
   getSnapshot = (): ClientState => this.state;
@@ -177,138 +148,80 @@ export class GChatClient {
 
     if (this.state.owner) this.channel?.postMessage({ type: 'state', state: this.state });
 
-    this.yieldForUpdate();
+    this.transport.changed();
   }
 
   start(): () => void {
-    this.stopped = false;
-    const updates = new BroadcastChannel(updateChannel);
-
-    updates.onmessage = (event: MessageEvent<unknown>): void => {
-      if (event.data === 'prepare') this.prepareFrontendUpdate();
-    };
-    const finished = (): void => {
-      this.updatePending = false;
-    };
-
-    window.addEventListener(prepareUpdate, this.prepareFrontendUpdate);
-    window.addEventListener('gchat-update-finished', finished);
-    const updateMonitor = setInterval((): void => {
-      if (this.updatePending)
-        void updateRequested()
-          .then((pending): void => {
-            if (!pending) this.updatePending = false;
-          })
-          .catch((): void => {});
-    }, 1000);
-
     this.channel = new BroadcastChannel('gchat-client');
     this.channel.onmessage = (event: MessageEvent<unknown>): void => {
-      const message = event.data;
+      const parsed = z
+        .object({ type: z.literal('state'), state: stateSchema })
+        .safeParse(event.data);
 
-      if (!message || typeof message !== 'object' || !('type' in message)) return;
-
-      if (message.type === 'state' && !this.state.owner && 'state' in message) {
-        const parsed = stateSchema.safeParse(message.state);
-
-        if (parsed.success) this.set({ ...parsed.data, owner: false, selected: false });
-      }
-
-      if (message.type === 'snapshot' && this.state.owner)
-        this.channel?.postMessage({ type: 'state', state: this.state });
+      if (parsed.success && !this.transport.getSnapshot().owner)
+        this.set({ ...parsed.data.state, owner: false, selected: false });
 
       if (
-        message.type === 'takeover' &&
-        this.state.owner &&
-        (!this.state.call || this.state.call.state === 'ended')
+        z.object({ type: z.literal('snapshot') }).safeParse(event.data).success &&
+        this.state.owner
       )
-        this.release?.();
+        this.channel?.postMessage({ type: 'state', state: this.state });
     };
-    const sync = (): void => this.syncSession();
+    const protect = this.transport.protect(
+      (): boolean =>
+        this.hydrated &&
+        !this.state.busy &&
+        (!this.state.call || this.state.call.state === 'ended'),
+    );
+    let previousGeneration = -1;
+    let previousSession = this.sid;
+    const sync = (): void => {
+      const connection = this.transport.getSnapshot();
 
-    window.addEventListener('storage', sync);
-    window.addEventListener('gchat-session', sync);
-    window.addEventListener('pagehide', this.unload);
-    this.syncSession();
+      const sessionChanged = previousSession !== this.sid;
+
+      if (previousGeneration !== connection.generation || sessionChanged) {
+        previousGeneration = connection.generation;
+        previousSession = this.sid;
+        this.hydrated = false;
+        this.stopConnection();
+
+        if (sessionChanged || !this.sid) this.set({ ...initial });
+      }
+
+      this.set({ owner: connection.owner, connection: connection.status });
+
+      if (connection.error) this.fail(connection.error);
+
+      if (connection.owner && connection.status === 'online' && !this.hydrated) void this.connect();
+    };
+    const unsubscribe = this.transport.subscribe(sync);
+    const events = this.transport.subscribeMessage((type, payload): void => {
+      if (!type.startsWith('call.') && !type.startsWith('rtc.')) return;
+
+      const generation = this.connectionGeneration;
+
+      this.events = this.events
+        .then(async (): Promise<void> => {
+          if (generation === this.connectionGeneration) await this.event(type, payload);
+        })
+        .catch((cause: unknown): void => this.fail(cause));
+    });
+
+    sync();
     this.channel.postMessage({ type: 'snapshot' });
 
     return (): void => {
-      this.stopped = true;
-      updates.close();
-      clearInterval(updateMonitor);
-      window.removeEventListener(prepareUpdate, this.prepareFrontendUpdate);
-      window.removeEventListener('gchat-update-finished', finished);
-      this.lockAbort?.abort();
-      this.release?.();
+      unsubscribe();
+      events();
+      protect();
       this.stopConnection();
       this.channel?.close();
-      window.removeEventListener('storage', sync);
-      window.removeEventListener('gchat-session', sync);
-      window.removeEventListener('pagehide', this.unload);
     };
   }
 
-  private unload = (): void => {
-    this.release?.();
-    this.stopConnection();
-  };
-
-  private syncSession(): void {
-    const session = readSession();
-    const sid = session ? identity(session).sid : null;
-
-    if (sid === this.sid) return;
-
-    this.sid = sid;
-    this.lockAbort?.abort();
-    this.release?.();
-    this.stopConnection();
-    this.set({ ...initial, audible: this.audioContext?.state === 'running' });
-
-    if (sid) this.elect(sid);
-  }
-
-  private elect(sid: string): void {
-    if (this.stopped || this.sid !== sid) return;
-
-    const controller = new AbortController();
-
-    this.lockAbort = controller;
-    void navigator.locks
-      .request('gchat-ws-owner', { signal: controller.signal }, async (): Promise<void> => {
-        if (this.stopped || this.sid !== sid) return;
-
-        await navigator.locks.request(
-          updateLock,
-          { mode: 'shared', signal: controller.signal },
-          async (): Promise<void> => {
-            if (this.stopped || this.sid !== sid) return;
-
-            this.updatePending = false;
-            this.hydrated = false;
-            // Install the release function before any asynchronous connection work.
-            const lifetime = new Promise<void>((resolve): void => {
-              this.release = resolve;
-            });
-
-            this.set({ owner: true });
-            void this.connect();
-            await lifetime;
-            this.release = undefined;
-            this.stopConnection();
-            this.set({ owner: false, connection: 'offline', selected: false });
-          },
-        );
-      })
-      .catch((): void => {})
-      .finally((): void => {
-        if (!this.stopped && this.sid === sid && !controller.signal.aborted)
-          setTimeout((): void => this.elect(sid), 250);
-      });
-  }
-
   activate(): void {
-    this.channel?.postMessage({ type: 'takeover' });
+    this.transport.activate();
   }
 
   webPush(type: 'device.web_push_config' | 'device.web_push', payload: object): Promise<unknown> {
@@ -332,26 +245,7 @@ export class GChatClient {
 
     this.hydrated = false;
 
-    this.set({ connection: 'connecting' });
-
     try {
-      await this.transport.open();
-
-      if (generation !== this.connectionGeneration) return;
-
-      const registered = z.object({ device_id: z.string() }).parse(
-        await this.transport.send('device.register', {
-          device_id: readSession()?.deviceId ?? null,
-        }),
-      );
-      const session = readSession();
-
-      if (!session || identity(session).sid !== this.sid) return;
-
-      saveSession({ ...session, deviceId: registered.device_id });
-      this.set({ connection: 'online', error: null });
-      this.retryCount = 0;
-
       // Rebind existing consent after login/reconnect; never request permission automatically.
       if (
         pwaSupported() &&
@@ -388,7 +282,7 @@ export class GChatClient {
       }
 
       this.hydrated = true;
-      this.yieldForUpdate();
+      this.transport.changed();
     } catch (cause) {
       if (generation !== this.connectionGeneration) return;
 
@@ -397,27 +291,8 @@ export class GChatClient {
     }
   }
 
-  private disconnected(code: number): void {
-    this.set({ connection: 'offline' });
-    clearInterval(this.heartbeat);
-    this.heartbeat = undefined;
-
-    if (code === 1008) this.disposeMedia();
-
-    if (this.state.owner && readSession()) this.scheduleReconnect();
-  }
-
   private scheduleReconnect(seconds = 0): void {
-    clearTimeout(this.retry);
-
-    if (!this.state.owner || !readSession()) return;
-
-    this.retry = setTimeout(
-      (): void => {
-        void this.connect();
-      },
-      Math.max(seconds * 1000, Math.min(10000, 1000 * 2 ** Math.min(4, this.retryCount++))),
-    );
+    this.transport.reconnect(seconds);
   }
 
   private controlKey(): string {
@@ -1112,8 +987,6 @@ export class GChatClient {
 
   private stopConnection(): void {
     this.connectionGeneration++;
-    clearTimeout(this.retry);
-    this.transport.close();
     this.disposeMedia();
   }
 }

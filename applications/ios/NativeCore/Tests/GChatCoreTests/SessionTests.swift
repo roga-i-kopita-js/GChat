@@ -67,6 +67,17 @@ private actor Transport: AuthTransport {
 final class SessionTests: XCTestCase {
     private let server = try! ServerOrigin("https://chat.example")
 
+    func testLogoutWaitsForCacheBarrierAndDoesNotPretendFailedCleanupSucceeded() async throws {
+        let storage = MemoryStorage(), transport = Transport()
+        let manager = SessionManager(server: server, storage: storage, transport: transport, onClear: { _ in throw NativeError.storage })
+        _ = try await manager.login(login: "anna", password: "password")
+        do { try await manager.logout(); XCTFail("Cleanup failure must be reported") }
+        catch { XCTAssertEqual(error as? NativeError, .storage) }
+        XCTAssertNotNil(try storage.read())
+        let calls = await transport.logouts
+        XCTAssertEqual(calls.count, 1)
+    }
+
     func testServerBoundary() throws {
         XCTAssertEqual(try ServerOrigin("https://CHAT.example:443/"), server)
         for value in ["http://chat.example", "https://u:p@chat.example", "https://chat.example/path",

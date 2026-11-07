@@ -1,4 +1,4 @@
-import { Code2, Phone, Settings, ShieldCheck, Volume2, X } from 'lucide-react';
+import { Code2, MessageCircle, Phone, Settings, ShieldCheck, Volume2, X } from 'lucide-react';
 import type { JSX } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
@@ -19,6 +19,7 @@ export function AppLayout(): JSX.Element {
   const path = useLocation().pathname;
   const admin = path.startsWith('/admin');
   const settings = path.startsWith('/settings');
+  const dialogs = path.startsWith('/dialogs');
   const navigation = useRef<HTMLElement | null>(null);
 
   useLayoutEffect((): (() => void) => {
@@ -67,11 +68,17 @@ export function AppLayout(): JSX.Element {
       </header>
       <main
         className={
-          'workspace' + (admin ? ' admin-active' : '') + (settings ? ' settings-active' : '')
+          'workspace' +
+          (admin ? ' admin-active' : '') +
+          (settings ? ' settings-active' : '') +
+          (dialogs ? ' dialogs-active' : '')
         }
-        aria-label={settings ? 'Настройки' : admin ? 'Администрирование' : 'Звонки'}
+        aria-label={
+          settings ? 'Настройки' : dialogs ? 'Диалоги' : admin ? 'Администрирование' : 'Звонки'
+        }
       >
         {!settings &&
+          !dialogs &&
           (!state.owner ? (
             <div role="status" className="tab-banner">
               Звонками управляет другая вкладка GChat.
@@ -100,13 +107,13 @@ export function AppLayout(): JSX.Element {
             </button>
           </div>
         )}
-        {(admin || settings) && call && call.state !== 'ended' && (
+        {(admin || settings || dialogs) && call && call.state !== 'ended' && (
           <Link className="secondary admin-call-return" to="/calls">
             <Phone size={17} /> Вернуться к звонку
           </Link>
         )}
         <Outlet />
-        {!settings && (
+        {!settings && !dialogs && (
           <footer className="workspace-footer">
             <span>GChat Web</span>
             {state.owner && !state.audible && (
@@ -133,6 +140,13 @@ export function AppLayout(): JSX.Element {
         >
           <Phone size={24} aria-hidden="true" />
           <span>Звонки</span>
+        </NavLink>
+        <NavLink
+          to="/dialogs"
+          className={({ isActive }): string => 'bottom-tab' + (isActive ? ' active' : '')}
+        >
+          <MessageCircle size={24} aria-hidden="true" />
+          <span>Диалоги</span>
         </NavLink>
         {user.role === 'admin' && (
           <NavLink

@@ -2322,6 +2322,12 @@
           "peer_id": {
             "type": "string"
           },
+          "peer_display_name": {
+            "type": "string"
+          },
+          "has_unread_messages": {
+            "type": "boolean"
+          },
           "created_at": {
             "type": "string"
           }
@@ -2333,6 +2339,8 @@
           "peer_last_read_sequence",
           "dialog_id",
           "peer_id",
+          "peer_display_name",
+          "has_unread_messages",
           "created_at"
         ]
       },

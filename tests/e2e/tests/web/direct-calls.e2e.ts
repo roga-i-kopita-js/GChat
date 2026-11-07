@@ -117,8 +117,8 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
       anna.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true }),
     ).toBeEnabled();
     await maxim.getByRole('button', { name: 'Елена Соколова Голосовой звонок' }).click();
-    await maxim.getByRole('button', { name: /Максим Волков @maxim/ }).click();
-    await expect(maxim.getByRole('dialog')).toBeVisible();
+    await maxim.getByRole('link', { name: /Максим Волков @maxim/ }).click();
+    await expect(maxim.getByRole('main', { name: 'Настройки', exact: true })).toBeVisible();
     await anna.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true }).click();
     await expect(anna.getByRole('dialog')).not.toBeVisible();
     await expect(anna.getByTestId('call-status')).toHaveText('Вызываем…');
@@ -126,7 +126,7 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
 
     await expect(incoming).toBeVisible();
     await expect(incoming.getByRole('heading', { name: 'Анна Смирнова' })).toBeVisible();
-    await expect(maxim.getByRole('heading', { name: 'Мой аккаунт' })).not.toBeVisible();
+    await expect(maxim.getByRole('main', { name: 'Настройки', exact: true })).toBeVisible();
     await expect(incoming).toHaveJSProperty('open', true);
     await maxim.keyboard.press('Escape');
     await expect(incoming).toBeVisible();
@@ -134,9 +134,11 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
     await expect(incoming.locator(':focus')).toHaveCount(1);
     await incoming.getByRole('button', { name: 'Отклонить', exact: true }).click();
     await expect(anna.getByTestId('call-status')).toHaveText('Вызов отклонён');
+    await maxim.getByRole('link', { name: 'Звонки', exact: true }).click();
     await expect(maxim.getByTestId('call-status')).toHaveText('Вызов отклонён');
 
     for (const page of [anna, maxim]) {
+      await page.getByRole('link', { name: 'Звонки', exact: true }).click();
       await page.getByRole('button', { name: 'Вернуться к контактам' }).click();
       await expect(page.getByRole('button', { name: 'Позвонить', exact: true })).not.toBeVisible();
       await expect(

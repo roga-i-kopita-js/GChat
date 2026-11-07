@@ -1,0 +1,490 @@
+import './dialogs.css';
+
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowDown, ArrowLeft, Check, CheckCheck, MessageCircle, RefreshCw } from 'lucide-react';
+import type { JSX } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Link, useParams } from 'react-router';
+import { VList, type VListHandle } from 'virtua';
+import { z } from 'zod';
+
+import { useBootstrap } from '../../shared/dialogs/context';
+import { type DialogMessage, isStickerId, type PendingMessage } from '../../shared/dialogs/model';
+import { dialogError, type DialogRuntime, type DialogView } from '../../shared/dialogs/runtime';
+import { Avatar } from '../../shared/ui';
+import { Composer } from './Composer';
+import { stickers } from './stickers';
+
+function time(value: string): string {
+  return new Date(value).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+}
+function Content({ content }: { content: DialogMessage['content'] }): JSX.Element {
+  if (content.kind === 'text') return <span className="dialog-message-text">{content.text}</span>;
+
+  return isStickerId(content.sticker_id) ? (
+    <img
+      src={stickers[content.sticker_id].url}
+      width="132"
+      height="132"
+      alt={'Стикер: ' + stickers[content.sticker_id].label}
+    />
+  ) : (
+    <span>Стикер</span>
+  );
+}
+function Room({ runtime, id }: { runtime: DialogRuntime; id: string }): JSX.Element {
+  const result = useQuery({
+    queryKey: ['dialogs', runtime.scope.sessionId, id],
+    queryFn: (): Promise<DialogView> => runtime.view(id),
+  });
+  const [error, setError] = useState('');
+
+  useEffect((): (() => void) => {
+    runtime.select(id);
+
+    return (): void => runtime.select(null);
+  }, [runtime, id]);
+  const data = result.data;
+
+  return (
+    <section className="dialog-room" aria-label="Переписка">
+      <header className="dialog-room-header">
+        <Link to="/dialogs" className="dialog-icon dialog-back" aria-label="Назад к диалогам">
+          <ArrowLeft size={22} />
+        </Link>
+        {data?.record.dialog && (
+          <Avatar name={data.record.dialog.peer_display_name} seed={data.record.dialog.peer_id} />
+        )}
+        <h2>{data?.record.dialog?.peer_display_name ?? 'Переписка'}</h2>
+        <button
+          className="dialog-icon"
+          aria-label="Обновить переписку"
+          onClick={(): void => {
+            void runtime.sync(id, true);
+          }}
+        >
+          <RefreshCw size={19} />
+        </button>
+      </header>
+      {data?.error && (
+        <div className="dialog-error" role="alert">
+          {data.error}
+          <button
+            onClick={(): void => {
+              void runtime.sync(id, true);
+            }}
+          >
+            Повторить
+          </button>
+        </div>
+      )}
+      {error && (
+        <p className="dialog-error" role="alert">
+          {error}
+        </p>
+      )}
+      {result.isError ? (
+        <div className="dialog-empty">
+          <p role="alert">{dialogError(result.error)}</p>
+          <button
+            onClick={(): void => {
+              void result.refetch();
+            }}
+          >
+            Повторить
+          </button>
+        </div>
+      ) : !data ? (
+        <div className="dialog-empty" role="status">
+          Загружаем переписку…
+        </div>
+      ) : (
+        <>
+          {data.record.permissions?.can_read === false && (
+            <p className="dialog-notice">
+              Серверная история недоступна. Здесь сохранены ранее загруженные сообщения.
+            </p>
+          )}
+          {data.messages.length || data.record.outbox.length ? (
+            <Feed runtime={runtime} id={id} data={data} report={setError} />
+          ) : (
+            <div className="dialog-empty" role="status">
+              <MessageCircle size={36} />
+              <h3>
+                {data.record.permissions?.can_read === false
+                  ? 'История недоступна'
+                  : data.syncing || !data.record.permissions
+                    ? 'Загружаем переписку…'
+                    : 'Начните переписку'}
+              </h3>
+              {data.record.permissions?.can_send && <p>Напишите первое сообщение</p>}
+            </div>
+          )}
+          {data.record.permissions?.can_send ? (
+            <Composer key={id} runtime={runtime} id={id} draft={data.record.draft} />
+          ) : (
+            <div className="dialog-disabled">
+              {data.record.permissions
+                ? 'Отправка сообщений недоступна'
+                : 'Проверяем доступ к переписке…'}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+function Feed({
+  runtime,
+  id,
+  data,
+  report,
+}: {
+  runtime: DialogRuntime;
+  id: string;
+  data: DialogView;
+  report(value: string): void;
+}): JSX.Element {
+  const list = useRef<VListHandle>(null);
+  const sticky = useRef(true),
+    initialized = useRef(false);
+  const previousFirst = useRef(data.messages[0]?.message_id);
+  const previousCount = useRef(data.messages.length);
+  const loading = useRef(false);
+  const [older, setOlder] = useState(false),
+    [newMessages, setNewMessages] = useState(false);
+  const shifted =
+    previousFirst.current !== data.messages[0]?.message_id &&
+    data.messages.length > previousCount.current &&
+    previousFirst.current !== undefined;
+  const items: (DialogMessage | PendingMessage)[] = [...data.messages, ...data.record.outbox];
+
+  function acknowledge(): void {
+    const last = data.messages.at(-1)?.sequence ?? 0;
+
+    runtime.shown(id, last, sticky.current);
+  }
+  useLayoutEffect((): void => {
+    const handle = list.current;
+
+    if (!handle) return;
+
+    if (!initialized.current) {
+      initialized.current = true;
+      const position = runtime.positions.get(id);
+
+      if (position) {
+        const restored = position.messageId
+          ? items.findIndex(
+              (item): boolean =>
+                ('message_id' in item ? item.message_id : item.client_message_id) ===
+                position.messageId,
+            )
+          : position.index;
+
+        handle.scrollToIndex(Math.max(0, restored), { align: 'start', offset: position.offset });
+        sticky.current = false;
+      } else handle.scrollToIndex(items.length - 1, { align: 'end' });
+    } else if (sticky.current && !shifted) handle.scrollToIndex(items.length - 1, { align: 'end' });
+    else if (data.messages.length > previousCount.current && !shifted) setNewMessages(true);
+
+    previousFirst.current = data.messages[0]?.message_id;
+    previousCount.current = data.messages.length;
+    acknowledge();
+  }, [data.messages.length, data.messages.at(-1)?.message_id, data.record.outbox.length]);
+  useEffect(
+    (): (() => void) => (): void => {
+      const handle = list.current;
+
+      if (handle) {
+        const index = handle.findItemIndex(handle.scrollOffset);
+
+        runtime.positions.set(id, {
+          index,
+          messageId:
+            items[index] &&
+            ('message_id' in items[index]
+              ? items[index].message_id
+              : items[index].client_message_id),
+          offset: handle.scrollOffset - handle.getItemOffset(index),
+        });
+      }
+    },
+    [runtime, id],
+  );
+  async function loadOlder(): Promise<void> {
+    if (loading.current || !data.record.has_older || !data.record.permissions?.can_read) return;
+
+    loading.current = true;
+    setOlder(true);
+
+    try {
+      await runtime.older(id);
+      report('');
+    } catch (cause) {
+      report(dialogError(cause));
+    } finally {
+      loading.current = false;
+      setOlder(false);
+    }
+  }
+
+  return (
+    <div className="dialog-feed-wrapper">
+      {data.record.has_older && data.record.permissions?.can_read && (
+        <button
+          className="dialog-load-older"
+          disabled={older}
+          onClick={(): void => {
+            void loadOlder();
+          }}
+        >
+          {older ? 'Загружаем…' : 'Предыдущие сообщения'}
+        </button>
+      )}
+      {data.record.ranges.length > 1 && (
+        <button
+          className="dialog-gap"
+          onClick={(): void => {
+            void runtime.sync(id);
+          }}
+        >
+          Загрузить пропущенные сообщения
+        </button>
+      )}
+      <VList
+        ref={list}
+        className="dialog-feed"
+        aria-label="Сообщения"
+        role="log"
+        shift={shifted}
+        onScroll={(offset): void => {
+          const handle = list.current;
+
+          if (!handle) return;
+
+          sticky.current = handle.scrollSize - handle.viewportSize - offset <= 24;
+          const index = handle.findItemIndex(offset);
+
+          runtime.positions.set(id, {
+            index,
+            offset: offset - handle.getItemOffset(index),
+            messageId:
+              items[index] &&
+              ('message_id' in items[index]
+                ? items[index].message_id
+                : items[index].client_message_id),
+          });
+
+          if (sticky.current) setNewMessages(false);
+
+          acknowledge();
+
+          if (offset < 100) void loadOlder();
+        }}
+        onResize={(): void => {
+          if (sticky.current) list.current?.scrollToIndex(items.length - 1, { align: 'end' });
+        }}
+      >
+        {items.map((item): JSX.Element => {
+          const saved = 'message_id' in item;
+          const own = !saved || item.sender_id === runtime.scope.accountId;
+          const read =
+            saved && (item.status === 'read' || (own && item.sequence <= data.record.peer_read));
+
+          return (
+            <div
+              key={saved ? item.message_id : item.client_message_id}
+              className={'dialog-message-row' + (own ? ' own' : '')}
+            >
+              <article
+                className={'dialog-message' + (item.content.kind === 'sticker' ? ' sticker' : '')}
+              >
+                <Content content={item.content} />
+                <div className="dialog-message-meta">
+                  <time dateTime={item.created_at}>{time(item.created_at)}</time>
+                  {own &&
+                    (saved ? (
+                      <span aria-label={read ? 'Прочитано' : 'Отправлено'}>
+                        {read ? <CheckCheck size={15} /> : <Check size={15} />}
+                      </span>
+                    ) : (
+                      <span>
+                        {item.state === 'sending'
+                          ? 'Результат ожидается'
+                          : item.state === 'rejected'
+                            ? 'Отклонено'
+                            : 'Результат неизвестен'}
+                      </span>
+                    ))}
+                </div>
+                {!saved && (
+                  <div className="dialog-retry">
+                    {item.error && <span>{item.error}</span>}
+                    <button
+                      onClick={(): void => {
+                        void runtime
+                          .resend(id, item.client_message_id)
+                          .catch((cause): void => report(dialogError(cause)));
+                      }}
+                    >
+                      Повторить
+                    </button>
+                  </div>
+                )}
+              </article>
+            </div>
+          );
+        })}
+      </VList>
+      {newMessages && (
+        <button
+          className="dialog-jump"
+          onClick={(): void => {
+            sticky.current = true;
+            list.current?.scrollToIndex(items.length - 1, { align: 'end' });
+            setNewMessages(false);
+            acknowledge();
+          }}
+        >
+          Новые сообщения <ArrowDown size={16} />
+        </button>
+      )}
+    </div>
+  );
+}
+function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
+  const { dialogId } = useParams();
+  const state = useSyncExternalStore(runtime.subscribe, runtime.getSnapshot);
+  const cache = useQueryClient();
+  const scroll = useRef<HTMLDivElement>(null);
+  const key = ['dialogs', runtime.scope.sessionId];
+  const result = useQuery({
+    queryKey: [...key, 'list'],
+    queryFn: (): ReturnType<DialogRuntime['list']> => runtime.list(),
+  });
+
+  useEffect((): void => {
+    void cache.invalidateQueries({ queryKey: key });
+  }, [state.revision, cache]);
+  useEffect((): (() => void) => {
+    runtime.section(true);
+
+    return (): void => runtime.section(false);
+  }, [runtime]);
+  useLayoutEffect((): void => {
+    if (scroll.current) scroll.current.scrollTop = runtime.listScroll;
+  }, [dialogId, !!result.data]);
+
+  if (dialogId && !z.string().uuid().safeParse(dialogId).success)
+    return (
+      <div className="dialog-empty">
+        <h2>Диалог недоступен</h2>
+        <Link to="/dialogs">К диалогам</Link>
+      </div>
+    );
+
+  return (
+    <div className={'dialogs-layout' + (dialogId ? ' dialog-selected' : '')}>
+      <section className="dialogs-sidebar" aria-label="Диалоги">
+        <header>
+          <h1>Диалоги</h1>
+          <button
+            className="dialog-icon"
+            aria-label="Обновить диалоги"
+            onClick={(): void => runtime.refresh()}
+          >
+            <RefreshCw size={19} />
+          </button>
+        </header>
+        {state.storageWarning && (
+          <p className="dialog-notice" role="status">
+            {state.storageWarning}
+          </p>
+        )}
+        {state.error && (
+          <div role="alert" className="dialog-error">
+            {state.error}
+            <button onClick={(): void => runtime.refresh()}>Повторить</button>
+          </div>
+        )}
+        <div
+          className="dialogs-list"
+          ref={scroll}
+          onScroll={(event): void => {
+            runtime.listScroll = event.currentTarget.scrollTop;
+          }}
+        >
+          {result.isPending ? (
+            <p role="status">Загружаем диалоги…</p>
+          ) : result.isError ? (
+            <p role="alert">{dialogError(result.error)}</p>
+          ) : !result.data.length ? (
+            <div className="dialog-empty">
+              <MessageCircle size={34} />
+              <h3>Пока нет диалогов</h3>
+              <p>Начните переписку из контактов</p>
+              <Link to="/calls">К контактам</Link>
+            </div>
+          ) : (
+            result.data.map((dialog): JSX.Element => (
+              <Link
+                key={dialog.dialog_id}
+                to={'/dialogs/' + dialog.dialog_id}
+                aria-current={dialogId === dialog.dialog_id ? 'page' : undefined}
+                className={'dialog-contact' + (dialogId === dialog.dialog_id ? ' current' : '')}
+              >
+                <Avatar name={dialog.peer_display_name} seed={dialog.peer_id} />
+                <span className="dialog-contact-name">{dialog.peer_display_name}</span>
+                <span className="dialog-contact-meta">
+                  <time>{time(dialog.last_message_at ?? dialog.created_at)}</time>
+                  {dialog.has_unread_messages && (
+                    <span className="dialog-unread" aria-label="Есть непрочитанные сообщения" />
+                  )}
+                </span>
+              </Link>
+            ))
+          )}
+          {runtime.listHasMore && (
+            <button
+              className="dialog-more"
+              onClick={(): void => {
+                void runtime.refreshList(runtime.listOffset).catch((): void => {});
+              }}
+            >
+              Ещё диалоги
+            </button>
+          )}
+        </div>
+      </section>
+      {dialogId ? (
+        <Room key={dialogId} runtime={runtime} id={dialogId} />
+      ) : (
+        <section className="dialog-room dialog-placeholder">
+          <div className="dialog-empty">
+            <MessageCircle size={40} />
+            <h2>Выберите диалог</h2>
+            <p>Ваши переписки — в списке слева</p>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+export function DialogsPage(): JSX.Element {
+  const { runtime, error, retry } = useBootstrap();
+
+  return runtime ? (
+    <Dialogs runtime={runtime} />
+  ) : (
+    <section className="dialog-empty">
+      <p role={error ? 'alert' : 'status'}>{error ?? 'Подготавливаем переписку…'}</p>
+      {error && (
+        <button className="secondary" onClick={retry}>
+          Повторить
+        </button>
+      )}
+    </section>
+  );
+}

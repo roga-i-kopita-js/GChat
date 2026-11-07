@@ -22,14 +22,16 @@ public struct NativeSession: Codable, Sendable {
     public var tokens: Tokens
     public var pending: PendingRefresh?
 
-    public var sessionID: String? {
+    public var sessionID: String? { claims?["sid"] as? String }
+    public var accountID: String? { claims?["sub"] as? String }
+    private var claims: [String: Any]? {
         let parts = tokens.access_token.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 3 else { return nil }
         var value = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
         value += String(repeating: "=", count: (4 - value.count % 4) % 4)
         guard let data = Data(base64Encoded: value),
               let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        return claims["sid"] as? String
+        return claims
     }
 }
 
@@ -57,16 +59,24 @@ public actor SessionManager {
     private let server: ServerOrigin
     private let storage: any SessionStorage
     private let transport: any AuthTransport
+    private let onClear: @Sendable (NativeSession) async throws -> Void
     private var tail: Task<NativeSession?, Error>?
     private var blockedUntil: Date?
 
-    public init(server: ServerOrigin, storage: any SessionStorage, transport: any AuthTransport) {
+    public init(server: ServerOrigin, storage: any SessionStorage, transport: any AuthTransport, onClear: @escaping @Sendable (NativeSession) async throws -> Void = { _ in }) {
         self.server = server
         self.storage = storage
         self.transport = transport
+        self.onClear = onClear
     }
 
     /// Device commands need the local session boundary without refreshing over the network.
+    public func localSession() throws -> NativeSession? {
+        let session = try storage.read()
+        if let session, session.server != server { throw NativeError.validation }
+        return session
+    }
+
     public func hasLocalDeviceSession() throws -> Bool {
         guard let session = try storage.read() else { return false }
         guard session.server == server else { throw NativeError.validation }
@@ -124,6 +134,7 @@ public actor SessionManager {
 
         switch operation {
         case .invalidate:
+            if let session { try await onClear(session) }
             try storage.write(nil)
             return nil
         case .changeServer:
@@ -161,6 +172,7 @@ public actor SessionManager {
                 try storage.write(current)
                 return current
             } catch NativeError.invalidSession {
+                try await onClear(current)
                 try storage.write(nil)
                 throw NativeError.invalidSession
             }
@@ -173,6 +185,7 @@ public actor SessionManager {
             guard let current = session else { return nil }
             try checkRetryWindow()
             try await transport.logout(server: server, refreshToken: current.tokens.refresh_token)
+            try await onClear(current)
             try storage.write(nil)
             return nil
         }

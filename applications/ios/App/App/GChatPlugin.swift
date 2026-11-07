@@ -7,6 +7,9 @@ import GChatCore
     nonisolated let identifier = "GChatPlugin"
     nonisolated let jsName = "GChat"
     nonisolated var pluginMethods: [CAPPluginMethod] { [
+        CAPPluginMethod(name: "getDialogStorageContext", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "dialogStorage", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "consumeDialogNotificationIntent", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getCapabilities", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "webReady", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "login", returnType: CAPPluginReturnPromise),
@@ -25,17 +28,46 @@ import GChatCore
     private var cycle: String?
     private var authRevision = 0
     private var lastRoute = "/calls"
+    private var dialogs: DialogStorage?
+    private var dialogAccount: String?
+    private var notificationObserver: NSObjectProtocol?
+    private var notificationIntent: [String: String]?
+    private var notificationAccount: String?
+
+    private func dialogStore() throws -> DialogStorage {
+        if let dialogs { return dialogs }
+        let store = try ChatLocalStorage.forServer(server)
+        dialogs = store
+        return store
+    }
 
     init(server: ServerOrigin, sessions: SessionManager, transport: SharedWebSocket) {
         self.server = server
         self.sessions = sessions
         self.transport = transport
         super.init()
+        ChatNotifications.shared.attach(transport)
+        ChatNotifications.shared.visibleDialog = { [weak self] in
+            guard let self, UIApplication.shared.applicationState == .active, let url = self.webView?.url,
+                  self.server.allowsDocument(url), url.path.hasPrefix("/apps/client/dialogs/") else { return nil }
+            let id = String(url.path.dropFirst("/apps/client/dialogs/".count))
+            return UUID(uuidString: id) != nil ? id : nil
+        }
+        notificationObserver = NotificationCenter.default.addObserver(forName: .gchatDialogIntent, object: nil, queue: .main) { [weak self] notification in
+            MainActor.assumeIsolated {
+                guard let self, let dialog = notification.userInfo?["dialogId"] as? String, UUID(uuidString: dialog) != nil else { return }
+                self.notificationIntent = ["intentId": UUID().uuidString.lowercased(), "dialogId": dialog]
+                _ = ChatNotifications.shared.takePending()
+                self.notificationAccount = self.dialogAccount
+                self.deliverNotificationIntent()
+            }
+        }
         transport.onWebMessage = { [weak self] cycle, message in
             guard let self, self.cycle == cycle else { return }
             self.notifyListeners("wsMessage", data: ["cycleId": cycle, "message": message])
         }
         transport.onState = { [weak self] status in
+            ChatNotifications.shared.connectionChanged()
             guard let self, let cycle = self.cycle else { return }
             self.notifyListeners("wsState", data: ["cycleId": cycle, "status": status])
         }
@@ -65,7 +97,7 @@ import GChatCore
     }
 
     private func handleGetCapabilities(_ call: CAPPluginCall) {
-        call.resolve(["bridgeVersion": 1, "platform": "ios", "nativeAuth": true, "nativeCalls": false, "nativeWebSocket": true])
+        call.resolve(["bridgeVersion": 1, "platform": "ios", "nativeAuth": true, "nativeCalls": false, "nativeWebSocket": true, "dialogStorageVersion": 1, "dialogNotificationsVersion": 1])
     }
 
     @objc nonisolated func webReady(_ call: CAPPluginCall) {
@@ -88,9 +120,10 @@ import GChatCore
         // Keep React Router's current page across foreground resynchronization.
         if let url = webView?.url, server.allowsDocument(url) {
             let path = String(url.path.dropFirst("/apps/client".count))
-            if path == "/settings" || path == "/settings/general" || ["microphone", "audio", "push", "camera", "geolocation", "files"].contains(where: { path == "/settings/general/" + $0 }) || path == "/calls" || path == "/admin" || path == "/admin/users" ||
+            if path == "/settings" || path == "/settings/general" || ["microphone", "audio", "push", "camera", "geolocation", "files"].contains(where: { path == "/settings/general/" + $0 }) || path == "/calls" || path == "/dialogs" || (path.hasPrefix("/dialogs/") && UUID(uuidString: String(path.dropFirst("/dialogs/".count))) != nil) || path == "/admin" || path == "/admin/users" ||
                 (path.hasPrefix("/admin/users/") && UUID(uuidString: String(path.dropFirst("/admin/users/".count))) != nil) {
                 lastRoute = path
+                ChatNotifications.shared.openDialog = path.hasPrefix("/dialogs/") ? String(path.dropFirst("/dialogs/".count)) : nil
             }
         }
         Task { @MainActor in
@@ -187,6 +220,48 @@ import GChatCore
         }
     }
 
+    @objc nonisolated func getDialogStorageContext(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            do {
+                guard let cycle = call.getString("cycleId"), self.cycle == cycle,
+                      let options = call.options as? [String: Any], Set(options.keys) == ["cycleId"],
+                      let session = try await self.sessions.localSession(), let account = session.accountID,
+                      let sid = session.sessionID, let device = self.transport.boundDeviceID else { throw DialogStorageFailure("STORAGE_STALE_CONTEXT") }
+                guard self.cycle == cycle else { throw DialogStorageFailure("STORAGE_STALE_CONTEXT") }
+                self.dialogAccount = account
+                call.resolve(try self.dialogStore().context(account: account, session: sid, device: device, cycle: cycle))
+            } catch { call.reject("Dialog storage unavailable", (error as? DialogStorageFailure)?.code ?? "STORAGE_UNAVAILABLE") }
+        }
+    }
+
+    @objc nonisolated func dialogStorage(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            do {
+                guard let options = call.options as? [String: Any], let cycle = options["cycleId"] as? String, self.cycle == cycle,
+                      let session = try await self.sessions.localSession(), let account = session.accountID,
+                      let sid = session.sessionID, let device = self.transport.boundDeviceID else { throw DialogStorageFailure("STORAGE_STALE_CONTEXT") }
+                guard self.cycle == cycle else { throw DialogStorageFailure("STORAGE_STALE_CONTEXT") }
+                call.resolve(try self.dialogStore().execute(options, account: account, session: sid, device: device, cycle: cycle))
+            } catch { call.reject("Dialog storage operation failed", (error as? DialogStorageFailure)?.code ?? "STORAGE_UNAVAILABLE") }
+        }
+    }
+
+    @objc nonisolated func consumeDialogNotificationIntent(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            guard let cycle = call.getString("cycleId"), self.cycle == cycle,
+                  let id = call.getString("intentId"), let options = call.options as? [String: Any],
+                  Set(options.keys) == ["cycleId", "intentId"] else { call.reject("Invalid intent", "VALIDATION_ERROR"); return }
+            if self.notificationIntent?["intentId"] == id { self.notificationIntent = nil }
+            call.resolve()
+        }
+    }
+
+    private func deliverNotificationIntent() {
+        if notificationIntent == nil, let dialog = ChatNotifications.shared.takePending() { notificationIntent = ["intentId": UUID().uuidString.lowercased(), "dialogId": dialog] }
+        guard let cycle, let intent = notificationIntent else { return }
+        notifyListeners("dialogNotificationIntent", data: ["cycleId": cycle, "intentId": intent["intentId"]!, "dialogId": intent["dialogId"]!])
+    }
+
     @objc nonisolated func placeCall(_ call: CAPPluginCall) {
         Task { @MainActor in self.handlePlaceCall(call) }
     }
@@ -252,6 +327,9 @@ import GChatCore
     }
 
     private func sendLoggedOut(_ cycle: String) {
+        notificationIntent = nil
+        notificationAccount = nil
+        ChatNotifications.shared.clearIntent()
         device.reset()
         transport.stop()
         lastRoute = "/calls"
@@ -259,6 +337,11 @@ import GChatCore
     }
 
     private func sendState(_ session: NativeSession?, cycle: String) {
+        if let session, let account = session.accountID {
+            if let expected = notificationAccount, expected != account { notificationIntent = nil }
+            notificationAccount = account
+            dialogAccount = account
+        }
         if let id = session?.sessionID { transport.start(sessionID: id) }
         else { transport.stop() }
         var route: [String: Any] = [

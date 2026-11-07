@@ -110,7 +110,7 @@ import GChatCore
         let permission: String
         switch settings.authorizationStatus { case .authorized: permission = "granted"; case .denied: permission = "denied"; case .notDetermined: permission = "prompt"; case .provisional, .ephemeral: permission = "limited"; @unknown default: permission = "unknown" }
         func setting(_ value: UNNotificationSetting) -> String { value == .enabled ? "enabled" : value == .disabled ? "disabled" : "unknown" }
-        return ["permission": permission, "alert": setting(settings.alertSetting), "sound": setting(settings.soundSetting), "badge": setting(settings.badgeSetting), "delivery": "unavailable"]
+        return ["permission": permission, "alert": setting(settings.alertSetting), "sound": setting(settings.soundSetting), "badge": setting(settings.badgeSetting), "delivery": ChatNotifications.shared.delivery]
     }
 
     private func fileWork<T>(_ work: @escaping (DeviceFiles) throws -> T) async throws -> T {
@@ -195,7 +195,11 @@ import GChatCore
             let opened = await UIApplication.shared.open(url); guard opened else { throw DeviceCommandError("UNSUPPORTED") }; return ["outcome": "completed"]
         case "audio.test.start": return try startTest(command.string("kind"))
         case "audio.test.stop": if test?["id"] as? String == command.string("testId") { stopTest() }; return ["outcome": "completed"]
-        case "audio.output.select", "push.enable", "push.disable": throw DeviceCommandError("UNSUPPORTED")
+        case "audio.output.select": throw DeviceCommandError("UNSUPPORTED")
+        case "push.enable", "push.disable":
+            try await ChatNotifications.shared.setEnabled(command.name == "push.enable")
+            guard epoch == generation else { throw DeviceCommandError("CANCELLED") }
+            return ["outcome": "completed", "push": await pushState()]
         case "call.prepareOutgoing":
             let microphone = try await requestPermission("microphone")
             guard microphone["permission"] as? String == "granted" else { throw DeviceCommandError("PERMISSION_DENIED", ["settingsHint": "appSettings"]) }

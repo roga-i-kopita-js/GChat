@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   Headphones,
+  MessageCircle,
   Mic,
   Phone,
   RefreshCw,
@@ -10,9 +11,12 @@ import {
 } from 'lucide-react';
 import type { JSX } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
 
 import { useDeviceBridge } from '../../shared/device/context';
 import { deviceErrorMessage } from '../../shared/device/messages';
+import { useBootstrap } from '../../shared/dialogs/context';
+import { dialogError } from '../../shared/dialogs/runtime';
 import { embedded } from '../../shared/native/bridge';
 import { Avatar, Modal, Select } from '../../shared/ui';
 import { useAuth } from '../auth/AuthProvider';
@@ -22,6 +26,8 @@ import type { Member } from './protocol';
 
 export function CallsPage(): JSX.Element {
   const { user } = useAuth();
+  const { runtime: dialogs } = useBootstrap();
+  const navigate = useNavigate();
   const {
     client,
     groups,
@@ -191,6 +197,22 @@ export function CallsPage(): JSX.Element {
                       <strong>{member.display_name}</strong>
                       <small>Голосовой звонок</small>
                     </span>
+                  </button>
+                  <button
+                    className="contact-call"
+                    aria-label={`Написать: ${member.display_name}`}
+                    disabled={!dialogs}
+                    onClick={(): void => {
+                      if (dialogs)
+                        void dialogs
+                          .openPeer(member.id)
+                          .then((id): void => {
+                            void navigate('/dialogs/' + id);
+                          })
+                          .catch((cause): void => setPrepareError(dialogError(cause)));
+                    }}
+                  >
+                    <MessageCircle size={18} />
                   </button>
                   <button
                     className="contact-call"

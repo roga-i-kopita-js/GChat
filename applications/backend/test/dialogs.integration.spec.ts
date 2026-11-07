@@ -203,6 +203,42 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     for await (const keys of redis.scanIterator({ MATCH: prefix + 'dialogs:rate:*' }))
       if (keys.length) await redis.del(keys);
   }
+  it('returns peer names and incoming-only unread state consistently across create/list/get', async (): Promise<void> => {
+    const [a, b, outsider] = actors;
+    const { dialog } = await service.create(a!, b!.userId);
+
+    expect(dialog.peer_display_name).toBe('user1');
+    expect(dialog.has_unread_messages).toBe(false);
+    expect((await service.create(a!, b!.userId)).dialog).toMatchObject({
+      peer_display_name: 'user1',
+      has_unread_messages: false,
+    });
+    await service.send(a!, dialog.dialog_id, input('own'));
+    expect((await service.get(a!, dialog.dialog_id)).dialog.has_unread_messages).toBe(false);
+    expect((await service.get(b!, dialog.dialog_id)).dialog.has_unread_messages).toBe(true);
+    const first = await service.send(b!, dialog.dialog_id, input('incoming'));
+    const second = await service.send(b!, dialog.dialog_id, input('also incoming'));
+
+    await service.read(a!, dialog.dialog_id, first.message.sequence);
+    expect((await service.get(a!, dialog.dialog_id)).dialog.has_unread_messages).toBe(true);
+    await service.read(a!, dialog.dialog_id, second.message.sequence);
+    await service.send(a!, dialog.dialog_id, input('own after read'));
+    expect((await service.get(a!, dialog.dialog_id)).dialog.has_unread_messages).toBe(false);
+    await pool.query('UPDATE gchat_users SET display_name=$1,disabled_at=now() WHERE id=$2', [
+      'Renamed',
+      b!.userId,
+    ]);
+    await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [a!.userId]);
+    expect((await service.list(a!, 30, 0)).dialogs[0]).toMatchObject({
+      peer_display_name: 'Renamed',
+      has_unread_messages: false,
+    });
+    expect((await service.get(a!, dialog.dialog_id)).dialog.peer_display_name).toBe('Renamed');
+    await expect(service.get(outsider!, dialog.dialog_id)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+  });
+
   it('creates a single permanent pair under concurrent requests with 201/200 semantics', async (): Promise<void> => {
     const results = await Promise.all([
       service.create(actors[0], actors[1].userId),

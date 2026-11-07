@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gt, lt, or, sql } from 'drizzle-orm';
 
 import type { AuthIdentity } from '../auth/auth.guard.js';
+import { users } from '../auth/auth.schema.js';
 import { AuthService } from '../auth/auth.service.js';
 import { isDatabaseUnavailable } from '../database/database.errors.js';
 import { DatabaseService, type DatabaseTransaction } from '../database/database.service.js';
@@ -75,18 +76,52 @@ export class DialogsService {
     return row.participantLowId === actor ? row.participantHighId : row.participantLowId;
   }
 
-  private dto(row: DialogRow, actor: string): DialogDto {
-    const low = row.participantLowId === actor;
+  private async metadata(
+    tx: DatabaseTransaction,
+    actor: string,
+    limit: number,
+    offset = 0,
+    id?: string,
+  ): Promise<DialogDto[]> {
+    // One statement snapshots the read positions, peer name and incoming-message predicate.
+    const rows = await tx
+      .select({
+        row: dialogs,
+        name: users.displayName,
+        unread: sql<boolean>`exists (
+          select 1 from ${dialogMessages}
+          where ${dialogMessages.dialogId} = ${dialogs.id}
+            and ${dialogMessages.senderId} <> ${actor}
+            and ${dialogMessages.sequence} > case
+              when ${dialogs.participantLowId} = ${actor} then ${dialogs.lowRead}
+              else ${dialogs.highRead} end
+        )`,
+      })
+      .from(dialogs)
+      .innerJoin(
+        users,
+        eq(
+          users.id,
+          sql`case when ${dialogs.participantLowId} = ${actor}
+        then ${dialogs.participantHighId} else ${dialogs.participantLowId} end`,
+        ),
+      )
+      .where(and(this.member(actor), id ? eq(dialogs.id, id) : undefined))
+      .orderBy(desc(sql`coalesce(${dialogs.lastMessageAt},${dialogs.createdAt})`), desc(dialogs.id))
+      .limit(limit)
+      .offset(offset);
 
-    return {
+    return rows.map(({ row, name, unread }): DialogDto => ({
       dialog_id: row.id,
       peer_id: this.peer(row, actor),
+      peer_display_name: name,
+      has_unread_messages: unread,
       created_at: row.createdAt.toISOString(),
       last_message_at: row.lastMessageAt?.toISOString() ?? null,
       last_sequence: row.lastSequence,
-      last_read_sequence: low ? row.lowRead : row.highRead,
-      peer_last_read_sequence: low ? row.highRead : row.lowRead,
-    };
+      last_read_sequence: row.participantLowId === actor ? row.lowRead : row.highRead,
+      peer_last_read_sequence: row.participantLowId === actor ? row.highRead : row.lowRead,
+    }));
   }
 
   private message(row: MessageRow, dialog: DialogRow): MessageDto {
@@ -180,7 +215,11 @@ export class DialogsService {
 
       if (!row) throw this.error.internal();
 
-      return { dialog: this.dto(row, actor.userId), created: !!inserted };
+      const [dialog] = await this.metadata(tx, actor.userId, 1, 0, row.id);
+
+      if (!dialog) throw this.error.internal();
+
+      return { dialog, created: !!inserted };
     });
   }
 
@@ -189,21 +228,9 @@ export class DialogsService {
 
     return this.transaction(async (tx): Promise<DialogListResponseDto> => {
       await this.access(tx, actor);
-      const rows = await tx
-        .select()
-        .from(dialogs)
-        .where(this.member(actor.userId))
-        .orderBy(
-          desc(sql`coalesce(${dialogs.lastMessageAt},${dialogs.createdAt})`),
-          desc(dialogs.id),
-        )
-        .limit(limit + 1)
-        .offset(offset);
+      const rows = await this.metadata(tx, actor.userId, limit + 1, offset);
 
-      return {
-        dialogs: rows.slice(0, limit).map((row): DialogDto => this.dto(row, actor.userId)),
-        has_more: rows.length > limit,
-      };
+      return { dialogs: rows.slice(0, limit), has_more: rows.length > limit };
     });
   }
 
@@ -214,7 +241,11 @@ export class DialogsService {
       await this.own(tx, actor.userId, id);
       await this.access(tx, actor);
 
-      return { dialog: this.dto(await this.own(tx, actor.userId, id), actor.userId) };
+      const [dialog] = await this.metadata(tx, actor.userId, 1, 0, id);
+
+      if (!dialog) throw this.error.notFound();
+
+      return { dialog };
     });
   }
 

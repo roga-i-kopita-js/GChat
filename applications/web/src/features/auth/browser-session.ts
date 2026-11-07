@@ -2,6 +2,7 @@ import { ApiError, type ApiResult, BackendApi } from '@gchat/backend-api';
 import { z } from 'zod';
 
 import { ClientError, createApi } from '../../shared/api/client';
+import { purgeAccount } from '../../shared/dialogs/storage';
 import { identity } from '../../shared/identity';
 
 export { identity } from '../../shared/identity';
@@ -45,14 +46,23 @@ export function saveSession(value: Session | null): void {
 
 const publicApi = createApi();
 
-function invalidateSession(cause: unknown, original: Session): void {
+async function invalidateSession(cause: unknown, original: Session): Promise<void> {
   if (!(cause instanceof ApiError || cause instanceof ClientError)) return;
 
   if (!['SESSION_INVALID', 'ACCESS_TOKEN_INVALID'].includes(cause.code ?? '')) return;
 
   const current = readSession();
 
-  if (current && identity(current).sid === identity(original).sid) saveSession(null);
+  if (current && identity(current).sid === identity(original).sid) {
+    // Token invalidation still wins if storage is temporarily unavailable. A new session's
+    // storage-open barrier discards prior generations before any cache can be exposed.
+    try {
+      if (typeof indexedDB !== 'undefined')
+        await purgeAccount({ serverOrigin: location.origin, accountId: identity(current).sub });
+    } finally {
+      saveSession(null);
+    }
+  }
 }
 
 export async function login(login: string, password: string): Promise<void> {
@@ -91,7 +101,7 @@ async function access(force = false): Promise<Session> {
 
       return session;
     } catch (cause) {
-      invalidateSession(cause, session);
+      await invalidateSession(cause, session);
 
       throw cause;
     }
@@ -115,7 +125,7 @@ export async function request<T>(
       return (await operation(createApi(refreshed.access_token))).data;
     }
   } catch (cause) {
-    invalidateSession(cause, session);
+    await invalidateSession(cause, session);
 
     throw cause;
   }
@@ -128,6 +138,12 @@ export async function logout(): Promise<void> {
     if (!session) return;
 
     await publicApi.authLogout({ body: { refresh_token: session.refresh_token } });
-    saveSession(null);
+
+    try {
+      if (typeof indexedDB !== 'undefined')
+        await purgeAccount({ serverOrigin: location.origin, accountId: identity(session).sub });
+    } finally {
+      saveSession(null);
+    }
   });
 }

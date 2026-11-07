@@ -35,6 +35,7 @@ public struct WebSocketPolicy: Decodable {
 /// One connection per native session. WebView cycles only attach/detach consumers.
 @MainActor public final class SharedWebSocket {
     public private(set) var status = "offline"
+    public var boundDeviceID: String? { sessionID.flatMap { readDevice($0) } }
     public var onState: ((String) -> Void)?
     public var onWebMessage: ((String, [String: Any]) -> Void)?
     public var onNativeMessage: (([String: Any]) -> Void)?

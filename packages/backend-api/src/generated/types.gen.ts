@@ -105,6 +105,8 @@ export type DialogDto = {
   peer_last_read_sequence: number;
   dialog_id: string;
   peer_id: string;
+  peer_display_name: string;
+  has_unread_messages: boolean;
   created_at: string;
 };
 

@@ -39,6 +39,8 @@ export class ReadDialogDto {
 export class DialogDto {
   dialog_id!: string;
   peer_id!: string;
+  peer_display_name!: string;
+  has_unread_messages!: boolean;
   created_at!: string;
   @ApiProperty({ type: String, nullable: true }) last_message_at!: string | null;
   @ApiProperty({ type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER })

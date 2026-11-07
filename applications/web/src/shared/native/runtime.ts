@@ -34,9 +34,14 @@ const capabilitiesSchema = z.strictObject({
   nativeAuth: z.literal(true),
   nativeCalls: z.boolean(),
   nativeWebSocket: z.boolean().optional(),
+  dialogStorageVersion: z.literal(1).optional(),
+  dialogNotificationsVersion: z.literal(1).optional(),
 });
 
 export interface NativeState {
+  dialogStorageVersion?: 1;
+  dialogNotificationsVersion?: 1;
+  dialogIntent?: { intentId: string; dialogId: string };
   nativeCalls: boolean | null;
   nativeWebSocket: boolean;
   wsStatus: 'offline' | 'connecting' | 'online';
@@ -142,6 +147,7 @@ export class NativeRuntime {
       epoch: this.state.epoch + 1,
       phase: 'waiting',
       route: null,
+      dialogIntent: undefined,
       call: null,
       runtime: { status: 'offline', muted: false },
       wsStatus: 'offline',
@@ -178,6 +184,23 @@ export class NativeRuntime {
 
     if (!envelope.success || envelope.data.cycleId !== this.state.cycleId) return;
 
+    if (name === 'dialogNotificationIntent') {
+      const intent = z
+        .strictObject({
+          cycleId: z.string(),
+          intentId: z.string().uuid(),
+          dialogId: z.string().uuid(),
+        })
+        .safeParse(value);
+
+      if (intent.success)
+        this.set({
+          dialogIntent: { intentId: intent.data.intentId, dialogId: intent.data.dialogId },
+        });
+
+      return;
+    }
+
     if (name === 'wsMessage') {
       if (this.state.phase !== 'ready' || !this.token) return;
 
@@ -209,7 +232,7 @@ export class NativeRuntime {
         const path = decodeURIComponent(route.path);
 
         if (
-          !/^\/(?:login|calls|settings(?:\/general(?:\/(?:microphone|audio|push|camera|geolocation|files))?)?|admin(?:\/users(?:\/[0-9a-f-]+)?)?)?(?:\?[^#]*)?$/.test(
+          !/^\/(?:login|calls|dialogs(?:\/[0-9a-f-]+)?|settings(?:\/general(?:\/(?:microphone|audio|push|camera|geolocation|files))?)?|admin(?:\/users(?:\/[0-9a-f-]+)?)?)?(?:\?[^#]*)?$/.test(
             path,
           ) ||
           /[\\\s\u0000-\u001f]/.test(path)
@@ -309,6 +332,8 @@ export class NativeRuntime {
 
       this.set({
         nativeCalls: parsedCapabilities.data.nativeCalls,
+        dialogStorageVersion: parsedCapabilities.data.dialogStorageVersion,
+        dialogNotificationsVersion: parsedCapabilities.data.dialogNotificationsVersion,
         nativeWebSocket: parsedCapabilities.data.nativeWebSocket ?? false,
       });
 
@@ -319,6 +344,7 @@ export class NativeRuntime {
         'callStateChanged',
         'callRuntimeChanged',
         ...(parsedCapabilities.data.nativeWebSocket ? ['wsMessage', 'wsState'] : []),
+        ...(parsedCapabilities.data.dialogNotificationsVersion ? ['dialogNotificationIntent'] : []),
       ]) {
         const handle = await invoke((): ReturnType<typeof nativePlugin.addListener> =>
           nativePlugin.addListener(name, (value): void => this.receive(name, value, generation)),

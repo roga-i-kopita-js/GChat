@@ -6,6 +6,18 @@ import { ClientError } from '../api/client';
 export const bridgeVersion = 1;
 
 interface NativePlugin {
+  getDialogStorageContext(options: { cycleId: string }): Promise<unknown>;
+  dialogStorage(options: {
+    version: number;
+    cycleId: string;
+    operationId: string;
+    namespaceId: string;
+    epoch: number;
+    adapterEpoch: number;
+    command: string;
+    args: unknown;
+  }): Promise<unknown>;
+  consumeDialogNotificationIntent(options: { cycleId: string; intentId: string }): Promise<void>;
   executeDeviceCommand(options: {
     deviceBridgeVersion: number;
     cycleId: string;

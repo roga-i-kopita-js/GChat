@@ -10,10 +10,12 @@ import { identity, readSession, saveSession } from '../features/auth/session';
 import { CallsPage } from '../features/calls/CallsPage';
 import { CallsProvider, useCalls } from '../features/calls/CallsProvider';
 import { IncomingCall } from '../features/calls/IncomingCall';
+import { DialogsPage } from '../features/dialogs/DialogsPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { embedded } from '../shared/native/bridge';
 import { nativeRuntime } from '../shared/native/runtime';
 import { AppLayout } from './AppLayout';
+import { Bootstrap } from './bootstrap/Bootstrap';
 import { DeviceProvider } from './DeviceProvider';
 import { NativeBoundary } from './NativeBoundary';
 import { PwaUpdate } from './PwaUpdate';
@@ -69,6 +71,9 @@ function ApplicationRoutes({
           <Route element={<AppLayout />}>
             <Route index element={<Navigate to="/calls" replace />} />
             <Route path="calls" element={<CallsPage />} />
+            <Route path="dialogs" element={<DialogsPage />}>
+              <Route path=":dialogId" element={null} />
+            </Route>
             <Route path="settings/*" element={<SettingsPage />} />
             <Route path="admin" element={<RequireAdmin />}>
               <Route index element={<Navigate to="users" replace />} />
@@ -163,16 +168,18 @@ export function App(): JSX.Element {
 
   const content = (
     <AuthProvider>
-      <CallsProvider>
-        {!embedded && <PwaUpdate />}
-        <DeviceProvider>
-          <ApplicationRoutes
-            credentials={credentials?.value ?? null}
-            onCredentials={(value, sid): void => setCredentials({ value, sid })}
-          />
-          <IncomingCall />
-        </DeviceProvider>
-      </CallsProvider>
+      <Bootstrap>
+        <CallsProvider>
+          {!embedded && <PwaUpdate />}
+          <DeviceProvider>
+            <ApplicationRoutes
+              credentials={credentials?.value ?? null}
+              onCredentials={(value, sid): void => setCredentials({ value, sid })}
+            />
+            <IncomingCall />
+          </DeviceProvider>
+        </CallsProvider>
+      </Bootstrap>
     </AuthProvider>
   );
 

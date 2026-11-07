@@ -73,7 +73,9 @@ self.addEventListener('fetch', (event) => {
   const navigation =
     request.mode === 'navigate' &&
     (config.scope === '/'
-      ? /^\/(?:$|calls(?:\/|$)|login(?:\/|$)|admin(?:\/|$))/.test(url.pathname)
+      ? /^\/(?:$|calls(?:\/|$)|dialogs(?:\/|$)|settings(?:\/|$)|login(?:\/|$)|admin(?:\/|$))/.test(
+          url.pathname,
+        )
       : url.pathname === config.startPath || url.pathname.startsWith(config.startPath + '/'));
 
   if (!navigation && !assetUrls.has(url.href)) return;
@@ -96,6 +98,27 @@ self.addEventListener('push', (event) => {
         payload = event.data?.json();
       } catch {
         /* Visible fallback for an invalid payload. */
+      }
+
+      const uuid = (value) =>
+        typeof value === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+      if (
+        payload?.type === 'dialog.message' &&
+        uuid(payload.dialog_id) &&
+        uuid(payload.message_id) &&
+        typeof payload.body === 'string'
+      ) {
+        await self.registration.showNotification('GChat', {
+          body: payload.body,
+          icon: config.icon,
+          badge: config.icon,
+          tag: 'gchat-message-' + payload.message_id,
+          data: { dialogId: payload.dialog_id },
+        });
+
+        return;
       }
 
       const valid =
@@ -128,13 +151,29 @@ self.addEventListener('notificationclick', (event) => {
         return (
           url.origin === self.location.origin &&
           (config.scope === '/'
-            ? /^\/(?:$|calls(?:\/|$)|login(?:\/|$)|admin(?:\/|$))/.test(url.pathname)
+            ? /^\/(?:$|calls(?:\/|$)|dialogs(?:\/|$)|settings(?:\/|$)|login(?:\/|$)|admin(?:\/|$))/.test(
+                url.pathname,
+              )
             : url.pathname === config.startPath || url.pathname.startsWith(config.startPath + '/'))
         );
       });
 
-      if (existing) await existing.focus();
-      else await self.clients.openWindow(config.startUrl);
+      const id = event.notification.data?.dialogId;
+      const validDialog =
+        typeof id === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+      if (existing) {
+        await existing.focus();
+
+        if (validDialog) existing.postMessage({ type: 'dialog.notification', dialogId: id });
+      } else {
+        const target = new URL(config.startUrl, self.location.origin);
+
+        if (validDialog) target.searchParams.set('dialog_id', id);
+
+        await self.clients.openWindow(validDialog ? target.href : config.startUrl);
+      }
     })(),
   );
 });

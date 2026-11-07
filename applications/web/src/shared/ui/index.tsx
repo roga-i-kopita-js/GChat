@@ -4,10 +4,18 @@ import { useEffect, useRef } from 'react';
 
 export { Select } from './Select';
 
-export function Avatar({ name, large = false }: { name: string; large?: boolean }): JSX.Element {
+export function Avatar({
+  name,
+  large = false,
+  seed = name,
+}: {
+  name: string;
+  large?: boolean;
+  seed?: string;
+}): JSX.Element {
   const colors = ['#dceaff', '#e8e2fb', '#dcf2eb', '#faeadc', '#f5e0eb'];
   const index =
-    [...name].reduce((sum, char): number => sum + char.charCodeAt(0), 0) % colors.length;
+    [...seed].reduce((sum, char): number => sum + char.charCodeAt(0), 0) % colors.length;
 
   return (
     <span

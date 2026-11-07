@@ -7,6 +7,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
+        if let response = connectionOptions.notificationResponse { ChatNotifications.shared.intent(response.notification.request.content.userInfo) }
         let window = UIWindow(windowScene: scene)
         window.rootViewController = ShellViewController()
         self.window = window
@@ -36,7 +37,11 @@ final class ShellViewController: UIViewController {
         let manager = SessionManager(
             server: server,
             storage: KeychainSessionStorage(service: Bundle.main.bundleIdentifier! + ".auth"),
-            transport: HTTPAuthTransport()
+            transport: HTTPAuthTransport(),
+            onClear: { session in
+                guard let account = session.accountID else { return }
+                try await MainActor.run { try ChatLocalStorage.forServer(session.server).purge(account: account) }
+            }
         )
         let deviceKey = "gchat.device.v1." + server.url.absoluteString
         let transport = SharedWebSocket(
@@ -49,6 +54,9 @@ final class ShellViewController: UIViewController {
         self.transport = transport
         // Restore native connectivity even when the remote Web cannot load.
         Task { @MainActor in
+            transport.onInvalidSession = {
+                Task { try? await manager.invalidate() }
+            }
             if let session = try? await manager.restore(), let id = session.sessionID {
                 transport.start(sessionID: id)
             }

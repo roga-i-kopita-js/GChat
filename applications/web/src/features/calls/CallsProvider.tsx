@@ -33,7 +33,10 @@ interface CallsRuntime {
   selectedGroup: GroupsResponseDto['groups'][number] | undefined;
   currentMembers: Member[];
 }
-const client: CallsClient = embedded ? new NativeCallsClient() : new GChatClient();
+
+export const callsClient: CallsClient = embedded ? new NativeCallsClient() : new GChatClient();
+
+const client = callsClient;
 const CallsContext = createContext<CallsRuntime | null>(null);
 
 export function CallsProvider({ children }: { children: ReactNode }): JSX.Element {
@@ -91,7 +94,6 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
     refetchInterval: 60000,
   });
 
-  useEffect((): (() => void) => client.start(), []);
   useEffect((): void => {
     setGroupId(null);
     setPerson(null);

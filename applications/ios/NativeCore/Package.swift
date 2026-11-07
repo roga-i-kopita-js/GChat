@@ -6,7 +6,8 @@ let package = Package(
     platforms: [.iOS(.v16), .macOS(.v13)],
     products: [.library(name: "GChatCore", targets: ["GChatCore"])],
     targets: [
-        .target(name: "GChatCore"),
+        .systemLibrary(name: "CSQLite"),
+        .target(name: "GChatCore", dependencies: ["CSQLite"]),
         .testTarget(name: "GChatCoreTests", dependencies: ["GChatCore"])
     ]
 )

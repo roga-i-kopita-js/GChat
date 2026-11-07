@@ -17,6 +17,12 @@
 
 Реализовано [расширение bridge общим нативным WebSocket](../../docs/web/README.md#общий-websocket-через-native): NativeCore владеет WSS, авторизацией, регистрацией устройства, переподключением и применением политики из БД. `wsState` отделён от runtime звонка. UUID устройства сохраняется отдельно для выбранного сервера и native-сессии; чужая учётная запись не использует прежнюю привязку. Соединение восстанавливается из сохранённой сессии независимо от загрузки Web и переживает навигацию/перезапуск WebView. Фоновая работа требует отдельного контура звонков и проверки iOS. Мотивация — в [D008](../../docs/architecture/decisions/D008-capacitor-bridge.md#общий-нативный-wss-и-доступ-web-через-bridge).
 
+## Диалоги и обычные уведомления
+
+Добавлены системная SQLite без сторонних библиотек, контроль поколений/CAS, очистка при завершении native-сессии и storage bridge v1 по [bootstrap](../../docs/web/bootstrap.md). Control metadata живёт отдельно в UserDefaults; отказ SQLite не препятствует сохранению постоянного выбора IndexedDB WebView. Незавершённая физическая очистка остаётся отдельным состоянием.
+
+Обычный APNs-токен регистрируется NativeCore через device.apns_token после binding; Web получает только безопасный intent диалога. Настройки push.enable/disable используют обычные уведомления, не VoIP. UI/bridge, XCTest и Simulator-сборка не заменяют приёмку доставки и работы на физическом iPhone.
+
 ## Запуск
 
 Из корня репозитория:
@@ -28,7 +34,7 @@ pnpm --filter @gchat/ios build:core
 pnpm --filter @gchat/ios test
 ```
 
-`open` открывает `App/App.xcodeproj`. Выберите схему `GChat` и iOS Simulator либо физический iPhone. Для физического устройства выполните [отдельную настройку подписи](#установка-на-физический-iphone). `com.gchat.app` в target и Capacitor config — идентификатор текущего каркаса; APNs не настроены. Команда `build` собирает Simulator с локальной ad-hoc подписью без Signing Team. Не отключайте `CODE_SIGNING_ALLOWED`: Xcode должен сформировать simulator entitlements для доступа к Keychain, иначе native-сессия получает `errSecMissingEntitlement` (`-34018`). `test` выполняет XCTest-пакет NativeCore на macOS; это не UI-тесты iOS. Полный Xcode нужен для XCTest и Simulator; Command Line Tools позволяют отдельно собрать NativeCore. pnpm не устанавливает Xcode и Swift-зависимости.
+`open` открывает `App/App.xcodeproj`. Выберите схему `GChat` и iOS Simulator либо физический iPhone. Для физического устройства выполните [отдельную настройку подписи](#установка-на-физический-iphone). `com.gchat.app` в target и Capacitor config — идентификатор текущего каркаса; для обычных APNs диалогов добавлены entitlements (Debug development, Release production), но реальная доставка требует подходящего App ID, профиля подписи и backend credentials. Команда `build` собирает Simulator с локальной ad-hoc подписью без Signing Team. Не отключайте `CODE_SIGNING_ALLOWED`: Xcode должен сформировать simulator entitlements для доступа к Keychain, иначе native-сессия получает `errSecMissingEntitlement` (`-34018`). `test` выполняет XCTest-пакет NativeCore на macOS; это не UI-тесты iOS. Полный Xcode нужен для XCTest и Simulator; Command Line Tools позволяют отдельно собрать NativeCore. pnpm не устанавливает Xcode и Swift-зависимости.
 
 Перед загрузкой основного Web нужен HTTPS-стенд с валидным системным сертификатом, API под `/api`, HTML/SPA fallback под `/apps/client` и assets под `/apps/static`. Сборка Web:
 

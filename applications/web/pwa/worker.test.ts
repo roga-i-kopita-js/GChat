@@ -147,6 +147,49 @@ describe('PWA worker', (): void => {
       }),
     );
   });
+  it('shows message text with a per-message tag and forwards only a validated dialog intent', async (): Promise<void> => {
+    const f = fixture();
+    const id = '11111111-1111-4111-8111-111111111111',
+      message = '22222222-2222-4222-8222-222222222222';
+
+    await f.dispatch('push', {
+      data: {
+        json: (): object => ({
+          type: 'dialog.message',
+          dialog_id: id,
+          message_id: message,
+          body: 'Тест уведомления',
+          url: 'https://evil.invalid',
+        }),
+      },
+    });
+    expect(f.self.registration.showNotification).toHaveBeenCalledWith(
+      'GChat',
+      expect.objectContaining({
+        body: 'Тест уведомления',
+        tag: 'gchat-message-' + message,
+        data: { dialogId: id },
+      }),
+    );
+    const postMessage = vi.fn(),
+      focus = vi.fn();
+
+    f.self.clients.matchAll.mockResolvedValue([
+      { url: 'https://gchat.example/apps/client/dialogs', postMessage, focus },
+    ]);
+    await f.dispatch('notificationclick', {
+      notification: { close: vi.fn(), data: { dialogId: id, url: 'https://evil.invalid' } },
+    });
+    expect(focus).toHaveBeenCalledOnce();
+    expect(postMessage).toHaveBeenCalledWith({ type: 'dialog.notification', dialogId: id });
+    f.self.clients.matchAll.mockResolvedValue([]);
+    await f.dispatch('notificationclick', {
+      notification: { close: vi.fn(), data: { dialogId: id } },
+    });
+    expect(f.self.clients.openWindow).toHaveBeenCalledWith(
+      'https://gchat.example/apps/client/calls?dialog_id=' + id,
+    );
+  });
   it('focuses an existing call client without reloading it and never follows payload URLs', async (): Promise<void> => {
     const f = fixture();
     const focus = vi.fn();
