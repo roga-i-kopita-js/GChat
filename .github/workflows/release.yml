@@ -14,6 +14,10 @@ on:
         type: choice
         options: [linux/amd64, linux/arm64]
         default: linux/amd64
+      deploy:
+        description: 'Deploy after build'
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -26,6 +30,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     permissions:
       contents: write
     env:
@@ -35,6 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Calculate next version and fix source identity
+        id: version
         shell: bash
         run: |
           # Include drafts: an incomplete release must not be overwritten.
@@ -42,6 +49,7 @@ jobs:
           gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[].tag_name' >> "$RUNNER_TEMP/gchat-versions"
           VERSION=$(python3 deployment/gchat/next-version.py "$BUMP" < "$RUNNER_TEMP/gchat-versions")
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Release version: $VERSION ($BUMP)"
           SOURCE_SHA=$(git rev-parse HEAD)
           echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
@@ -93,3 +101,13 @@ jobs:
             --title "GChat $VERSION" --notes "Source: $SOURCE_SHA. Build: $GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT. Platform: $PLATFORM. Load gchat-image.tar.gz with docker load."
           gh release edit "$VERSION" --draft=false --latest=false
           echo "Release: https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: release
+    if: ${{ inputs.deploy }}
+    uses: ./.github/workflows/deploy.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
+    secrets:
+      GCHAT_SSH_KEY: ${{ secrets.GCHAT_SSH_KEY }}
+      GCHAT_SSH_KNOWN_HOSTS: ${{ secrets.GCHAT_SSH_KNOWN_HOSTS }}

@@ -7,6 +7,17 @@ on:
         description: 'Published release tag to deploy, e.g. v0.0.2'
         required: true
         type: string
+  workflow_call:
+    inputs:
+      version:
+        description: 'Published release tag to deploy'
+        required: true
+        type: string
+    secrets:
+      GCHAT_SSH_KEY:
+        required: true
+      GCHAT_SSH_KNOWN_HOSTS:
+        required: true
 
 permissions:
   contents: read
