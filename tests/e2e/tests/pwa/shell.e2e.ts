@@ -209,6 +209,29 @@ for (const server of [false, true]) {
         await page.evaluate((): boolean => document.documentElement.scrollWidth <= innerWidth),
       ).toBe(true);
       await page.screenshot({ path: info.outputPath('update-text-200.png') });
+      // Wider glyph metrics must also fit on platforms with a different system font.
+      await dialog.evaluate((element): void => {
+        for (const button of element.querySelectorAll('button')) {
+          button.style.fontFamily = 'monospace';
+          button.style.letterSpacing = '2px';
+        }
+      });
+
+      for (const name of ['Позже', 'Обновить']) {
+        const button = dialog.getByRole('button', { name, exact: true });
+
+        await expect(button).toBeInViewport();
+        expect(
+          await button.evaluate((element): boolean => element.scrollWidth <= element.clientWidth),
+        ).toBe(true);
+      }
+
+      await dialog.evaluate((element): void => {
+        for (const button of element.querySelectorAll('button')) {
+          button.style.fontFamily = '';
+          button.style.letterSpacing = '';
+        }
+      });
       await page.evaluate((): void => {
         document.documentElement.style.fontSize = '';
       });

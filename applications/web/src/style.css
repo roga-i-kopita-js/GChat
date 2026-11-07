@@ -890,6 +890,7 @@ button svg {
 .pwa-update-actions button {
   min-height: 48px;
   padding: 12px 0;
+  overflow-wrap: anywhere;
   border-radius: 0;
   background: transparent;
   color: #007aff;
