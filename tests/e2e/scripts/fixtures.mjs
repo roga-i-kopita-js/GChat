@@ -99,6 +99,8 @@ await writeFile(
     REDIS_URL: 'redis://127.0.0.1:56389/0',
     REDIS_KEY_PREFIX: 'gchat:web-test:',
     AUTH_PASSWORD_PEPPER: pepper.toString('base64'),
+    DIALOGS_ACTIVE_KEY_ID: 'e2e',
+    DIALOGS_ENCRYPTION_KEYS: JSON.stringify({ e2e: randomBytes(32).toString('base64') }),
     AUTH_JWT_ACTIVE_KID: 'web-test',
     AUTH_JWT_PRIVATE_KEY: jwt.privateKey.export({ type: 'pkcs8', format: 'pem' }),
     AUTH_JWT_PUBLIC_KEYS: JSON.stringify({

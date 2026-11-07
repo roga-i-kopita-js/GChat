@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "author": "AssetPolish",
+  "stickers": [
+    {
+      "id": "animal-pals-v1-cat",
+      "source": "https://www.assetpolish.com/assets/colour-animals/curious-cat.svg",
+      "license": "CC0-1.0",
+      "original_sha256": "319ce10329943489cf8cedfc01b21334e10a41f5a66781b9af95c86adb8ada95",
+      "png_sha256": "93ceae64b9fa668765526d16e81f948497c2082a359634dad6a2354f34c75bea",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "id": "animal-pals-v1-dog",
+      "source": "https://www.assetpolish.com/assets/colour-animals/puppy-pal.svg",
+      "license": "CC0-1.0",
+      "original_sha256": "4afc74475050a3a1c2f7de7c53cd0b66f76a3cdc23ad7555a24f8442b26a6f3c",
+      "png_sha256": "9c84313d31c44eeece40b8239ce64e743ecd476fa7753cccb478d57e3dd6adff",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "id": "animal-pals-v1-fox",
+      "source": "https://www.assetpolish.com/assets/colour-animals/little-fox.svg",
+      "license": "CC0-1.0",
+      "original_sha256": "3df789cafed3d4cd932801f8b05c8ffa1190d58b8d65f58bad762d87a90cb7be",
+      "png_sha256": "382f2c6c84d78f973eea4d3a0c771f3b7e2ba62326dfe2de513b4c716ccad8c1",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "id": "animal-pals-v1-bear",
+      "source": "https://www.assetpolish.com/assets/colour-animals/sleepy-bear.svg",
+      "license": "CC0-1.0",
+      "original_sha256": "13dd25eb2a1100505a871215fb0ce24123c4f7fd9f16c9af65d1bba4b6c04d37",
+      "png_sha256": "d0d474455b97612ec7ebd3e4588e2e66515017028a8209d865f6d71cc0a4b5d3",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "id": "animal-pals-v1-bunny",
+      "source": "https://www.assetpolish.com/assets/colour-animals/bunny-hop.svg",
+      "license": "CC0-1.0",
+      "original_sha256": "685b50e8a0e8e36bcbcde778e8cbab5070c7ac8fe5d8727689d2a5b1e9fe2d8c",
+      "png_sha256": "8212d9adfc7fb2fc989284205f24b349c2bd22cede409779b05082476c2e2214",
+      "width": 512,
+      "height": 512
+    }
+  ]
+}

@@ -51,7 +51,13 @@ export class PushClient implements OnModuleDestroy {
     return token;
   }
 
-  async send(id: string, token: string, payload: object, deadline: Date): Promise<PushResult> {
+  async send(
+    id: string,
+    token: string,
+    payload: object,
+    deadline: Date,
+    kind: 'voip' | 'alert' = 'voip',
+  ): Promise<PushResult> {
     const authorization = await this.token();
     const timeout = Math.min(5000, deadline.getTime() - Date.now());
 
@@ -74,8 +80,9 @@ export class PushClient implements OnModuleDestroy {
         ':path': '/3/device/' + encodeURIComponent(token),
         authorization: 'bearer ' + authorization,
         'apns-id': id,
-        'apns-push-type': 'voip',
-        'apns-topic': this.config.getOrThrow<string>('APNS_BUNDLE_ID') + '.voip',
+        'apns-push-type': kind,
+        'apns-topic':
+          this.config.getOrThrow<string>('APNS_BUNDLE_ID') + (kind === 'voip' ? '.voip' : ''),
         'apns-priority': '10',
         'apns-expiration': '0',
         'content-type': 'application/json',

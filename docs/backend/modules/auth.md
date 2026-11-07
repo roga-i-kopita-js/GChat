@@ -1,7 +1,7 @@
 ---
 doc_type: module
 decision_status: accepted
-implementation_status: implemented
+implementation_status: partial
 source: applications/backend/src/auth/
 # prettier-ignore
 tests: ["applications/backend/src/auth/browser-origin.spec.ts", "applications/backend/src/auth/auth.crypto.spec.ts", "applications/backend/src/auth/auth.service.spec.ts", "applications/backend/src/auth/auth.limits.spec.ts", "applications/backend/src/auth/auth.repository.spec.ts", "applications/backend/test/auth.integration.spec.ts", "applications/backend/src/auth/admin-cli.input.spec.ts", "applications/backend/src/auth/auth.cleanup.spec.ts", "applications/backend/test/backoffice.integration.spec.ts"]
@@ -27,7 +27,22 @@ AuthModule импортирует DatabaseModule и RedlockModule.forFeature(), 
 
 ## Публичный API
 
+### Permissions приложения — запланировано
+
+Общий HTTP-endpoint permissions приложения относится к модулю авторизации. Он проектируется без dialog_id и не вычисляет контекстные права конкретного диалога. В предполагаемом общем ответе предусмотрен объект dialogs, однако его глобальные поля и полный контракт ещё требуется определить; can_read/can_send для конкретного собеседника нельзя подменять общим разрешением аккаунта. Endpoint пока не реализован, расширение не готово к написанию кода.
+
+Отдельный ресурсный `GET /dialogs/:dialog_id/permissions` принадлежит DialogsModule. Его форма ответа и правила — в [профильном контракте](dialogs/README.md#permissions). Auth предоставляет проверенную личность/сессию; контроллер ресурсных permissions находится в Dialogs, поэтому обратный импорт DialogsModule в AuthModule ради этого маршрута не требуется. Текущие сценарии Auth реализованы; будущие общие permissions пока отсутствуют, общий implementation_status остаётся partial.
+
 `lockActiveAccountRoles(tx, userIds)` возвращает `{id, role}` активных аккаунтов, блокируя строки `FOR SHARE` в порядке UUID до завершения переданной транзакции. DirectCalls использует метод для проверки текущей роли инициатора вместе с активностью участников; `lockActiveAccounts` сохраняет выдачу только идентификаторов.
+
+### Транзакционная проверка сессии для Dialogs — реализовано
+
+Согласованы два новых внутренних метода AuthService; оба используют переданный `DatabaseTransaction`, без независимой транзакции. Блокировки удерживаются до её завершения:
+
+- `lockAccountStates(tx, userIds)` возвращает `{id, role, disabledAt}` найденных аккаунтов, включая отключённых, блокируя строки `FOR SHARE` по возрастанию UUID. Он не заменяет `lockActiveAccountRoles`, который сохраняет фильтрацию активных аккаунтов. Потребитель проверяет активность actor и применяет матрицу доступа к состоянию peer.
+- `lockSession(tx, userId, sessionId)` блокирует сессию `FOR SHARE` и проверяет владельца. Отсутствующая сессия или несовпадение владельца дают `SESSION_INVALID`. Метод не создаёт сессию автоматически; её наличие не заменяет проверку активности аккаунта.
+
+Расширение реализовано. Граница допуска при гонке с logout и общий порядок блокировок определены в [контракте Dialogs](dialogs/README.md#порядок-блокировок-и-граница-допуска). Эти методы не заменяют проверку подписи и срока access token в HTTP guard.
 
 ### HTTP API
 
@@ -167,7 +182,7 @@ CLI предназначен только для создания нового �
 
 | Операция        | Результат                                                                                                                     |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Создать аккаунт | Сохранить валидированные данные и хеш пароля; назначить группу по запросу согласно контракту Groups                     |
+| Создать аккаунт | Сохранить валидированные данные и хеш пароля; назначить группу по запросу согласно контракту Groups                           |
 | Сменить пароль  | Сменить хеш, отозвать все сессии                                                                                              |
 | Отключить       | Установить disabled_at, отозвать все сессии                                                                                   |
 | Включить        | Завершить отзыв всех старых сессий и результатов ротации, затем очистить disabled_at; при ошибке оставить аккаунт отключённым |
@@ -272,18 +287,18 @@ Refresh token заменяется при каждом успешном обно
 
 #### gchat_auth_sessions
 
-| Поле | Тип и ограничение | Назначение |
+| Поле                          | Тип и ограничение                                         | Назначение                                  |
 | ----------------------------- | --------------------------------------------------------- | ------------------------------------------- |
-| `id` | UUID, PK | ID сессии из токенов, генерируется backend |
-| `user_id` | UUID, NOT NULL, FK на `gchat_users.id`, ON DELETE CASCADE | Владелец сессии |
-| `refresh_token_hash` | text, NOT NULL | SHA-256 текущего refresh token |
-| `created_at`, `updated_at` | timestamptz, NOT NULL | Время создания и изменения |
-| `rotation_request_id` | UUID, nullable | ID последнего успешного refresh |
-| `rotation_token_hash` | text, nullable | Хеш токена, предъявленного при этом refresh |
-| `rotation_encrypted` | text, nullable | Зашифрованная пара для повтора |
-| `rotation_expires_at` | timestamptz, nullable | Конец окна допустимого повтора |
-| `ws_ticket_window_started_at` | timestamptz, nullable | Начало текущего окна выдачи билетов |
-| `ws_ticket_count` | integer, NOT NULL, default 0 | Число выданных билетов в окне |
+| `id`                          | UUID, PK                                                  | ID сессии из токенов, генерируется backend  |
+| `user_id`                     | UUID, NOT NULL, FK на `gchat_users.id`, ON DELETE CASCADE | Владелец сессии                             |
+| `refresh_token_hash`          | text, NOT NULL                                            | SHA-256 текущего refresh token              |
+| `created_at`, `updated_at`    | timestamptz, NOT NULL                                     | Время создания и изменения                  |
+| `rotation_request_id`         | UUID, nullable                                            | ID последнего успешного refresh             |
+| `rotation_token_hash`         | text, nullable                                            | Хеш токена, предъявленного при этом refresh |
+| `rotation_encrypted`          | text, nullable                                            | Зашифрованная пара для повтора              |
+| `rotation_expires_at`         | timestamptz, nullable                                     | Конец окна допустимого повтора              |
+| `ws_ticket_window_started_at` | timestamptz, nullable                                     | Начало текущего окна выдачи билетов         |
+| `ws_ticket_count`             | integer, NOT NULL, default 0                              | Число выданных билетов в окне               |
 
 CHECK требует, чтобы четыре поля `rotation_*` были либо все NULL, либо все заполнены. Успешная ротация атомарно обновляет текущий хеш и заменяет все поля результата. Для счётчика CHECK запрещает отрицательные значения и требует согласованную пару: отсутствующее окно и нулевой счётчик либо заданное окно и положительный счётчик. Новое окно задаётся при первой выдаче; истёкшее окно сбрасывается при следующей выдаче либо фоновой очисткой.
 
@@ -291,13 +306,13 @@ CHECK требует, чтобы четыре поля `rotation_*` были л�
 
 #### gchat_auth_ws_tickets
 
-| Поле | Тип и ограничение | Назначение |
+| Поле          | Тип и ограничение                                                 | Назначение                                    |
 | ------------- | ----------------------------------------------------------------- | --------------------------------------------- |
-| `ticket_hash` | text, PK | SHA-256 секрета билета; секрет не сохраняется |
-| `session_id` | UUID, NOT NULL, FK на `gchat_auth_sessions.id`, ON DELETE CASCADE | Сессия, выдавшая билет |
-| `origin` | text, NOT NULL | Разрешённый Origin при выдаче |
-| `issued_at` | timestamptz, NOT NULL | Время выдачи по БД |
-| `expires_at` | timestamptz, NOT NULL, CHECK `expires_at > issued_at` | Конец срока действия |
+| `ticket_hash` | text, PK                                                          | SHA-256 секрета билета; секрет не сохраняется |
+| `session_id`  | UUID, NOT NULL, FK на `gchat_auth_sessions.id`, ON DELETE CASCADE | Сессия, выдавшая билет                        |
+| `origin`      | text, NOT NULL                                                    | Разрешённый Origin при выдаче                 |
+| `issued_at`   | timestamptz, NOT NULL                                             | Время выдачи по БД                            |
+| `expires_at`  | timestamptz, NOT NULL, CHECK `expires_at > issued_at`             | Конец срока действия                          |
 
 Индексы: по `session_id` для каскадного удаления; по `expires_at` для фоновой очистки. Аккаунт определяется через сессию и не дублируется в таблице билетов. При удалении сессии её билеты удаляются автоматически в той же транзакции, включая logout, отключение и смену пароля.
 
@@ -384,7 +399,7 @@ flowchart TB
 | Компонент            | Ответственность                                                          |
 | -------------------- | ------------------------------------------------------------------------ |
 | HTTP-контроллер      | Вход, обновление токенов и выход                                         |
-| Сервис аккаунтов     | Создание администратора через CLI; управление аккаунтами через БО                 |
+| Сервис аккаунтов     | Создание администратора через CLI; управление аккаунтами через БО        |
 | Сервис сессий        | Создание, проверка, отзыв и ротация                                      |
 | Сервис токенов       | Выпуск и проверка JWT, генерация refresh token                           |
 | HTTP Guard           | Проверка защищённых запросов                                             |

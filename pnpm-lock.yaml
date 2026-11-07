@@ -31,6 +31,9 @@ importers:
 
   applications/backend:
     dependencies:
+      '@gchat/dialog-assets':
+        specifier: workspace:*
+        version: link:../../packages/dialog-assets
       '@nestjs/common':
         specifier: 12.3.2
         version: 12.3.2(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -200,6 +203,8 @@ importers:
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
+
+  packages/dialog-assets: {}
 
   tests/e2e:
     devDependencies:

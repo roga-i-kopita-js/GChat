@@ -14,6 +14,20 @@ export class WebPushClient {
   constructor(private readonly config: ConfigService) {}
 
   async send(address: WebPushAddress, callId: string, deadline: string): Promise<WebPushResult> {
+    return this.sendPayload(
+      address,
+      { call_id: callId, ringing_deadline: deadline },
+      deadline,
+      false,
+    );
+  }
+
+  async sendPayload(
+    address: WebPushAddress,
+    payload: object,
+    deadline: string,
+    dialog = true,
+  ): Promise<WebPushResult> {
     const remaining = Date.parse(deadline) - Date.now();
 
     if (remaining <= 0 || !validWebPushAddress(address)) return { status: 410 };
@@ -21,14 +35,15 @@ export class WebPushClient {
     try {
       const result = await webPush.sendNotification(
         { endpoint: address.endpoint, keys: { p256dh: address.p256dh, auth: address.auth } },
-        JSON.stringify({ call_id: callId, ringing_deadline: deadline }),
+        JSON.stringify(payload),
         {
           vapidDetails: {
             subject: this.config.getOrThrow<string>('WEB_PUSH_SUBJECT'),
             publicKey: this.config.getOrThrow<string>('WEB_PUSH_PUBLIC_KEY'),
             privateKey: this.config.getOrThrow<string>('WEB_PUSH_PRIVATE_KEY'),
           },
-          TTL: Math.max(0, Math.floor(remaining / 1000)),
+          TTL: dialog ? 0 : Math.max(0, Math.floor(remaining / 1000)),
+          contentEncoding: 'aes128gcm',
           urgency: 'high',
           timeout: Math.min(5000, remaining),
         },

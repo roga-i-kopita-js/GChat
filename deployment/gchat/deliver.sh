@@ -38,6 +38,11 @@ fi
 # Do not mistake the outcome of a previous attempt for this attempt's outcome.
 rm -f "$destination/result" "$destination/result.tmp"
 REMOTE
+python3 deployment/gchat/prepare-dialog-keys.py > "$SSH_DIR/dialog-keys.json"
+# Only stdin contains key material; code and arguments contain no secrets.
+DIALOG_KEYS_UPDATER=$(cat deployment/gchat/apply-dialog-keys.py)
+ssh "${OPTIONS[@]}" -p "$SSH_PORT" "$TARGET" \
+  "flock -n '$INSTALL_ROOT/deploy.lock' python3 -c \"$DIALOG_KEYS_UPDATER\" '$INSTALL_ROOT/shared/backend.env'" < "$SSH_DIR/dialog-keys.json"
 ssh "${OPTIONS[@]}" -p "$SSH_PORT" "$TARGET" \
   "nohup bash '$DEST/deploy.sh' '$INSTALL_ROOT' '$DEST' > '$DEST/deploy.log' 2>&1 < /dev/null &"
 for ((i=0; i<360; i++)); do

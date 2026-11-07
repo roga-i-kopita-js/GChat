@@ -14,6 +14,8 @@ on:
         required: true
         type: string
     secrets:
+      DIALOGS_ENCRYPTION_KEYS:
+        required: true
       GCHAT_SSH_KEY:
         required: true
       GCHAT_SSH_KNOWN_HOSTS:
@@ -62,6 +64,8 @@ jobs:
           SSH_PORT: ${{ vars.GCHAT_SSH_PORT }}
           SSH_USER: ${{ vars.GCHAT_SSH_USER }}
           INSTALL_ROOT: ${{ vars.GCHAT_INSTALL_ROOT }}
+          DIALOGS_ENCRYPTION_KEYS: ${{ secrets.DIALOGS_ENCRYPTION_KEYS }}
+          DIALOGS_ACTIVE_KEY_ID: ${{ vars.DIALOGS_ACTIVE_KEY_ID }}
           SSH_KEY: ${{ secrets.GCHAT_SSH_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.GCHAT_SSH_KNOWN_HOSTS }}
         run: bash deployment/gchat/deliver.sh

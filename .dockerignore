@@ -25,6 +25,8 @@
 !applications/web/public/
 !applications/web/public/**
 !packages/
+!packages/dialog-assets/
+!packages/dialog-assets/**
 !packages/backend-api/
 !packages/backend-api/package.json
 !packages/backend-api/tsconfig*.json

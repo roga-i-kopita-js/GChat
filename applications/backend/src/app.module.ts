@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module.js';
 import { BackofficeModule } from './backoffice/backoffice.module.js';
 import { validateEnvironment } from './config/environment.js';
+import { DialogsModule } from './dialogs/dialogs.module.js';
 import { ErrorModule } from './error/error.module.js';
 import { HealthcheckModule } from './healthcheck/healthcheck.module.js';
 import { LoggerModule } from './logger/logger.module.js';
@@ -26,6 +27,7 @@ import { SignalingModule } from './signaling/signaling.module.js';
     ScheduleModule.forRoot(),
     AuthModule,
     BackofficeModule,
+    DialogsModule,
     SignalingModule,
     PushModule,
   ],

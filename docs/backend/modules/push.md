@@ -3,10 +3,13 @@ doc_type: module
 decision_status: accepted
 implementation_status: partial
 source: applications/backend/src/push/
+# prettier-ignore
 tests: ["applications/backend/src/push/push.client.spec.ts", "applications/backend/src/push/push.worker.spec.ts", "applications/backend/src/push/web-push.config.spec.ts", "applications/backend/src/push/web-push.worker.spec.ts"]
 ---
 
 # Push
+
+Расширение для диалогов реализовано в [DialogsModule](dialogs/README.md#уведомления): согласованы системные push с текстом сообщения и best-effort отправкой после commit без устойчивых заданий и повторов. Потеря такого уведомления допускается; очередь и повторы звонков ниже этим решением не меняются. Обычный APNs-токен чата регистрируется отдельной согласованной командой [device.apns_token в Devices](devices.md#обычный-apns-токен-чата--реализовано). Серверная доставка диалогов и команда реализованы; это не изменение call-specific payload ниже.
 
 ## Назначение и границы
 
@@ -17,6 +20,10 @@ tests: ["applications/backend/src/push/push.client.spec.ts", "applications/backe
 Фоновый обработчик использует `DirectCallsDeliveryStore` для аренды voip-заданий из транзакции создания звонка и DevicesService для актуального адреса. Формат задания, аренда и повторы определены в [DirectCalls](direct-calls/README.md#передача-изменений-в-signaling--согласовано).
 
 Прикладной payload VoIP: `aps: {}`, `call_id`, `caller_id`, `caller_display_name`, `recipient_id`, `created_at`, `ringing_deadline` в формате общего DTO. `caller_display_name` — снимок отображаемого имени инициатора на момент создания задания, строка длиной до 80 символов по ограничению Auth account. Иные профильные данные (логин, аватар, email), сессии, SDP/ICE и токены не включаются. Имя нужно только для немедленного системного представления звонка; оно не является источником идентичности или прав. Клиент после пробуждения использует текущие Auth/Devices и получает актуальное состояние через WS, не считает push источником состояния. Обработка системного вызова, включая уже завершённый вызов, реализуется iOS по требованиям PushKit/CallKit; ожидание сетевого ответа не должно препятствовать обязательной [системной обработке PushKit/CallKit](https://developer.apple.com/documentation/pushkit/responding-to-voip-notifications-from-pushkit).
+
+### Push диалогов — реализовано
+
+Обычный APNs alert и Web Push чата добавляются отдельно от VoIP/Web Push звонков. Точный payload, байтовые бюджеты, сокращение body, переход в диалог, однократные попытки после commit и ограничения исполнения принадлежат [DialogsModule](dialogs/README.md#уведомления). У чата нет устойчивого outbox и повторов. Указанные выше задания и worker звонков сохраняют действующий контракт. Адреса/версии разрешает Devices, обычный APNs-токен регистрируется его отдельной командой device.apns_token. Зависимости транспортной интеграции должны сохранять отсутствие обратного импорта Push в Dialogs: обработчик Push получает commit-факт от Dialogs и использует его проверку доступа перед попыткой; ошибка доставки не меняет сохранённое сообщение.
 
 ## Правила и инварианты
 

@@ -174,6 +174,113 @@ export class BackendApi {
     );
   }
 
+  dialogsCreate(
+    args: Pick<Types.DialogsCreateData, 'body'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsCreateResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsCreateResponse>>(
+      { path: '/dialogs', method: 'post', protected: true, emptyResponses: [], parameters: [] },
+      args,
+    );
+  }
+
+  dialogsList(
+    args: Pick<Types.DialogsListData, 'query'> & { signal?: AbortSignal } = {},
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsListResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsListResponse>>(
+      {
+        path: '/dialogs',
+        method: 'get',
+        protected: true,
+        emptyResponses: [],
+        parameters: [
+          { name: 'offset', in: 'query' },
+          { name: 'limit', in: 'query' },
+        ],
+      },
+      args,
+    );
+  }
+
+  dialogsGet(
+    args: Pick<Types.DialogsGetData, 'path'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsGetResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsGetResponse>>(
+      {
+        path: '/dialogs/{dialog_id}',
+        method: 'get',
+        protected: true,
+        emptyResponses: [],
+        parameters: [{ name: 'dialog_id', in: 'path' }],
+      },
+      args,
+    );
+  }
+
+  dialogsPermissions(
+    args: Pick<Types.DialogsPermissionsData, 'path'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsPermissionsResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsPermissionsResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/permissions',
+        method: 'get',
+        protected: true,
+        emptyResponses: [],
+        parameters: [{ name: 'dialog_id', in: 'path' }],
+      },
+      args,
+    );
+  }
+
+  dialogsSendMessage(
+    args: Pick<Types.DialogsSendMessageData, 'body' | 'path'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsSendMessageResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsSendMessageResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/messages',
+        method: 'post',
+        protected: true,
+        emptyResponses: [],
+        parameters: [{ name: 'dialog_id', in: 'path' }],
+      },
+      args,
+    );
+  }
+
+  dialogsHistory(
+    args: Pick<Types.DialogsHistoryData, 'path' | 'query'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsHistoryResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsHistoryResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/messages',
+        method: 'get',
+        protected: true,
+        emptyResponses: [],
+        parameters: [
+          { name: 'dialog_id', in: 'path' },
+          { name: 'before_sequence', in: 'query' },
+          { name: 'after_sequence', in: 'query' },
+          { name: 'limit', in: 'query' },
+        ],
+      },
+      args,
+    );
+  }
+
+  dialogsRead(
+    args: Pick<Types.DialogsReadData, 'body' | 'path'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsReadResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsReadResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/read',
+        method: 'post',
+        protected: true,
+        emptyResponses: [],
+        parameters: [{ name: 'dialog_id', in: 'path' }],
+      },
+      args,
+    );
+  }
+
   groupsList(
     args: Pick<Types.GroupsListData, never> & { signal?: AbortSignal } = {},
   ): Promise<ApiResult<NormalizeVoid<Types.GroupsListResponse>>> {

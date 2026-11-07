@@ -9,6 +9,8 @@ import { WebSocket } from 'ws';
 import { AuthService } from '../src/auth/auth.service.js';
 import { AuthWsTickets } from '../src/auth/auth.ws-tickets.js';
 import { DevicesService } from '../src/devices/devices.service.js';
+import { DialogsEvents } from '../src/dialogs/dialogs.events.js';
+import { DialogsService } from '../src/dialogs/dialogs.service.js';
 import { DirectCallsService } from '../src/direct-calls/direct-calls.service.js';
 import { ErrorService } from '../src/error/error.service.js';
 import { NativeWebsocketPolicyService } from '../src/signaling/native-websocket-policy.service.js';
@@ -47,6 +49,8 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
   const deviceId = randomUUID();
   const callId = randomUUID();
   const error = new ErrorService();
+  let dialogEvents: DialogsEvents;
+  const dialogs = { canDeliver: jest.fn<DialogsService['canDeliver']>() };
   const policy = { read: jest.fn<NativeWebsocketPolicyService['read']>() };
   const auth = {
     authenticate: jest.fn<AuthService['authenticate']>(),
@@ -55,6 +59,7 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
   const devices = {
     bind: jest.fn<DevicesService['bind']>(),
     setPushToken: jest.fn<DevicesService['setPushToken']>(),
+    setApnsToken: jest.fn<DevicesService['setApnsToken']>(),
   };
   const calls = {
     create: jest.fn<DirectCallsService['create']>(),
@@ -77,6 +82,8 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
           },
         },
         SignalingGateway,
+        DialogsEvents,
+        { provide: DialogsService, useValue: dialogs },
         { provide: NativeWebsocketPolicyService, useValue: policy },
         { provide: AuthService, useValue: auth },
         { provide: DevicesService, useValue: devices },
@@ -85,6 +92,7 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
       ],
     }).compile();
 
+    dialogEvents = module.get(DialogsEvents);
     app = module.createNestApplication();
     app.useWebSocketAdapter(new SignalingAdapter(app, module.get(AuthService)));
     await app.listen(0, '127.0.0.1');
@@ -92,6 +100,7 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
   });
 
   beforeEach((): void => {
+    dialogs.canDeliver.mockReset().mockResolvedValue(true);
     policy.read.mockReset().mockResolvedValue({ restrictions: [] });
     auth.authenticate
       .mockReset()
@@ -126,6 +135,53 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
 
     return socket;
   }
+
+  it('delivers content-free dialog events only after destination authorization', async (): Promise<void> => {
+    const socket = await connect();
+    const event = {
+      type: 'dialog.messages_available' as const,
+      payload: { dialog_id: randomUUID(), last_sequence: 4 },
+    };
+    const frame = once(socket, 'message');
+
+    dialogEvents.publish({ users: [userId, randomUUID()], event });
+    expect(JSON.parse(String((await frame)[0]))).toEqual(event);
+    expect(dialogs.canDeliver).toHaveBeenCalledWith(
+      userId,
+      sessionId,
+      deviceId,
+      event.payload.dialog_id,
+    );
+    const read = {
+      type: 'dialog.read_updated' as const,
+      payload: { dialog_id: event.payload.dialog_id, reader_id: userId, last_read_sequence: 4 },
+    };
+    const readFrame = once(socket, 'message');
+
+    dialogEvents.publish({ users: [userId], event: read });
+    expect(JSON.parse(String((await readFrame)[0]))).toEqual(read);
+    expect((await message(socket, 'dialog.sync', {})).error).toBeDefined();
+  });
+
+  it('registers an ordinary APNs token using the authenticated device and validates it separately from VoIP', async (): Promise<void> => {
+    const socket = await connect();
+
+    expect(
+      (await message(socket, 'device.apns_token', { token: 'AABB', environment: 'sandbox' }))
+        .payload,
+    ).toEqual({});
+    expect(devices.setApnsToken).toHaveBeenCalledWith(
+      userId,
+      sessionId,
+      deviceId,
+      'AABB',
+      'sandbox',
+    );
+    expect(
+      (await message(socket, 'device.apns_token', { token: 'not-hex', environment: 'sandbox' }))
+        .error.code,
+    ).toBe('VALIDATION_ERROR');
+  });
 
   it('delivers current native bridge policy only after device registration and validates payload', async (): Promise<void> => {
     const socket = await connect(false);

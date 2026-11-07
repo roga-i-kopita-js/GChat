@@ -30,6 +30,7 @@ COPY --from=backend-build --chown=node:node /out/node_modules ./node_modules
 COPY --from=backend-build --chown=node:node /out/dist ./dist
 COPY --from=backend-build --chown=node:node /out/drizzle ./drizzle
 COPY --from=web-build --chown=node:node /src/applications/web/dist ./web
+COPY --from=backend-build --chown=node:node /src/packages/dialog-assets/images ./web/static/dialog-stickers
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=5s --timeout=4s --start-period=20s --retries=12 \

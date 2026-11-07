@@ -63,7 +63,7 @@ TIMEOUT=$(setting GCHAT_READY_TIMEOUT)
 [[ "$PORT" =~ ^[0-9]+$ && "$TIMEOUT" =~ ^[0-9]+$ && "$TIMEOUT" -ge 10 && "$TIMEOUT" -le 1800 ]]
 python3 "$RELEASE/render-nginx.py" "$RELEASE/nginx.conf.template" "$RELEASE/nginx.conf" "$DOMAIN" "$PORT"
 printf 'GCHAT_IMAGE=%s\n' "$IMAGE" > "$RELEASE/image.env"
-dc() { docker compose -p gchat --env-file "$SETTINGS" --env-file "$RELEASE/image.env" -f "$RELEASE/compose.yaml" "$@"; }
+dc() { env -u DATABASE_URL docker compose -p gchat --env-file "$GCHAT_SHARED_DIR/backend.env" --env-file "$SETTINGS" --env-file "$RELEASE/image.env" -f "$RELEASE/compose.yaml" "$@"; }
 dc config --quiet
 ARCH=$(docker version --format '{{.Server.Arch}}')
 [[ "$PLATFORM" == "linux/$ARCH" ]]

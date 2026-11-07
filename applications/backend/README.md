@@ -162,3 +162,7 @@ docker compose --env-file applications/backend/.env -f applications/backend/dock
 ## Генерация HTTP-клиента
 
 [Контракт backend-api](../../docs/packages/backend-api.md) описывает пакет, команды экспорта и проверки актуальности схемы. `pnpm api:generate` из корня собирает backend и обновляет снимок OpenAPI и SDK; `pnpm api:check` проверяет их без изменения файлов. `pnpm --filter @gchat/backend openapi:test` сравнивает автономный документ с документом HTTP-приложения из одной сборки. Внешняя инфраструктура для этих команд не нужна.
+
+## Диалоги
+
+[DialogsModule](../../docs/backend/modules/dialogs/README.md) реализует REST-диалоги 1х1, серверное шифрование истории, прочтение и best-effort уведомления. Перед запуском примените миграции и задайте DIALOGS_ENCRYPTION_KEYS / DIALOGS_ACTIVE_KEY_ID по контракту; ключи должны иметь независимую резервную копию. Мигратор их не получает. Проверка восстановленной истории после build: `pnpm --filter @gchat/backend dialogs:verify`. Интеграционные тесты и границы эксплуатационной приёмки описаны в контракте.

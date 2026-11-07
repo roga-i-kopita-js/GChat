@@ -11,6 +11,7 @@ const standardErrors: Record<number, [string, string]> = {
   401: ['ACCESS_TOKEN_INVALID', 'Токен доступа недействителен.'],
   403: ['FORBIDDEN', 'Действие недоступно.'],
   404: ['NOT_FOUND', 'Ресурс не найден.'],
+  413: ['PAYLOAD_TOO_LARGE', 'Размер запроса превышает допустимый.'],
   429: ['RATE_LIMITED', 'Слишком много попыток. Попробуйте позже.'],
   500: ['INTERNAL_ERROR', 'Внутренняя ошибка сервера.'],
   503: ['SERVICE_UNAVAILABLE', 'Сервис временно недоступен.'],
@@ -33,6 +34,7 @@ export class ErrorFilter implements ExceptionFilter {
     const path = adapter.getRequestUrl(context.getRequest()).split('?')[0];
 
     if (
+      /^\/dialogs(?:\/|$)/i.test(path) ||
       path === '/auth' ||
       path.startsWith('/auth/') ||
       path === '/admin' ||
@@ -52,7 +54,11 @@ export class ErrorFilter implements ExceptionFilter {
         ? exception.status
         : exception instanceof HttpException
           ? exception.getStatus()
-          : 500;
+          : exception instanceof Error && 'status' in exception && exception.status === 413
+            ? 413
+            : exception instanceof SyntaxError && 'status' in exception && exception.status === 400
+              ? 400
+              : 500;
     const [code, message] = standardErrors[status] ?? ['HTTP_ERROR', 'Ошибка HTTP-запроса.'];
     const error =
       exception instanceof AppError

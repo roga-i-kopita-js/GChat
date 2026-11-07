@@ -65,3 +65,24 @@ export const voipTokens = pgTable(
     check('gchat_voip_environment', sql`${t.environment} in ('sandbox', 'production')`),
   ],
 );
+
+export const apnsTokens = pgTable(
+  'gchat_device_apns_tokens',
+  {
+    deviceId: uuid('device_id').notNull(),
+    sessionId: uuid('session_id').notNull(),
+    environment: text('environment').notNull(),
+    token: text('token').notNull(),
+    version: uuid('version').notNull().defaultRandom(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t): PgTableExtraConfigValue[] => [
+    primaryKey({ columns: [t.deviceId, t.sessionId] }),
+    foreignKey({
+      columns: [t.deviceId, t.sessionId],
+      foreignColumns: [deviceSessions.deviceId, deviceSessions.sessionId],
+    }).onDelete('cascade'),
+    unique('gchat_apns_address').on(t.environment, t.token),
+    check('gchat_apns_environment', sql`${t.environment} in ('sandbox', 'production')`),
+  ],
+);

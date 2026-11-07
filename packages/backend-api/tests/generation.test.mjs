@@ -7,7 +7,24 @@ import { validateSchema } from '../scripts/validate-schema.mjs';
 const schema = JSON.parse(await readFile(new URL('../openapi.json', import.meta.url), 'utf8'));
 
 test('real schema contains all operations', () => {
-  assert.equal(validateSchema(schema).length, 15);
+  const operations = validateSchema(schema);
+
+  assert.equal(operations.length, 22);
+  assert.deepEqual(
+    operations
+      .map(({ operation }) => operation.operationId)
+      .filter((id) => id.startsWith('dialogs'))
+      .sort(),
+    [
+      'dialogsCreate',
+      'dialogsGet',
+      'dialogsHistory',
+      'dialogsList',
+      'dialogsPermissions',
+      'dialogsRead',
+      'dialogsSendMessage',
+    ],
+  );
 });
 
 for (const [name, modify] of [

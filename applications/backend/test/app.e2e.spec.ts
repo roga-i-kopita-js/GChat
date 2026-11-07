@@ -6,6 +6,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { AuthService } from '../src/auth/auth.service.js';
 import { DATABASE_POOL } from '../src/database/database.constants.js';
+import { DialogsCrypto } from '../src/dialogs/dialogs.crypto.js';
 import { DirectCallsWorker } from '../src/direct-calls/direct-calls.worker.js';
 import { PushClient } from '../src/push/push.client.js';
 import { PushWorker } from '../src/push/push.worker.js';
@@ -31,6 +32,8 @@ describe('Backend HTTP', (): void => {
 
   beforeAll(async (): Promise<void> => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(DialogsCrypto)
+      .useValue({})
       .overrideProvider(DirectCallsWorker)
       .useValue({})
       .overrideProvider(SignalingWorker)
@@ -83,6 +86,11 @@ describe('Backend HTTP', (): void => {
       '/auth/logout',
       '/auth/refresh',
       '/auth/ws-ticket',
+      '/dialogs',
+      '/dialogs/{dialog_id}',
+      '/dialogs/{dialog_id}/messages',
+      '/dialogs/{dialog_id}/permissions',
+      '/dialogs/{dialog_id}/read',
       '/groups',
       '/groups/{group_id}/members',
       '/health',

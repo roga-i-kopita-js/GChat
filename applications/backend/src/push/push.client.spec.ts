@@ -104,6 +104,29 @@ describe('APNs HTTP/2 requests', (): void => {
     await expect(sent).resolves.toMatchObject({ status: 200 });
   });
 
+  it('uses ordinary alert headers without a VoIP topic or collapse ID for dialogs', async (): Promise<void> => {
+    const sent = client.send(
+      'message-id',
+      'aabb',
+      { aps: { alert: { title: 'GChat', body: 'hello' } } },
+      new Date(Date.now() + 10000),
+      'alert',
+    );
+
+    await requested;
+    expect(headers).toMatchObject({
+      'apns-id': 'message-id',
+      'apns-push-type': 'alert',
+      'apns-topic': 'invalid.test.gchat',
+      'apns-priority': '10',
+      'apns-expiration': '0',
+    });
+    expect(headers['apns-collapse-id']).toBeUndefined();
+    stream.emit('response', { ':status': 200 });
+    stream.emit('end');
+    await expect(sent).resolves.toMatchObject({ status: 200 });
+  });
+
   it('preserves provider timestamp and Retry-After for safe invalidation and retries', async (): Promise<void> => {
     const sent = client.send('job', 'aabb', {}, new Date(Date.now() + 10000));
 

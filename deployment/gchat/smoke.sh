@@ -7,7 +7,7 @@ GCHAT_SHARED_DIR=$(mktemp -d)
 PROJECT="gchat-release-smoke-${GITHUB_RUN_ID:-$$}"
 NGINX="$PROJECT-nginx"
 TURN="$PROJECT-turn"
-dc() { docker compose -p "$PROJECT" --env-file "$GCHAT_SHARED_DIR/compose.env" -f deployment/gchat/compose.yaml "$@"; }
+dc() { env -u DATABASE_URL docker compose -p "$PROJECT" --env-file "$GCHAT_SHARED_DIR/backend.env" --env-file "$GCHAT_SHARED_DIR/compose.env" -f deployment/gchat/compose.yaml "$@"; }
 cleanup() {
   docker rm -f "$NGINX" >/dev/null 2>&1 || true
   docker rm -f "$TURN" >/dev/null 2>&1 || true
@@ -29,6 +29,7 @@ const config = {
   DATABASE_URL: 'postgresql://smoke:smoke@postgres:5432/smoke',
   REDIS_URL: 'redis://:smoke@redis:6379/0', REDIS_KEY_PREFIX: 'gchat:release-smoke:',
   AUTH_PASSWORD_PEPPER: randomBytes(32).toString('base64'),
+  DIALOGS_ACTIVE_KEY_ID: 'smoke', DIALOGS_ENCRYPTION_KEYS: JSON.stringify({smoke: randomBytes(32).toString('base64')}),
   AUTH_JWT_ACTIVE_KID: 'smoke', AUTH_ROTATION_ACTIVE_KID: 'smoke',
   AUTH_JWT_PRIVATE_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString().replaceAll('\n', '\\n'),
   AUTH_JWT_PUBLIC_KEYS: JSON.stringify({ smoke: publicKey.export({ type: 'spki', format: 'pem' }) }),
@@ -47,6 +48,7 @@ JS
 chmod 755 "$GCHAT_SHARED_DIR" "$GCHAT_SHARED_DIR/secrets"
 dc config --quiet
 dc --profile infrastructure up -d --wait postgres redis
+dc run --rm --no-deps migrate node -e 'if (!process.env.DATABASE_URL || process.env.DIALOGS_ENCRYPTION_KEYS || process.env.DIALOGS_ACTIVE_KEY_ID || process.env.AUTH_PASSWORD_PEPPER) process.exit(1)'
 dc run --rm --no-deps migrate
 dc run --rm --no-deps migrate
 dc up -d --no-deps --wait --wait-timeout 120 app
@@ -75,4 +77,4 @@ if docker logs "$TURN" 2>&1 | grep -Ei 'unknown|unrecognized|bad configuration|e
   echo 'coturn configuration rejected'
   exit 1
 fi
-echo 'Packaged migrations, readiness, HTTPS, Web assets, PWA files, SPA and authenticated Web Push registration over WSS passed.'
+echo 'Packaged migrations, readiness, HTTPS, Web assets, PWA files, SPA and authenticated Web Push registration, dialog REST/WS, payload limits and migrator key isolation passed.'

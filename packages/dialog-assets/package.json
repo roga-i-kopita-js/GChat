@@ -1,0 +1,17 @@
+{
+  "name": "@gchat/dialog-assets",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./manifest.json": "./manifest.json",
+    "./images/*": "./images/*"
+  },
+  "scripts": {
+    "test": "node --test test-assets.mjs"
+  }
+}

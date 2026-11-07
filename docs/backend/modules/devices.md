@@ -3,6 +3,7 @@ doc_type: module
 decision_status: accepted
 implementation_status: partial
 source: applications/backend/src/devices/
+# prettier-ignore
 tests: ["applications/backend/test/direct-calls.integration.spec.ts"]
 ---
 
@@ -10,7 +11,7 @@ tests: ["applications/backend/test/direct-calls.integration.spec.ts"]
 
 ## Назначение и границы
 
-Владеет идентификаторами установок приложения, привязками к сессиям и VoIP push-токенами. Этот контракт фиксирует необходимый для DirectCalls объём; управление пользовательскими профилями в него не входит. Backend-модуль реализован; интеграция с реальной установкой iOS требует проверки.
+Владеет идентификаторами установок приложения, привязками к сессиям и push-адресами. VoIP и Web Push звонков реализованы в указанном ниже объёме; реализована также отдельная регистрация обычного APNs-токена диалогов. Управление пользовательскими профилями в объём не входит; интеграция с реальной установкой iOS требует проверки.
 
 ## Публичный API
 
@@ -21,6 +22,20 @@ tests: ["applications/backend/test/direct-calls.integration.spec.ts"]
 
 Внутренние методы: `bind(userId, sessionId, deviceId)`, `assertBinding(userId, sessionId, deviceId)`, `listVoipTargets(userId)`, `resolveVoipTarget(deviceId, sessionId)`, `invalidateVoipTarget(deviceId, tokenVersion)`. Список целей включает лишь привязки с действующей сессией Auth. Неизвестный результат проверки зависимости не превращается в пустой список. Смена push-токена и инвалидирование используют версию записи: поздний ответ APNs не удаляет новый токен.
 
+### Транзакционная проверка binding для Dialogs — реализовано
+
+Согласован новый внутренний метод `lockSessionBinding(tx, userId, sessionId)`: в переданном `DatabaseTransaction` разрешает устройство по сессии, блокирует binding, затем устройство `FOR SHARE`, проверяет владельца обеих записей и возвращает `{deviceId}`. Блокировки удерживаются до завершения транзакции; независимая транзакция не открывается. Отсутствующий или несогласованный binding при действующей сессии даёт `FORBIDDEN`. Метод не создаёт и не переносит устройство автоматически.
+
+Потребитель предварительно проверяет актуальную сессию и активность actor через транзакционные методы Auth. `inactive_since` служит очистке и не заменяет проверку Auth. Расширение реализовано. Граница допуска при гонке с logout и общий порядок блокировок определены в [контракте Dialogs](dialogs/README.md#порядок-блокировок-и-граница-допуска).
+
+### Обычный APNs-токен чата — реализовано
+
+Согласована отдельная WS-команда `device.apns_token` в DevicesModule после авторизации и `device.register`. Payload: `{token: string | null, environment: "sandbox" | "production"}`. Аккаунт/сессия/устройство берутся из текущего авторизованного соединения, не из payload. Успешный ответ — стандартный response с исходным request_id и `payload: {}`. NativeCore получает токен обычных уведомлений от ОС и регистрирует его самостоятельно; Web-интерфейс не получает сырое значение.
+
+Токен валидируется и нормализуется как существующий APNs-токен: hex-строка чётной длины от 2 до 512 символов, нижний регистр, без фиксации конкретной длины токена Apple. null удаляет текущую обычную APNs-регистрацию этой привязки; повтор того же значения идемпотентен. Токен не попадает в ответы чтения, permissions, WS-события диалога, логи или диагностику. Отозванная сессия не используется как цель доставки. Ошибки и правила привязки следуют существующим Auth/Devices/ErrorModule.
+
+Регистрация хранится отдельно от VoIP-токена: `device.push_token` и его контракт не меняются. Обновление/удаление обычного токена не удаляет VoIP-регистрацию звонков. Браузерная Web Push-регистрация переиспользуется из существующего контура. Команда регистрации адреса не является передачей сообщений по WSS: создание/отправка/история диалогов остаются REST. Правила best-effort доставки — в [DialogsModule](dialogs/README.md#уведомления).
+
 ## Правила и инварианты
 
 - Одна сессия привязывается максимум к одному устройству; повтор с другим ID даёт `FORBIDDEN`. Одно устройство может иметь несколько сессий своего аккаунта. Сервер проверяет пару device/session, знание UUID не даёт права действовать от имени сессии.
@@ -28,11 +43,11 @@ tests: ["applications/backend/test/direct-calls.integration.spec.ts"]
 - Push-токен маршрутизирует одну актуальную пару device/session: повторная регистрация того же `(environment, token)` в другой действующей сессии переносит только push-адрес, не управление звонком и не право читать чужой звонок.
 - Токены не выводятся в ответы чтения, логи, события `call.updated` или таблицы звонков. Отозванные сессии исключаются из доставки, даже если их строка привязки ещё не очищена.
 
-Хранение: `gchat_devices(id UUID PK, user_id FK Auth RESTRICT, created_at)`; `gchat_device_sessions(session_id UUID PK, device_id FK, user_id FK, created_at, inactive_since)` с UNIQUE `(device_id, session_id)` и проверкой владельца; `gchat_device_voip_tokens(device_id, session_id, environment, token, version, updated_at)` с PK `(device_id, session_id)`, FK на соответствующую привязку и уникальностью `(environment, token)`. Сессии Auth находятся в Redis, поэтому FK на сессию не создаётся. Запись/смена адреса выполняется транзакционно в PostgreSQL.
+Хранение: `gchat_devices(id UUID PK, user_id FK Auth RESTRICT, created_at)`; `gchat_device_sessions(session_id UUID PK, device_id FK, user_id FK, created_at, inactive_since)` с UNIQUE `(device_id, session_id)` и проверкой владельца; `gchat_device_voip_tokens(device_id, session_id, environment, token, version, updated_at)` с PK `(device_id, session_id)`, FK на соответствующую привязку и уникальностью `(environment, token)`. Сессии Auth находятся в PostgreSQL. В текущей схеме Devices FK на Auth-сессию отсутствует: binding может сохраняться после её отзыва до cleanup; действительность сессии проверяет Auth. Запись/смена адреса выполняется транзакционно в PostgreSQL.
 
 ## Зависимости и регистрация
 
-Обычный DevicesModule импортирует DatabaseModule и AuthModule, экспортирует DevicesService. Signaling и Push импортируют DevicesModule. Чужие таблицы и Redis-сессии не читаются напрямую — проверка Auth через её внутренний API. Собственный `forRoot()` не нужен.
+Обычный DevicesModule импортирует DatabaseModule и AuthModule, экспортирует DevicesService. Signaling и Push импортируют DevicesModule. Чужие таблицы и сессии Auth не читаются напрямую — проверка Auth через её внутренний API. Собственный `forRoot()` не нужен.
 
 ## Ошибки и частичное выполнение
 

@@ -26,6 +26,10 @@ implementation_status: partial
 
 До подтверждения ёмкости требуется нагрузочная проверка 16 авторизованных клиентов с 8 одновременными звонками через TURN: двустороннее аудио, сохранение WSS, завершение и повторное создание звонков. В отчёте фиксируются длительность проверки, CPU, RAM, диск, сеть, потери пакетов, jitter и RTT; сама оценка ресурсов не считается результатом проверки.
 
+## Подготовка Dialogs к production
+
+Backend-контракт [DialogsModule](../backend/modules/dialogs/README.md) принят; базовый модуль, передача keyring в backend и изоляция ключей от мигратора реализованы. Согласованные расширения DTO отмечены в профильном контракте как ещё не реализованные. До production обязательны независимое резервирование ключей, расписание/оповещения backup и испытание полного restore. Единственный источник параметров — [правила резервирования и восстановления](../backend/modules/dialogs/README.md#резервирование-и-аварийное-восстановление). Адреса хранилищ/credentials и ответственный оператор задаются для конкретного окружения; существующий deploy-комплект не объявляется готовым backup-инструментом.
+
 ## Текущее состояние
 
 - Есть локальный Compose PostgreSQL/Redis: [запуск backend](../../applications/backend/README.md). Это окружение разработки, не production-комплект.
@@ -165,7 +169,9 @@ PostgreSQL, Redis, coturn и nginx — внешние зависимости: и
 
 ## Настройки и секреты
 
-GitHub хранит только доступ доставки: SSH host/port/user, ключ доступа и заранее проверенный host key сервера; также задаются путь установки и целевое окружение. Проверка host key обязательна, отключение StrictHostKeyChecking не используется. Аккаунт доставки получает только необходимые права; доступ к Docker фактически даёт высокие привилегии на хосте и учитывается при настройке аккаунта.
+В текущей реализации GitHub хранит доступ доставки: SSH host/port/user, ключ доступа и заранее проверенный host key сервера; также задаются путь установки и целевое окружение. Для Dialogs реализована дополнительная передача ключей шифрования из GitHub Secrets в защищённый `backend.env` на сервере и далее в окружение backend. Контракт и границы подключения — в [DialogsModule](../backend/modules/dialogs/README.md#серверное-шифрование-и-ключи); workflow и изоляция мигратора реализованы. Для интерполяции DATABASE_URL Compose CLI дополнительно читает `backend.env`; контейнер мигратора получает только DATABASE_URL. Сценарии исключают экспортированный DATABASE_URL из окружения Compose, чтобы мигратор использовал тот же backend.env, что приложение. Это не перенос остальных серверных секретов в GitHub.
+
+Проверка host key обязательна, отключение StrictHostKeyChecking не используется. Аккаунт доставки получает только необходимые права; доступ к Docker фактически даёт высокие привилегии на хосте и учитывается при настройке аккаунта.
 
 На сервере вне каталогов релиза хранятся:
 
@@ -265,7 +271,7 @@ Workflow появляются в Actions после попадания файл�
 ```sh
 export GCHAT_SHARED_DIR=/opt/gchat/shared
 # image.env содержит GCHAT_IMAGE из проверенного release.json.
-docker compose -p gchat --env-file "$GCHAT_SHARED_DIR/compose.env" \
+docker compose -p gchat --env-file "$GCHAT_SHARED_DIR/backend.env" --env-file "$GCHAT_SHARED_DIR/compose.env" \
   --env-file /opt/gchat/incoming/RELEASE_ID/image.env \
   -f /opt/gchat/incoming/RELEASE_ID/compose.yaml \
   --profile infrastructure up -d --wait postgres redis coturn

@@ -94,6 +94,86 @@ export type AdminEmptyDto = {
   [key: string]: unknown;
 };
 
+export type CreateDialogDto = {
+  peer_id: string;
+};
+
+export type DialogDto = {
+  last_message_at: string | null;
+  last_sequence: number;
+  last_read_sequence: number;
+  peer_last_read_sequence: number;
+  dialog_id: string;
+  peer_id: string;
+  created_at: string;
+};
+
+export type DialogResponseDto = {
+  dialog: DialogDto;
+};
+
+export type DialogListResponseDto = {
+  dialogs: Array<DialogDto>;
+  has_more: boolean;
+};
+
+export type DialogPermissionsDto = {
+  can_read: boolean;
+  can_send: boolean;
+};
+
+export type PermissionsResponseDto = {
+  dialogs: DialogPermissionsDto;
+};
+
+export type TextContentDto = {
+  kind: 'text';
+  text: string;
+};
+
+export type StickerContentDto = {
+  kind: 'sticker';
+  sticker_id:
+    | 'animal-pals-v1-cat'
+    | 'animal-pals-v1-dog'
+    | 'animal-pals-v1-fox'
+    | 'animal-pals-v1-bear'
+    | 'animal-pals-v1-bunny';
+};
+
+export type SendMessageDto = {
+  content: TextContentDto | StickerContentDto;
+  client_message_id: string;
+};
+
+export type MessageDto = {
+  sequence: number;
+  content: TextContentDto | StickerContentDto;
+  status: 'sent' | 'read';
+  message_id: string;
+  dialog_id: string;
+  client_message_id: string;
+  sender_id: string;
+  created_at: string;
+};
+
+export type MessageResponseDto = {
+  message: MessageDto;
+};
+
+export type HistoryResponseDto = {
+  messages: Array<MessageDto>;
+  has_more: boolean;
+};
+
+export type ReadDialogDto = {
+  sequence: number;
+};
+
+export type ReadResponseDto = {
+  last_read_sequence: number;
+};
+
 export type GroupDto = {
   id: string;
   name: string;
@@ -446,6 +526,196 @@ export type AdminEnableUserResponses = {
 };
 
 export type AdminEnableUserResponse = AdminEnableUserResponses[keyof AdminEnableUserResponses];
+
+export type DialogsListData = {
+  body?: never;
+  path?: never;
+  query?: {
+    offset?: number;
+    limit?: number;
+  };
+  url: '/dialogs';
+};
+
+export type DialogsListErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsListError = DialogsListErrors[keyof DialogsListErrors];
+
+export type DialogsListResponses = {
+  200: DialogListResponseDto;
+};
+
+export type DialogsListResponse = DialogsListResponses[keyof DialogsListResponses];
+
+export type DialogsCreateData = {
+  body: CreateDialogDto;
+  path?: never;
+  query?: never;
+  url: '/dialogs';
+};
+
+export type DialogsCreateErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsCreateError = DialogsCreateErrors[keyof DialogsCreateErrors];
+
+export type DialogsCreateResponses = {
+  200: DialogResponseDto;
+  201: DialogResponseDto;
+};
+
+export type DialogsCreateResponse = DialogsCreateResponses[keyof DialogsCreateResponses];
+
+export type DialogsGetData = {
+  body?: never;
+  path: {
+    dialog_id: string;
+  };
+  query?: never;
+  url: '/dialogs/{dialog_id}';
+};
+
+export type DialogsGetErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsGetError = DialogsGetErrors[keyof DialogsGetErrors];
+
+export type DialogsGetResponses = {
+  200: DialogResponseDto;
+};
+
+export type DialogsGetResponse = DialogsGetResponses[keyof DialogsGetResponses];
+
+export type DialogsPermissionsData = {
+  body?: never;
+  path: {
+    dialog_id: string;
+  };
+  query?: never;
+  url: '/dialogs/{dialog_id}/permissions';
+};
+
+export type DialogsPermissionsErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsPermissionsError = DialogsPermissionsErrors[keyof DialogsPermissionsErrors];
+
+export type DialogsPermissionsResponses = {
+  200: PermissionsResponseDto;
+};
+
+export type DialogsPermissionsResponse =
+  DialogsPermissionsResponses[keyof DialogsPermissionsResponses];
+
+export type DialogsHistoryData = {
+  body?: never;
+  path: {
+    dialog_id: string;
+  };
+  query?: {
+    before_sequence?: number;
+    after_sequence?: number;
+    limit?: number;
+  };
+  url: '/dialogs/{dialog_id}/messages';
+};
+
+export type DialogsHistoryErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsHistoryError = DialogsHistoryErrors[keyof DialogsHistoryErrors];
+
+export type DialogsHistoryResponses = {
+  200: HistoryResponseDto;
+};
+
+export type DialogsHistoryResponse = DialogsHistoryResponses[keyof DialogsHistoryResponses];
+
+export type DialogsSendMessageData = {
+  body: SendMessageDto;
+  path: {
+    dialog_id: string;
+  };
+  query?: never;
+  url: '/dialogs/{dialog_id}/messages';
+};
+
+export type DialogsSendMessageErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  413: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsSendMessageError = DialogsSendMessageErrors[keyof DialogsSendMessageErrors];
+
+export type DialogsSendMessageResponses = {
+  200: MessageResponseDto;
+  201: MessageResponseDto;
+};
+
+export type DialogsSendMessageResponse =
+  DialogsSendMessageResponses[keyof DialogsSendMessageResponses];
+
+export type DialogsReadData = {
+  body: ReadDialogDto;
+  path: {
+    dialog_id: string;
+  };
+  query?: never;
+  url: '/dialogs/{dialog_id}/read';
+};
+
+export type DialogsReadErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsReadError = DialogsReadErrors[keyof DialogsReadErrors];
+
+export type DialogsReadResponses = {
+  200: ReadResponseDto;
+};
+
+export type DialogsReadResponse = DialogsReadResponses[keyof DialogsReadResponses];
 
 export type GroupsListData = {
   body?: never;

@@ -109,5 +109,6 @@ jobs:
     with:
       version: ${{ needs.release.outputs.version }}
     secrets:
+      DIALOGS_ENCRYPTION_KEYS: ${{ secrets.DIALOGS_ENCRYPTION_KEYS }}
       GCHAT_SSH_KEY: ${{ secrets.GCHAT_SSH_KEY }}
       GCHAT_SSH_KNOWN_HOSTS: ${{ secrets.GCHAT_SSH_KNOWN_HOSTS }}

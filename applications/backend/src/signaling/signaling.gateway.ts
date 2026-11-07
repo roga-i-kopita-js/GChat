@@ -10,6 +10,8 @@ import { WebSocket } from 'ws';
 import { AuthService } from '../auth/auth.service.js';
 import { isDatabaseUnavailable } from '../database/database.errors.js';
 import { DevicesService } from '../devices/devices.service.js';
+import { type DialogNotice, DialogsEvents } from '../dialogs/dialogs.events.js';
+import { DialogsService } from '../dialogs/dialogs.service.js';
 import type { CallActor, CallDto } from '../direct-calls/direct-calls.dto.js';
 import {
   CallConnectedDto,
@@ -23,6 +25,7 @@ import { ErrorService } from '../error/error.service.js';
 import { NativeWebsocketPolicyService } from './native-websocket-policy.service.js';
 import { wsIdentities } from './signaling.adapter.js';
 import {
+  ApnsTokenDto,
   EmptyDto,
   PushTokenDto,
   RegisterDeviceDto,
@@ -56,6 +59,7 @@ export class SignalingGateway implements OnModuleDestroy {
   private readonly pipe: ValidationPipe;
   private timer?: ReturnType<typeof setInterval>;
   private checking?: Promise<void>;
+  private readonly unsubscribeDialogs: () => void;
 
   constructor(
     private readonly auth: AuthService,
@@ -63,7 +67,12 @@ export class SignalingGateway implements OnModuleDestroy {
     private readonly calls: DirectCallsService,
     private readonly error: ErrorService,
     private readonly nativePolicy: NativeWebsocketPolicyService,
+    private readonly dialogs: DialogsService,
+    events: DialogsEvents,
   ) {
+    this.unsubscribeDialogs = events.subscribe((notice): Promise<void> =>
+      this.broadcastDialog(notice),
+    );
     this.pipe = new ValidationPipe({
       transform: true,
       whitelist: true,
@@ -272,6 +281,20 @@ export class SignalingGateway implements OnModuleDestroy {
       return {};
     }
 
+    if (type === 'device.apns_token') {
+      const input = await this.validate(payload, ApnsTokenDto);
+
+      await this.devices.setApnsToken(
+        actor.userId,
+        actor.sessionId,
+        actor.deviceId,
+        input.token,
+        input.environment,
+      );
+
+      return {};
+    }
+
     if (type === 'device.push_token') {
       const input = await this.validate(payload, PushTokenDto);
 
@@ -463,6 +486,23 @@ export class SignalingGateway implements OnModuleDestroy {
     });
   }
 
+  private async broadcastDialog(notice: DialogNotice): Promise<void> {
+    for (const connection of this.connections) {
+      if (!connection.deviceId || !notice.users.includes(connection.userId)) continue;
+
+      if (
+        await this.dialogs.canDeliver(
+          connection.userId,
+          connection.sessionId,
+          connection.deviceId,
+          notice.event.payload.dialog_id,
+        )
+      ) {
+        this.send(connection, notice.event);
+      }
+    }
+  }
+
   async broadcast(call: CallDto): Promise<void> {
     if (call.state === 'ended') this.negotiations.delete(call.call_id);
 
@@ -497,6 +537,7 @@ export class SignalingGateway implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.unsubscribeDialogs();
     clearInterval(this.timer);
 
     for (const c of this.connections) {

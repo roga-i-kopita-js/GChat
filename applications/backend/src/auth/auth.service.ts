@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 import type { DatabaseTransaction } from '../database/database.service.js';
 import { ErrorService } from '../error/error.service.js';
@@ -11,7 +11,7 @@ import type { AuthIdentity } from './auth.guard.js';
 import { AuthLimits } from './auth.limits.js';
 import { AuthRepository } from './auth.repository.js';
 import type { Account } from './auth.schema.js';
-import { authSessions } from './auth.schema.js';
+import { authSessions, users } from './auth.schema.js';
 import { AuthSessions } from './auth.sessions.js';
 function matches(a: string, b: string): boolean {
   const x = Buffer.from(a);
@@ -159,6 +159,28 @@ export class AuthService {
     userIds: string[],
   ): Promise<{ id: string; role: Account['role'] }[]> {
     return this.accounts.lockActiveAccountRoles(tx, userIds);
+  }
+
+  async lockAccountStates(
+    tx: DatabaseTransaction,
+    userIds: string[],
+  ): Promise<{ id: string; role: Account['role']; disabledAt: Date | null }[]> {
+    return tx
+      .select({ id: users.id, role: users.role, disabledAt: users.disabledAt })
+      .from(users)
+      .where(inArray(users.id, [...new Set(userIds)].sort()))
+      .orderBy(asc(users.id))
+      .for('share');
+  }
+
+  async lockSession(tx: DatabaseTransaction, userId: string, sid: string): Promise<void> {
+    const [session] = await tx
+      .select({ id: authSessions.id })
+      .from(authSessions)
+      .where(and(eq(authSessions.id, sid), eq(authSessions.userId, userId)))
+      .for('share');
+
+    if (!session) throw this.error.sessionInvalid();
   }
 
   async authenticate(token: string): Promise<AuthIdentity> {

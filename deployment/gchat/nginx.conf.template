@@ -25,6 +25,17 @@ server {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
+    location @payload_too_large {
+        default_type application/json;
+        add_header Cache-Control no-store always;
+        return 413 '{"error":{"code":"PAYLOAD_TOO_LARGE","message":"Размер запроса превышает допустимый."}}';
+    }
+    location ~ ^/api/dialogs/[^/]+/messages/?$ {
+        client_max_body_size 64k;
+        error_page 413 = @payload_too_large;
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass http://127.0.0.1:${GCHAT_HTTP_PORT};
+    }
     location /api/ {
         proxy_pass http://127.0.0.1:${GCHAT_HTTP_PORT}/;
     }

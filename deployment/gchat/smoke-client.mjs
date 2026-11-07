@@ -1,6 +1,7 @@
 // Runs only inside the disposable image smoke test; all credentials are ephemeral.
 import assert from 'node:assert/strict';
 import { createECDH, randomBytes, randomUUID } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 
 import pg from 'pg';
 import WebSocket from 'ws';
@@ -49,6 +50,17 @@ for (const [, asset] of assets) {
   assert.match(response.headers.get('cache-control') ?? '', /immutable/);
   assert.doesNotMatch(response.headers.get('content-type') ?? '', /text\/html/);
   assert.ok((await response.arrayBuffer()).byteLength > 0);
+}
+
+for (const animal of ['cat', 'dog', 'fox', 'bear', 'bunny']) {
+  const response = await get('/apps/static/dialog-stickers/animal-pals-v1-' + animal + '.png');
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /image\/png/);
+  const bytes = Buffer.from(await response.arrayBuffer());
+
+  assert.equal(bytes.readUInt32BE(16), 512);
+  assert.equal(bytes.readUInt32BE(20), 512);
 }
 
 const worker = await get('/apps/sw.js');
@@ -166,6 +178,94 @@ try {
   registered = true;
   assert.deepEqual(await command('device.web_push', { subscription: null }), {});
   registered = false;
+  async function api(path, body) {
+    return fetch(base + '/api' + path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: {
+        Authorization: 'Bearer ' + tokens.access_token,
+        'Content-Type': 'application/json',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(10000),
+    });
+  }
+  const peerResponse = await api('/admin/users', {
+    login: 'dialog-peer',
+    display_name: 'Peer',
+    group_name: 'dialog-smoke',
+    password: randomBytes(32).toString('hex'),
+  });
+
+  assert.equal(peerResponse.status, 201);
+  const peer = (await peerResponse.json()).user;
+  const create = await api('/dialogs', { peer_id: peer.id });
+
+  assert.equal(create.status, 201);
+  const dialog = (await create.json()).dialog;
+  const path = '/dialogs/' + dialog.dialog_id;
+  const body = {
+    client_message_id: randomUUID(),
+    content: { kind: 'text', text: 'Smoke history 👋' },
+  };
+  const available = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      socket.off('message', receive);
+      reject(new Error('No dialog event'));
+    }, 3000);
+
+    function receive(raw) {
+      const frame = JSON.parse(raw.toString());
+
+      if (frame.type !== 'dialog.messages_available') return;
+
+      clearTimeout(timeout);
+      socket.off('message', receive);
+      resolve(frame);
+    }
+    socket.on('message', receive);
+  });
+  const sent = await api(path + '/messages', body);
+
+  assert.equal(sent.status, 201);
+  assert.deepEqual(await available, {
+    type: 'dialog.messages_available',
+    payload: { dialog_id: dialog.dialog_id, last_sequence: 1 },
+  });
+  const saved = (await sent.json()).message;
+  const repeated = await api(path + '/messages', {
+    ...body,
+    content: { kind: 'text', text: 'not a replacement' },
+  });
+
+  assert.equal(repeated.status, 200);
+  assert.deepEqual((await repeated.json()).message, saved);
+  const history = await api(path + '/messages?after_sequence=0');
+
+  assert.equal(history.headers.get('cache-control'), 'no-store');
+  assert.deepEqual((await history.json()).messages, [saved]);
+  assert.equal((await (await api(path + '/read', { sequence: 1 })).json()).last_read_sequence, 1);
+  assert.equal((await (await api(path + '/read', { sequence: 0 })).json()).last_read_sequence, 1);
+  assert.deepEqual((await (await api(path + '/permissions')).json()).dialogs, {
+    can_read: true,
+    can_send: true,
+  });
+  const huge = JSON.stringify({ ...body, content: { kind: 'text', text: 'x'.repeat(70000) } });
+
+  for (const compressed of [false, true]) {
+    const response = await fetch(base + '/api' + path + '/messages', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + tokens.access_token,
+        'Content-Type': 'application/json',
+        ...(compressed ? { 'Content-Encoding': 'gzip' } : {}),
+      },
+      body: compressed ? gzipSync(huge) : huge,
+      signal: AbortSignal.timeout(10000),
+    });
+
+    assert.equal(response.status, 413);
+    assert.equal((await response.json()).error.code, 'PAYLOAD_TOO_LARGE');
+  }
 } finally {
   // No call is created, and this disposable subscription never receives a real push.
   if (registered && socket.readyState === WebSocket.OPEN)

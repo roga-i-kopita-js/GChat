@@ -22,7 +22,7 @@ for (const [format, Client] of [
     );
     assert.equal(
       Object.getOwnPropertyNames(Client.prototype).filter((name) => name !== 'constructor').length,
-      15,
+      22,
     );
   });
 
@@ -249,4 +249,43 @@ test('abort while reading the response remains a transport error', async () => {
   });
 
   await assert.rejects(api.groupsList(), (error) => error === failure);
+});
+
+test('dialog methods preserve numeric positions, message IDs, content and Bearer authorization', async () => {
+  const calls = [];
+  const api = new BackendApi({
+    baseUrl: '/api',
+    getAccessToken: () => 'dialog-token',
+    fetch: async (...args) => {
+      calls.push(args);
+
+      return json({});
+    },
+  });
+
+  await api.dialogsCreate({ body: { peer_id: 'peer' } });
+  await api.dialogsSendMessage({
+    path: { dialog_id: 'dialog' },
+    body: { client_message_id: 'client', content: { kind: 'text', text: 'Привет 👋' } },
+  });
+  await api.dialogsRead({ path: { dialog_id: 'dialog' }, body: { sequence: 9007199254740991 } });
+  await api.dialogsHistory({
+    path: { dialog_id: 'dialog' },
+    query: { after_sequence: 0, limit: 30 },
+  });
+  assert.equal(calls[0][0], '/api/dialogs');
+  assert.equal(calls[1][0], '/api/dialogs/dialog/messages');
+  assert.deepEqual(JSON.parse(calls[1][1].body), {
+    client_message_id: 'client',
+    content: { kind: 'text', text: 'Привет 👋' },
+  });
+  assert.deepEqual(JSON.parse(calls[2][1].body), { sequence: 9007199254740991 });
+  const historyUrl = new URL(calls[3][0], 'https://example.invalid');
+
+  assert.equal(historyUrl.pathname, '/api/dialogs/dialog/messages');
+  assert.deepEqual(Object.fromEntries(historyUrl.searchParams), {
+    after_sequence: '0',
+    limit: '30',
+  });
+  assert.equal(new Headers(calls[1][1].headers).get('Authorization'), 'Bearer dialog-token');
 });

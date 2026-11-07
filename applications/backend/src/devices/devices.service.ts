@@ -5,11 +5,14 @@ import { ConfigService } from '@nestjs/config';
 import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 
 import { AuthService } from '../auth/auth.service.js';
+import type { DatabaseTransaction } from '../database/database.service.js';
 import { DatabaseService } from '../database/database.service.js';
 import { ErrorService } from '../error/error.service.js';
-import { devices, deviceSessions, voipTokens } from './devices.schema.js';
+import { apnsTokens, devices, deviceSessions, voipTokens } from './devices.schema.js';
 import { webPushSubscriptions } from './web-push.schema.js';
 import { validWebPushAddress, type WebPushAddress } from './web-push.validation.js';
+
+export type ApnsTarget = typeof apnsTokens.$inferSelect & { userId: string };
 
 export type VoipTarget = typeof voipTokens.$inferSelect & { userId: string };
 
@@ -21,6 +24,30 @@ export class DevicesService {
     private readonly error: ErrorService,
     private readonly config: ConfigService,
   ) {}
+
+  async lockSessionBinding(
+    tx: DatabaseTransaction,
+    userId: string,
+    sessionId: string,
+  ): Promise<{ deviceId: string }> {
+    const [binding] = await tx
+      .select()
+      .from(deviceSessions)
+      .where(eq(deviceSessions.sessionId, sessionId))
+      .for('share');
+
+    if (!binding || binding.userId !== userId) throw this.error.forbidden();
+
+    const [device] = await tx
+      .select()
+      .from(devices)
+      .where(eq(devices.id, binding.deviceId))
+      .for('share');
+
+    if (!device || device.userId !== userId) throw this.error.forbidden();
+
+    return { deviceId: device.id };
+  }
 
   webPushConfig(): { public_key: string | null } {
     return {
@@ -309,6 +336,109 @@ export class DevicesService {
           providerTimestamp === undefined
             ? undefined
             : sql`${voipTokens.updatedAt} <= ${new Date(providerTimestamp)}`,
+        ),
+      );
+  }
+
+  async setApnsToken(
+    userId: string,
+    sessionId: string,
+    deviceId: string,
+    token: string | null,
+    environment: string,
+  ): Promise<void> {
+    if (environment !== this.config.getOrThrow<string>('APNS_ENVIRONMENT'))
+      throw this.error.validation();
+
+    await this.assertBinding(userId, sessionId, deviceId);
+    await this.database.db.transaction(async (tx): Promise<void> => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${sessionId}, 1))`);
+
+      if (token === null) {
+        await tx
+          .delete(apnsTokens)
+          .where(and(eq(apnsTokens.deviceId, deviceId), eq(apnsTokens.sessionId, sessionId)));
+
+        return;
+      }
+
+      const normalized = token.toLowerCase();
+      const [existing] = await tx
+        .select()
+        .from(apnsTokens)
+        .where(and(eq(apnsTokens.deviceId, deviceId), eq(apnsTokens.sessionId, sessionId)));
+
+      if (existing?.token === normalized && existing.environment === environment) return;
+
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${environment + ':' + normalized}, 2))`,
+      );
+      await tx
+        .delete(apnsTokens)
+        .where(and(eq(apnsTokens.environment, environment), eq(apnsTokens.token, normalized)));
+      await tx
+        .insert(apnsTokens)
+        .values({ deviceId, sessionId, environment, token: normalized })
+        .onConflictDoUpdate({
+          target: [apnsTokens.deviceId, apnsTokens.sessionId],
+          set: { environment, token: normalized, version: randomUUID(), updatedAt: new Date() },
+        });
+    });
+  }
+
+  async listApnsTargets(userId: string): Promise<ApnsTarget[]> {
+    const rows = await this.database.db
+      .select({ address: apnsTokens, userId: deviceSessions.userId })
+      .from(apnsTokens)
+      .innerJoin(
+        deviceSessions,
+        and(
+          eq(deviceSessions.deviceId, apnsTokens.deviceId),
+          eq(deviceSessions.sessionId, apnsTokens.sessionId),
+        ),
+      )
+      .where(eq(deviceSessions.userId, userId));
+    const result: ApnsTarget[] = [];
+
+    for (const row of rows) {
+      const access = await this.auth.checkSession(userId, row.address.sessionId);
+
+      if (access.accountActive && access.sessionActive) result.push({ ...row.address, userId });
+    }
+
+    return result;
+  }
+
+  async resolveApnsTarget(deviceId: string, sessionId: string): Promise<ApnsTarget | undefined> {
+    const [row] = await this.database.db
+      .select({ address: apnsTokens, userId: deviceSessions.userId })
+      .from(apnsTokens)
+      .innerJoin(deviceSessions, eq(deviceSessions.sessionId, apnsTokens.sessionId))
+      .where(and(eq(apnsTokens.deviceId, deviceId), eq(apnsTokens.sessionId, sessionId)));
+
+    if (!row) return undefined;
+
+    const access = await this.auth.checkSession(row.userId, sessionId);
+
+    return access.accountActive && access.sessionActive
+      ? { ...row.address, userId: row.userId }
+      : undefined;
+  }
+
+  async invalidateApnsTarget(
+    deviceId: string,
+    version: string,
+    providerTimestamp?: number,
+  ): Promise<void> {
+    await this.database.db
+      .delete(apnsTokens)
+      .where(
+        and(
+          eq(apnsTokens.deviceId, deviceId),
+          eq(apnsTokens.version, version),
+          providerTimestamp === undefined
+            ? undefined
+            : sql`${apnsTokens.updatedAt} <= ${new Date(providerTimestamp)}`,
         ),
       );
   }

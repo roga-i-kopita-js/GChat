@@ -2,6 +2,7 @@ import { parseAuthKeys } from '../auth/auth.crypto.js';
 import { parsePasswordPepper } from '../auth/auth.password.js';
 import { parseBrowserOrigins } from '../auth/browser-origin.js';
 import { validateDatabaseUrl } from '../database/database-url.js';
+import { parseDialogKeys } from '../dialogs/dialogs.crypto.js';
 import { parseLogRedaction } from '../logger/logger-settings.js';
 import { validateWebPushConfig } from '../push/web-push.config.js';
 
@@ -9,6 +10,7 @@ export function validateEnvironment(
   env: Record<string, unknown>,
 ): Record<string, unknown> & { LOG_REDACTION_ENABLED: boolean; PORT: number; HOST: string } {
   parseAuthKeys(env);
+  parseDialogKeys(env.DIALOGS_ENCRYPTION_KEYS, env.DIALOGS_ACTIVE_KEY_ID);
   parsePasswordPepper(env.AUTH_PASSWORD_PEPPER);
   const redaction = parseLogRedaction(env.LOG_REDACTION_ENABLED);
   const rawPort = String(env.PORT ?? '3000');

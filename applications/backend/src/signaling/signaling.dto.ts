@@ -37,6 +37,15 @@ export class PushTokenDto {
   @IsIn(['sandbox', 'production']) environment!: string;
 }
 
+export class ApnsTokenDto {
+  @ValidateIf((_object, value): boolean => value !== null)
+  @IsString()
+  @Length(2, 512)
+  @Matches(/^(?:[0-9a-fA-F]{2})+$/)
+  token!: string | null;
+  @IsIn(['sandbox', 'production']) environment!: string;
+}
+
 export class WebPushSubscriptionDto {
   @IsString() @Length(1, 4096) endpoint!: string;
   @IsString() @Length(87, 87) p256dh!: string;
