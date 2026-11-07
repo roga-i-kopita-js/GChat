@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import os
@@ -68,8 +69,18 @@ fi
         work = self.root / "actions"
         work.mkdir()
         shutil.copytree(self.release, work / "release")
+        scripts = work / "deployment" / "gchat"
+        scripts.mkdir(parents=True)
+        for name in ["prepare-dialog-keys.py", "apply-dialog-keys.py"]:
+            shutil.copyfile(SOURCE / name, scripts / name)
         server = self.root / "server"
         server.mkdir()
+        shared = server / "shared"
+        shared.mkdir()
+        backend_env = shared / "backend.env"
+        backend_env.write_text("# test configuration\n")
+        backend_env.chmod(0o600)
+        dialog_keys = {"test": base64.b64encode(bytes(range(32))).decode()}
         tools = self.root / "transport"
         tools.mkdir()
         mocks = {
@@ -93,10 +104,16 @@ for ((i=0; i<${#args[@]}-1; i++)); do cp "${args[i]}" "$destination"; done
             path.chmod(0o755)
         env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
                    SSH_HOST="test.invalid", SSH_PORT="22", SSH_USER="deploy",
-                   SSH_KEY="fake-key", SSH_KNOWN_HOSTS="fake-host-key", INSTALL_ROOT=str(server))
+                   SSH_KEY="fake-key", SSH_KNOWN_HOSTS="fake-host-key", INSTALL_ROOT=str(server),
+                   DIALOGS_ACTIVE_KEY_ID="test", DIALOGS_ENCRYPTION_KEYS=json.dumps(dialog_keys))
         command = ["bash", str(SOURCE / "deliver.sh")]
         first = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=20)
         self.assertEqual(first.returncode, 0, first.stderr)
+        lines = backend_env.read_text().splitlines()
+        self.assertEqual(lines[0], "# test configuration")
+        self.assertEqual(json.loads(lines[1].split("=", 1)[1].strip("'")), dialog_keys)
+        self.assertEqual(lines[2], "DIALOGS_ACTIVE_KEY_ID=test")
+        self.assertEqual(backend_env.stat().st_mode & 0o777, 0o600)
         (server / "fail").touch()
         second = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=20)
         self.assertNotEqual(second.returncode, 0)
