@@ -846,6 +846,69 @@ button svg {
     opacity: 0.4;
   }
 }
+.pwa-update-dialog {
+  width: 300px;
+  max-width: calc(100vw - 32px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  max-height: calc(
+    100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: #fff;
+  color: #111;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.pwa-update-dialog::backdrop {
+  background: rgb(0 0 0 / 40%);
+}
+.pwa-update-copy {
+  padding: 20px 20px 18px;
+  text-align: center;
+}
+.pwa-update-copy h2 {
+  margin: 0;
+  font-size: 1.285714rem;
+  font-weight: 600;
+  line-height: 1.333333;
+  color: #111;
+}
+.pwa-update-copy p {
+  margin: 8px 0 0;
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.428571;
+  color: #65656b;
+}
+.pwa-update-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid #d1d1d6;
+}
+.pwa-update-actions button {
+  min-height: 48px;
+  padding: 12px 0;
+  border-radius: 0;
+  background: transparent;
+  color: #007aff;
+  font-size: 1.142857rem;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.pwa-update-actions button + button {
+  border-left: 1px solid #d1d1d6;
+  font-weight: 600;
+}
+.pwa-update-actions button:hover,
+.pwa-update-actions button:active {
+  background: #f2f2f7;
+}
+.pwa-update-actions button:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: -4px;
+}
 .modal {
   border: 1px solid #e4eaf2;
   border-radius: 16px;

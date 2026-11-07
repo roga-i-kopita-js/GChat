@@ -135,6 +135,8 @@ export class GChatClient {
       !this.state.busy &&
       (!this.state.call || this.state.call.state === 'ended')
     ) {
+      // Media cleanup publishes state; prevent it from re-entering this shutdown.
+      this.hydrated = false;
       this.stopConnection();
       this.set({ owner: false, connection: 'offline' });
       this.release?.();

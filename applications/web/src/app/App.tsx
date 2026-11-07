@@ -163,8 +163,8 @@ export function App(): JSX.Element {
 
   const content = (
     <AuthProvider>
-      <PwaUpdate />
       <CallsProvider>
+        {!embedded && <PwaUpdate />}
         <DeviceProvider>
           <ApplicationRoutes
             credentials={credentials?.value ?? null}
