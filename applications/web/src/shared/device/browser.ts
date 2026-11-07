@@ -37,7 +37,7 @@ export class BrowserDevice {
   private files = new BrowserFiles((): void => this.changes.touch('files'));
   private test: DeviceState['audio']['test'] = null;
   private routeName: string | null = null;
-  private statuses = new Map<Resource, PermissionStatus>();
+  private statuses = new Map<Resource, { status: PermissionStatus; changed: () => void }>();
   private previous = '';
   private epoch = 0;
   private prompting = false;
@@ -60,16 +60,20 @@ export class BrowserDevice {
 
   async readPermission(resource: Resource): Promise<PermissionState> {
     try {
-      let status = this.statuses.get(resource);
+      const status = await navigator.permissions.query({ name: resource });
+      const previous = this.statuses.get(resource);
 
-      if (!status) {
-        status = await navigator.permissions.query({ name: resource });
-        this.statuses.set(resource, status);
-        status.addEventListener('change', (): void => this.changes.touch(resource));
+      // Safari may not update an old PermissionStatus after a settings change.
+      if (previous?.status !== status) {
+        previous?.status.removeEventListener('change', previous.changed);
+        const changed = (): void => this.changes.touch(resource);
+
+        status.addEventListener('change', changed);
+        this.statuses.set(resource, { status, changed });
       }
 
       return {
-        permission: status.state === 'prompt' ? 'prompt' : status.state,
+        permission: status.state,
         settingsHint: 'siteSettings',
       };
     } catch {

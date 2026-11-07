@@ -13,6 +13,7 @@ function environment(permission: string): void {
       query: vi.fn(async (): Promise<unknown> => ({
         state: permission,
         addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
       })),
     },
     mediaDevices: {
@@ -55,6 +56,43 @@ describe('browser device adapter', (): void => {
 
     await device.execute('permission.read', { resource: 'camera' });
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  });
+  it.each(['granted', 'denied'] as const)(
+    'rereads microphone permission changed to %s without a change event',
+    async (permission): Promise<void> => {
+      environment('prompt');
+      const device = new BrowserDevice(host);
+
+      expect(await device.execute('permission.read', { resource: 'microphone' })).toEqual({
+        permission: 'prompt',
+        settingsHint: 'siteSettings',
+      });
+      environment(permission);
+      expect(await device.execute('permission.read', { resource: 'microphone' })).toEqual({
+        permission,
+        settingsHint: 'siteSettings',
+      });
+      expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    },
+  );
+  it('rereads microphone permission after granting access', async (): Promise<void> => {
+    environment('prompt');
+    const device = new BrowserDevice(host);
+
+    await device.execute('permission.read', { resource: 'microphone' });
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockImplementationOnce(
+      async (): Promise<MediaStream> => {
+        environment('granted');
+
+        return { getTracks: (): unknown[] => [{ stop: stops }] } as unknown as MediaStream;
+      },
+    );
+    await device.execute('permission.request', { resource: 'microphone' });
+    expect(await device.execute('permission.read', { resource: 'microphone' })).toEqual({
+      permission: 'granted',
+      settingsHint: 'siteSettings',
+    });
+    expect(stops).toHaveBeenCalledOnce();
   });
   it('closes every camera track and returns only permission, not media', async (): Promise<void> => {
     const device = new BrowserDevice(host);
