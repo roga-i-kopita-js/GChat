@@ -22,7 +22,6 @@ export function Composer({
   draft: DialogRecord['draft'];
 }): JSX.Element {
   const [text, setText] = useState(draft.text);
-  const [status, setStatus] = useState('Сохранено');
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -44,16 +43,12 @@ export function Composer({
 
       const value = current.current;
 
-      if (mounted.current) setStatus('Сохраняется…');
-
       try {
         const next = await runtime.draft(id, value, revision.current);
 
         revision.current = next;
 
         if (current.current === value) dirty.current = false;
-
-        if (mounted.current) setStatus(dirty.current ? 'Сохраняется…' : 'Сохранено');
       } catch (cause) {
         if (cause instanceof StorageError && cause.code === 'STORAGE_CONFLICT') {
           conflictRef.current = true;
@@ -62,7 +57,6 @@ export function Composer({
         }
 
         if (mounted.current) {
-          setStatus('Не сохранено');
           setError(dialogError(cause));
         }
 
@@ -168,7 +162,6 @@ export function Composer({
         current.current = saved.record.draft.text;
         setText(current.current);
         dirty.current = false;
-        setStatus('Сохранено');
       }
     } catch (cause) {
       setError(dialogError(cause));
@@ -334,9 +327,6 @@ export function Composer({
           <ArrowUp size={23} />
         </button>
       </form>
-      <span className="draft-status" role="status">
-        {status}
-      </span>
     </div>
   );
 }

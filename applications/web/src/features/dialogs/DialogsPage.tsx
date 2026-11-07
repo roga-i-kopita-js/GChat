@@ -1,10 +1,10 @@
 import './dialogs.css';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowLeft, Check, CheckCheck, MessageCircle, RefreshCw } from 'lucide-react';
+import { ArrowDown, ArrowLeft, Check, CheckCheck, MessageCircle, Phone } from 'lucide-react';
 import type { JSX } from 'react';
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { VList, type VListHandle } from 'virtua';
 import { z } from 'zod';
 
@@ -12,6 +12,7 @@ import { useBootstrap } from '../../shared/dialogs/context';
 import { type DialogMessage, isStickerId, type PendingMessage } from '../../shared/dialogs/model';
 import { dialogError, type DialogRuntime, type DialogView } from '../../shared/dialogs/runtime';
 import { Avatar } from '../../shared/ui';
+import { useCalls } from '../calls/CallsProvider';
 import { Composer } from './Composer';
 import { stickers } from './stickers';
 
@@ -33,6 +34,8 @@ function Content({ content }: { content: DialogMessage['content'] }): JSX.Elemen
   );
 }
 function Room({ runtime, id }: { runtime: DialogRuntime; id: string }): JSX.Element {
+  const navigate = useNavigate();
+  const { client, ongoing, setPerson, setMobile } = useCalls();
   const result = useQuery({
     queryKey: ['dialogs', runtime.scope.sessionId, id],
     queryFn: (): Promise<DialogView> => runtime.view(id),
@@ -58,12 +61,27 @@ function Room({ runtime, id }: { runtime: DialogRuntime; id: string }): JSX.Elem
         <h2>{data?.record.dialog?.peer_display_name ?? 'Переписка'}</h2>
         <button
           className="dialog-icon"
-          aria-label="Обновить переписку"
+          aria-label={
+            ongoing
+              ? 'Вернуться к звонку'
+              : `Позвонить: ${data?.record.dialog?.peer_display_name ?? 'собеседник'}`
+          }
+          disabled={!data?.record.dialog}
           onClick={(): void => {
-            void runtime.sync(id, true);
+            const dialog = data?.record.dialog;
+
+            if (!dialog) return;
+
+            if (!ongoing) {
+              client.dismiss();
+              setPerson({ id: dialog.peer_id, display_name: dialog.peer_display_name });
+            }
+
+            setMobile(true);
+            void navigate('/calls');
           }}
         >
-          <RefreshCw size={19} />
+          <Phone size={19} />
         </button>
       </header>
       {data?.error && (
@@ -389,13 +407,6 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
       <section className="dialogs-sidebar" aria-label="Диалоги">
         <header>
           <h1>Диалоги</h1>
-          <button
-            className="dialog-icon"
-            aria-label="Обновить диалоги"
-            onClick={(): void => runtime.refresh()}
-          >
-            <RefreshCw size={19} />
-          </button>
         </header>
         {state.storageWarning && (
           <p className="dialog-notice" role="status">

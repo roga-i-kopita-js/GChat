@@ -82,6 +82,18 @@ export function CallsPage(): JSX.Element {
     }
   }
 
+  function write(peer: string): void {
+    if (!dialogs) return;
+
+    setPrepareError('');
+    void dialogs
+      .openPeer(peer)
+      .then((id): void => {
+        void navigate('/dialogs/' + id);
+      })
+      .catch((cause): void => setPrepareError(dialogError(cause)));
+  }
+
   useEffect((): void => {
     if (call && call.state !== 'ended') setConfirm(false);
   }, [call?.call_id, call?.state]);
@@ -202,15 +214,7 @@ export function CallsPage(): JSX.Element {
                     className="contact-call"
                     aria-label={`Написать: ${member.display_name}`}
                     disabled={!dialogs}
-                    onClick={(): void => {
-                      if (dialogs)
-                        void dialogs
-                          .openPeer(member.id)
-                          .then((id): void => {
-                            void navigate('/dialogs/' + id);
-                          })
-                          .catch((cause): void => setPrepareError(dialogError(cause)));
-                    }}
+                    onClick={(): void => write(member.id)}
                   >
                     <MessageCircle size={18} />
                   </button>
@@ -229,10 +233,6 @@ export function CallsPage(): JSX.Element {
               ))}
             </div>
           )}
-          <div className="contacts-foot">
-            <ShieldCheck size={14} />
-            <span>Доступ к группам настраивает администратор</span>
-          </div>
         </section>
         <section className={'detail-panel' + (!mobile ? ' mobile-hidden' : '')}>
           {mobile && (
@@ -251,13 +251,22 @@ export function CallsPage(): JSX.Element {
                 Хороший разговор начинается
                 <br />с одного звонка.
               </p>
-              <button
-                className="primary"
-                disabled={!enabled}
-                onClick={(): void => setConfirm(true)}
-              >
-                <Phone size={19} /> Позвонить
-              </button>
+              <div className="person-actions">
+                <button
+                  className="primary"
+                  disabled={!enabled}
+                  onClick={(): void => setConfirm(true)}
+                >
+                  <Phone size={19} /> Позвонить
+                </button>
+                <button
+                  className="secondary"
+                  disabled={!dialogs}
+                  onClick={(): void => write(person.id)}
+                >
+                  <MessageCircle size={19} /> Написать сообщение
+                </button>
+              </div>
               <div className="detail-note">
                 <Mic size={15} /> Понадобится доступ к микрофону
               </div>

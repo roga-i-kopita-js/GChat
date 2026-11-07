@@ -1,6 +1,6 @@
-import { Code2, MessageCircle, Phone, Settings, ShieldCheck, Volume2, X } from 'lucide-react';
+import { Code2, MessageCircle, Phone, Settings, ShieldCheck, X } from 'lucide-react';
 import type { JSX } from 'react';
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '../features/auth/AuthProvider';
@@ -8,35 +8,18 @@ import { useCalls } from '../features/calls/CallsProvider';
 import { DiagnosticsDialog } from '../features/calls/DiagnosticsDialog';
 import { embedded } from '../shared/native/bridge';
 import { nativeRuntime } from '../shared/native/runtime';
-import { Avatar } from '../shared/ui';
 import { useDebug } from '../shared/useDebug';
 
 export function AppLayout(): JSX.Element {
   const { user } = useAuth();
   const native = useSyncExternalStore(nativeRuntime.subscribe, nativeRuntime.getSnapshot);
   const debug = useDebug();
-  const { client, state, call, incoming, ongoing } = useCalls();
+  const { client, state, incoming, ongoing, peerName, setMobile } = useCalls();
   const path = useLocation().pathname;
   const admin = path.startsWith('/admin');
   const settings = path.startsWith('/settings');
   const dialogs = path.startsWith('/dialogs');
-  const navigation = useRef<HTMLElement | null>(null);
-
-  useLayoutEffect((): (() => void) => {
-    const nav = navigation.current;
-    const shell = nav?.parentElement;
-
-    if (!nav || !shell) return (): void => {};
-
-    const measure = (): void =>
-      shell.style.setProperty('--navigation-height', `${nav.offsetHeight}px`);
-    const observer = new ResizeObserver(measure);
-
-    observer.observe(nav);
-    measure();
-
-    return (): void => observer.disconnect();
-  }, []);
+  const returnToCall = ongoing && path !== '/calls';
   const [diagnostics, setDiagnostics] = useState(false);
 
   useEffect((): void => {
@@ -46,26 +29,20 @@ export function AppLayout(): JSX.Element {
   if (!user) return <></>;
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <Link className="brand" to="/calls" aria-label="GChat — звонки">
-          <span className="brand-mark" aria-hidden="true">
-            <img
-              src={`${import.meta.env.BASE_URL}icons/icon-192.png`}
-              width="43"
-              height="43"
-              alt=""
-            />
-          </span>
+    <div
+      className={
+        'app-shell' +
+        (embedded ? ' app-shell-native' : '') +
+        (dialogs ? ' app-shell-dialogs' : '') +
+        (returnToCall ? ' app-shell-with-call' : '')
+      }
+    >
+      {returnToCall && (
+        <Link className="ongoing-call-banner" to="/calls" onClick={(): void => setMobile(true)}>
+          <Phone size={18} aria-hidden="true" />
+          <span>Вернуться к звонку · {peerName}</span>
         </Link>
-        <Link className="profile" title="Настройки" to="/settings">
-          <Avatar name={user.display_name} />
-          <span className="profile-identity">
-            <strong>{user.display_name}</strong>
-            <small>@{user.login}</small>
-          </span>
-        </Link>
-      </header>
+      )}
       <main
         className={
           'workspace' +
@@ -107,33 +84,16 @@ export function AppLayout(): JSX.Element {
             </button>
           </div>
         )}
-        {(admin || settings || dialogs) && call && call.state !== 'ended' && (
-          <Link className="secondary admin-call-return" to="/calls">
-            <Phone size={17} /> Вернуться к звонку
-          </Link>
-        )}
         <Outlet />
-        {!settings && !dialogs && (
+        {!settings && !dialogs && debug && !embedded && (
           <footer className="workspace-footer">
-            <span>GChat Web</span>
-            {state.owner && !state.audible && (
-              <button
-                onClick={(): void => {
-                  void client.enableRingtone();
-                }}
-              >
-                <Volume2 size={14} /> Включить звук звонков
-              </button>
-            )}
-            {debug && !embedded && (
-              <button onClick={(): void => setDiagnostics(true)}>
-                <Code2 size={14} /> Диагностика
-              </button>
-            )}
+            <button onClick={(): void => setDiagnostics(true)}>
+              <Code2 size={14} /> Диагностика
+            </button>
           </footer>
         )}
       </main>
-      <nav ref={navigation} className="bottom-navigation" aria-label="Основные разделы">
+      <nav className="bottom-navigation" aria-label="Основные разделы">
         <NavLink
           to="/calls"
           className={({ isActive }): string => 'bottom-tab' + (isActive ? ' active' : '')}

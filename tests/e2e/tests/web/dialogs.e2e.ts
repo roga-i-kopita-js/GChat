@@ -35,7 +35,6 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
     await anna.getByRole('button', { name: 'Отправить сообщение', exact: true }).click();
     await expect(anna.locator('.dialog-message-text').filter({ hasText: text })).toHaveCount(1);
     await maxim.getByRole('link', { name: 'Диалоги', exact: true }).click();
-    await maxim.getByRole('button', { name: 'Обновить диалоги' }).click();
     await expect(maxim.getByRole('link', { name: /Анна/ })).toBeVisible();
     await maxim.getByRole('link', { name: /Анна/ }).click();
     await expect(maxim.locator('.dialog-message-text').filter({ hasText: text })).toBeVisible();
@@ -163,7 +162,25 @@ test('tabs share one WSS, resolve draft conflicts explicitly, flush before updat
   await page.evaluate((): void => {
     window.dispatchEvent(new Event('gchat-prepare-update'));
   });
-  await expect(page.getByRole('status').filter({ hasText: 'Сохранено' })).toBeVisible();
+  await expect
+    .poll((): Promise<boolean> =>
+      page.evaluate(async (text): Promise<boolean> => {
+        const request = indexedDB.open('gchat-dialogs-v1');
+        const database = await new Promise<IDBDatabase>((resolve): void => {
+          request.onsuccess = (): void => resolve(request.result);
+        });
+        const records = database.transaction('records').objectStore('records').getAll();
+        const saved = await new Promise<boolean>((resolve): void => {
+          records.onsuccess = (): void =>
+            resolve(records.result.some((row): boolean => row.record.draft.text === text));
+        });
+
+        database.close();
+
+        return saved;
+      }, updateDraft),
+    )
+    .toBe(true);
   await page.reload();
   await expect(page.getByLabel('Сообщение', { exact: true })).toHaveValue(updateDraft);
   await page.getByRole('link', { name: 'Настройки', exact: true }).click();

@@ -1,6 +1,5 @@
 :root {
   --page-gutter: 12px;
-  --header-height: 56px;
   --tabs-height: 60px;
   --brand-size: 32px;
   --control-height: 44px;
@@ -602,16 +601,6 @@ button svg {
   color: #718092;
   margin-top: 6px;
 }
-.contacts-foot {
-  margin-top: auto;
-  display: flex;
-  gap: 7px;
-  padding: 17px 20px;
-  align-items: center;
-  color: #768596;
-  border-top: 1px solid #f0f3f7;
-  font-size: 9px;
-}
 .detail-panel {
   padding: 18px;
   display: flex;
@@ -694,8 +683,18 @@ button svg {
   font-size: 26px;
   letter-spacing: -0.6px;
 }
-.person-preview .primary {
+.person-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
   margin-top: 32px;
+}
+.person-actions > button {
+  max-width: 100%;
+}
+.person-preview .primary {
   min-width: 180px;
 }
 .detail-note {
@@ -1409,13 +1408,44 @@ button svg {
 }
 
 .app-shell {
-  padding-bottom: calc(var(--tabs-height) + env(safe-area-inset-bottom, 0px));
+  --app-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: calc(var(--tabs-height) + var(--app-safe-area-bottom));
+}
+.app-shell-native {
+  --app-safe-area-bottom: 0px;
 }
 .app-shell > .workspace {
   height: auto;
-  min-height: calc(
-    100dvh - var(--header-height) - var(--tabs-height) - env(safe-area-inset-bottom, 0px)
-  );
+  min-height: calc(100dvh - var(--tabs-height) - var(--app-safe-area-bottom));
+}
+.app-shell-with-call > .workspace {
+  min-height: calc(100dvh - var(--tabs-height) - var(--app-safe-area-bottom) - 44px);
+}
+.ongoing-call-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 8px max(12px, env(safe-area-inset-right, 0px)) 8px
+    max(12px, env(safe-area-inset-left, 0px));
+  background: #21834c;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+}
+.ongoing-call-banner > svg {
+  flex: none;
+}
+.ongoing-call-banner > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .bottom-navigation {
   position: fixed;
@@ -1423,13 +1453,13 @@ button svg {
   bottom: 0;
   left: 0;
   right: 0;
-  min-height: calc(var(--tabs-height) + env(safe-area-inset-bottom, 0px));
+  min-height: calc(var(--tabs-height) + var(--app-safe-area-bottom));
   display: flex;
   align-items: stretch;
   justify-content: center;
   gap: 12px;
-  padding: 4px max(12px, env(safe-area-inset-right, 0px))
-    calc(4px + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+  padding: 4px max(12px, env(safe-area-inset-right, 0px)) calc(4px + var(--app-safe-area-bottom))
+    max(12px, env(safe-area-inset-left, 0px));
   border-top: 1px solid #e4eaf1;
   background: #ffffffed;
   backdrop-filter: blur(18px);
@@ -1493,67 +1523,12 @@ button svg {
   color: #087cf0;
 }
 
-.app-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  flex-shrink: 0;
-  height: var(--header-height);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 6px var(--page-gutter);
-  background: white;
-  border-bottom: 1px solid #e4eaf1;
-}
-.app-header .brand-mark {
-  width: 40px;
-  height: 40px;
-}
-.app-header .profile {
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-.app-header .profile .avatar {
-  width: 40px;
-  height: 40px;
-}
-.profile-identity {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 /* Mobile is the default layout. Desktop expands spacing and adds a second call pane. */
 .app-shell > .workspace {
   width: 100%;
   max-width: 1120px;
   margin-inline: auto;
   padding: var(--page-gutter);
-}
-.app-header .brand {
-  min-width: 44px;
-  min-height: 44px;
-  justify-content: center;
-}
-.app-header .brand-mark,
-.app-header .profile .avatar {
-  width: var(--brand-size);
-  height: var(--brand-size);
-}
-.app-header .profile {
-  width: 44px;
-  height: 44px;
-  justify-content: center;
 }
 .bottom-tab {
   gap: 3px;
@@ -1815,11 +1790,6 @@ button svg {
   margin-top: 2px;
   font-size: 11px;
 }
-.contacts-foot {
-  gap: 6px;
-  padding: 10px 12px;
-  font-size: 10px;
-}
 .detail-panel {
   padding: 10px;
 }
@@ -1847,7 +1817,7 @@ button svg {
 .person-preview h2 {
   font-size: 20px;
 }
-.person-preview .primary {
+.person-actions {
   margin-top: 20px;
 }
 .list-empty {
@@ -1933,7 +1903,6 @@ button svg {
 @media (min-width: 801px) {
   :root {
     --page-gutter: 24px;
-    --header-height: 64px;
     --tabs-height: 64px;
     --brand-size: 36px;
     --modal-padding: 24px;

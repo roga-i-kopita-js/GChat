@@ -14,7 +14,10 @@ const anna = {
   updated_at: '2026-11-04T10:00:00Z',
 };
 
-async function setup(page: Page, authenticated = true): Promise<() => void> {
+async function setup(
+  page: Page,
+  authenticated = true,
+): Promise<(state?: 'ringing' | 'active') => void> {
   let current: Record<string, unknown> | null = null;
   let send = (_payload: object): void => {};
 
@@ -29,7 +32,9 @@ async function setup(page: Page, authenticated = true): Promise<() => void> {
           type: 'response',
           request_id: command.request_id,
           payload:
-            command.type === 'device.register' ? { device_id: 'test-device' } : { call: current },
+            command.type === 'device.register'
+              ? { device_id: '00000000-0000-4000-8000-000000000099' }
+              : { call: current },
         }),
       );
     });
@@ -102,15 +107,15 @@ async function setup(page: Page, authenticated = true): Promise<() => void> {
   );
   await page.goto(authenticated ? '/admin/users' : '/login');
 
-  return (): void => {
+  return (state = 'ringing'): void => {
     current = {
       call_id: '00000000-0000-4000-8000-000000000010',
       caller_id: annaId,
       recipient_id: adminId,
-      state: 'ringing',
+      state,
       version: 1,
       created_at: new Date().toISOString(),
-      started_at: null,
+      started_at: state === 'active' ? new Date().toISOString() : null,
       ended_at: null,
       end_reason: null,
       recovery_id: null,
@@ -133,6 +138,34 @@ for (const viewport of [
   { width: 390, height: 844 },
   { width: 430, height: 932 },
 ]) {
+  test(`return to current call from other sections at ${viewport.width}px`, async ({
+    page,
+  }): Promise<void> => {
+    await page.setViewportSize(viewport);
+    const updateCall = await setup(page);
+    const nav = page.getByRole('navigation', { name: 'Основные разделы' });
+    const banner = page.getByRole('link', { name: /Вернуться к звонку/ });
+
+    await nav.getByRole('link', { name: 'Звонки', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Позвонить: Анна Смирнова' })).toBeEnabled();
+    updateCall('active');
+    await expect(page.locator('.call-card')).toBeVisible();
+    await expect(banner).toHaveCount(0);
+
+    for (const section of ['Настройки', 'Диалоги', 'Администрирование']) {
+      await page.getByRole('button', { name: 'Контакты', exact: true }).click();
+      await nav.getByRole('link', { name: section, exact: true }).click();
+      await expect(banner).toBeInViewport();
+      await expect(banner).toContainText('Анна Смирнова');
+      await page.evaluate((): void => window.scrollTo(0, document.body.scrollHeight));
+      await expect(banner).toBeInViewport();
+      await banner.click();
+      await expect(page).toHaveURL(/\/calls$/);
+      await expect(page.locator('.call-card')).toBeVisible();
+      await expect(banner).toHaveCount(0);
+    }
+  });
+
   test(`audio settings fit a ${viewport.width}px phone`, async ({ page }, info): Promise<void> => {
     await page.setViewportSize(viewport);
     await setup(page);
