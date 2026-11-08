@@ -12,6 +12,8 @@ tests:
 
 # Bootstrap Web и общий runtime
 
+Целевая публичная композиция и native HTTP определены в [API device](device-api.md); loaders и живые модели без Query — в [потоке данных](data-flow.md). Этот контракт сохраняет доменные алгоритмы runtime/storage, scope/CAS/epoch и outbox. Старые прямые вызовы session/native и Query-инвалидация описывают текущую реализацию и заменяются указанной миграцией.
+
 Принятый контракт запуска общего транспорта, платформенного хранения и синхронизации диалогов. Пользователь явно согласовал объём и решения. Экраны и правила переписки принадлежат [диалогам Web](dialogs.md), REST/WS DTO — [DialogsModule](../backend/modules/dialogs/README.md), действующие Auth/звонки — [Web](README.md). Существующий локальный экран выбора сервера iOS не заменяется.
 
 ## Что уже существует
@@ -28,7 +30,7 @@ NativeCore владеет Auth, регистрацией устройства и
 
 ### Общий runtime и транспорт
 
-`app/bootstrap` как единственный владелец runtime выше Routes. Он получает текущую Auth-сессию и передаёт зависимости в `shared`; общие модули не импортируют `features/auth` или Calls/Dialogs. Авторизованные REST-операции по-прежнему проходят через `features/auth/session.ts::request` и generated SDK. Bootstrap добавляет AbortSignal своего цикла к сигналу TanStack Query; сам не получает и не сохраняет refresh token.
+`app/bootstrap` компонует единственный runtime выше страниц через публичный device; общие модули не импортируют features/auth или Calls/Dialogs. Целевые авторизованные REST-операции проходят через device.session.run и переданный generated SDK. Сигнал loader/операции объединяется с сигналом сессии; bootstrap не получает и не сохраняет refresh token. Прежний session.ts::request остаётся текущей реализацией до миграции.
 
 | Фасад     | Предлагаемый интерфейс и ответственность                                                                                                                                     |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -37,7 +39,7 @@ NativeCore владеет Auth, регистрацией устройства и
 | Снимок    | Отдельные состояния session, transport, storage и dialogs: `idle`, `starting`, `ready`, `error`, `stopped`; сетевое состояние транспорта — `offline`, `connecting`, `online` |
 | Транспорт | `getSnapshot()`, `subscribeState(listener)`, `subscribeMessage(listener)`, `send(type, payload, signal)`; отписка снимает только подписку, а не соединение                   |
 | HTTP      | Передаваемая bootstrap функция выполнения операции SDK; общий цикл отменяет запросы и запрещает применение запоздалых результатов                                            |
-| Storage   | Фасад из следующего раздела; UI получает записи и состояния через TanStack Query, runtime инвалидирует запросы после сохранения                                              |
+| Storage   | Фасад следующего раздела; UI получает неизменяемые live-модели по [потоку данных](data-flow.md#живые-модели-диалогов), runtime публикует enum-событие после commit           |
 
 `sessionId`/`deviceId` получаются из действующей сессии/подтверждённой регистрации. Для native отдельный результат `getDialogStorageContext({cycleId})` → `{cycleId, accountId, sessionId, deviceId, namespaceId, epoch, adapterEpoch, schemaVersion: 1, adapter: 'sqlite' | 'indexeddb', purgePending, pendingWebPurges: accountId[]}`. Native вычисляет scope из своей сессии и выбранного сервера, проверяет текущий cycle; Web сверяет account/session с текущим Auth. Токены в ответ не входят. При смене сессии контекст недействителен независимо от живого WebView.
 
