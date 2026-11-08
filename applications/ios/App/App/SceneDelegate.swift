@@ -12,7 +12,43 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = ShellViewController()
         self.window = window
         window.makeKeyAndVisible()
+        #if DEBUG
+        for context in connectionOptions.urlContexts {
+            showLaunchSpikeReceipt(context.url, cold: true)
+        }
+        #endif
     }
+
+    func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
+        #if DEBUG
+        for context in contexts { showLaunchSpikeReceipt(context.url, cold: false) }
+        #endif
+    }
+
+    #if DEBUG
+    private func showLaunchSpikeReceipt(_ url: URL, cold: Bool) {
+        guard url.absoluteString == "gchat-launch-spike://open", let window else { return }
+        window.viewWithTag(71403)?.removeFromSuperview()
+        let receipt = UIButton(type: .system)
+        receipt.tag = 71403
+        receipt.accessibilityIdentifier = "gchat.launch-spike.received"
+        receipt.setTitle(cold ? "Ссылка получена: холодный запуск. Закрыть" : "Ссылка получена: повторный запуск. Закрыть", for: .normal)
+        receipt.titleLabel?.numberOfLines = 0
+        receipt.titleLabel?.textAlignment = .center
+        receipt.backgroundColor = .systemGreen
+        receipt.setTitleColor(.black, for: .normal)
+        receipt.layer.cornerRadius = 12
+        receipt.addAction(UIAction { [weak receipt] _ in receipt?.removeFromSuperview() }, for: .touchUpInside)
+        receipt.translatesAutoresizingMaskIntoConstraints = false
+        window.addSubview(receipt)
+        NSLayoutConstraint.activate([
+            receipt.topAnchor.constraint(equalTo: window.safeAreaLayoutGuide.topAnchor, constant: 12),
+            receipt.leadingAnchor.constraint(equalTo: window.leadingAnchor, constant: 16),
+            receipt.trailingAnchor.constraint(equalTo: window.trailingAnchor, constant: -16),
+            receipt.heightAnchor.constraint(greaterThanOrEqualToConstant: 64)
+        ])
+    }
+    #endif
 }
 
 /// Owns native configuration and session independently of either WebView.

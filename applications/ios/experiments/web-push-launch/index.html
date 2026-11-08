@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#087cf0" />
+    <link rel="manifest" href="/apps/launch-test.webmanifest" />
+    <link rel="apple-touch-icon" href="/apps/icons/icon-192.png" />
+    <title>GChat — тест уведомлений</title>
+    <style>
+      body {
+        font: 17px system-ui;
+        margin: auto;
+        max-width: 440px;
+        padding: 24px;
+      }
+      button,
+      a {
+        display: block;
+        min-height: 48px;
+        margin: 16px 0;
+      }
+      button {
+        width: 100%;
+        font: inherit;
+      }
+      #status {
+        white-space: pre-wrap;
+      }
+    </style>
+    <script src="/apps/launch-test.js" defer></script>
+  </head>
+  <body>
+    <h1>Тест уведомлений GChat</h1>
+    <p>Добавьте эту страницу на экран «Домой» и откройте оттуда.</p>
+    <button id="permission">Разрешить уведомления</button>
+    <button id="local">Показать уведомление</button>
+    <button id="push">Отправить Web Push через 10 секунд</button>
+    <button id="check">Проверить отправку</button>
+    <button id="update">Обновить тест</button>
+    <p id="status" role="status">Нативное приложение должно быть установлено.</p>
+    <a href="gchat-launch-spike://open">Открыть GChat без уведомления</a>
+  </body>
+</html>

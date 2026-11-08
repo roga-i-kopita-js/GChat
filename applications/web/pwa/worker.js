@@ -144,6 +144,29 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
     (async () => {
+      if (config.nativeLaunchSpike && !event.notification.data?.dialogId) {
+        const target = new URL(config.startUrl, self.location.origin);
+
+        target.searchParams.set('native_launch_spike', '1');
+
+        try {
+          const intents = await caches.open('gchat-launch-spike-intents');
+
+          await intents.put(
+            new URL('/__gchat_launch_spike_intent', self.location.origin).href,
+            new Response(JSON.stringify({ createdAt: Date.now() })),
+          );
+        } catch {
+          // The original navigation can still work when persistent storage is unavailable.
+        }
+
+        const opened = await self.clients.openWindow(target.href);
+
+        opened?.postMessage({ type: 'gchat.launch-spike.clicked' });
+
+        return;
+      }
+
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       const existing = windows.find((client) => {
         const url = new URL(client.url);

@@ -22,6 +22,17 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.gchat.launch-spike</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>gchat-launch-spike</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>GChat использует микрофон для голосовых звонков и проверки доступа по вашему запросу.</string>
 	<key>NSCameraUsageDescription</key>

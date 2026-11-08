@@ -3,7 +3,7 @@ import { runInNewContext } from 'node:vm';
 
 import { describe, expect, it, vi } from 'vitest';
 
-function fixture(server = true): any {
+function fixture(server = true, nativeLaunchSpike = false): any {
   const handlers: Record<string, (event: any) => void> = {};
   const base = server ? '/apps/' : '/';
   const startPath = server ? '/apps/client' : '';
@@ -16,6 +16,7 @@ function fixture(server = true): any {
     startPath,
     scope: server ? '/apps/client' : '/',
     icon: `${base}icons/icon-192.png`,
+    nativeLaunchSpike,
   };
   const cache = { put: vi.fn(), match: vi.fn().mockResolvedValue(new Response('cached')) };
   const caches = {
@@ -61,6 +62,51 @@ function fixture(server = true): any {
 }
 
 describe('PWA worker', (): void => {
+  it.each([true, false])(
+    'opens the fixed native launch page for experimental call notifications (%s)',
+    async (server): Promise<void> => {
+      const f = fixture(server, true);
+      const focus = vi.fn();
+
+      f.self.clients.matchAll.mockResolvedValue([
+        { url: `https://gchat.example${f.config.startUrl}`, focus },
+      ]);
+      await f.dispatch('notificationclick', {
+        notification: { close: vi.fn(), data: { url: 'https://other.example/' } },
+      });
+      expect(f.self.clients.openWindow).toHaveBeenCalledExactlyOnceWith(
+        `https://gchat.example${f.config.startUrl}?native_launch_spike=1`,
+      );
+      expect(focus).not.toHaveBeenCalled();
+      const stored = f.cache.put.mock.calls[0];
+
+      expect(stored[0]).toBe('https://gchat.example/__gchat_launch_spike_intent');
+      expect(await stored[1].json()).toEqual({ createdAt: expect.any(Number) });
+    },
+  );
+  it('still opens the native launch page if storing the click intent fails', async (): Promise<void> => {
+    const f = fixture(true, true);
+    const postMessage = vi.fn();
+
+    f.caches.open.mockRejectedValue(new Error('storage unavailable'));
+    f.self.clients.openWindow.mockResolvedValue({ postMessage });
+    await f.dispatch('notificationclick', { notification: { close: vi.fn() } });
+    expect(f.self.clients.openWindow).toHaveBeenCalledExactlyOnceWith(
+      'https://gchat.example/apps/client/calls?native_launch_spike=1',
+    );
+    expect(postMessage).toHaveBeenCalledWith({ type: 'gchat.launch-spike.clicked' });
+  });
+  it('preserves dialog notification navigation in the experimental build', async (): Promise<void> => {
+    const f = fixture(true, true);
+    const id = '00000000-0000-0000-0000-000000000001';
+
+    await f.dispatch('notificationclick', {
+      notification: { close: vi.fn(), data: { dialogId: id } },
+    });
+    expect(f.self.clients.openWindow).toHaveBeenCalledExactlyOnceWith(
+      `https://gchat.example/apps/client/calls?dialog_id=${id}`,
+    );
+  });
   it('installs a complete shell and removes only old GChat caches on activation', async (): Promise<void> => {
     const f = fixture();
 

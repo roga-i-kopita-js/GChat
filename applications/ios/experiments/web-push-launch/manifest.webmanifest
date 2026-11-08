@@ -1,0 +1,11 @@
+{
+  "id": "/apps/launch-test",
+  "name": "GChat Launch Test",
+  "short_name": "GChat Test",
+  "start_url": "/apps/launch-test",
+  "scope": "/apps/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#087cf0",
+  "icons": [{ "src": "/apps/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+}

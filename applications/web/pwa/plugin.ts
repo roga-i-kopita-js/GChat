@@ -9,6 +9,7 @@ const directory = dirname(fileURLToPath(import.meta.url));
 
 /** Emit one immutable application shell per build, including both supported URL layouts. */
 export function pwaPlugin(server: boolean): Plugin {
+  const nativeLaunchSpike = process.env.VITE_GCHAT_IOS_LAUNCH_SPIKE === 'true';
   const base = server ? '/apps/' : '/';
   const startPath = server ? '/apps/client' : '';
   const manifest = JSON.parse(
@@ -48,7 +49,8 @@ export function pwaPlugin(server: boolean): Plugin {
       const version = createHash('sha256')
         .update(JSON.stringify(bundle))
         .update(worker)
-        .update(manifestSource);
+        .update(manifestSource)
+        .update(String(nativeLaunchSpike));
 
       for (const name of readdirSync(resolve(directory, '../public/icons')))
         version.update(readFileSync(resolve(directory, '../public/icons', name)));
@@ -73,6 +75,7 @@ export function pwaPlugin(server: boolean): Plugin {
             startPath,
             scope: manifest.scope,
             icon: `${base}icons/icon-192.png`,
+            nativeLaunchSpike,
           }),
         ),
       });
