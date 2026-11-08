@@ -18,6 +18,10 @@ on:
         description: 'Deploy after build'
         type: boolean
         default: true
+      fast:
+        description: 'Fast: skip checks'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -56,12 +60,15 @@ jobs:
           echo "IMAGE=gchat:$SOURCE_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
           printf '### GChat release\nVersion: %s\n\nSource: %s\n\nPlatform: %s\n' "$VERSION" "$SOURCE_SHA" "$PLATFORM" >> "$GITHUB_STEP_SUMMARY"
       - uses: pnpm/action-setup@v4
+        if: ${{ !inputs.fast }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-          cache: pnpm
+          cache: ${{ !inputs.fast && 'pnpm' || '' }}
       - run: pnpm install --frozen-lockfile
+        if: ${{ !inputs.fast }}
       - name: Check backend, SDK and Web
+        if: ${{ !inputs.fast }}
         run: |
           pnpm api:check
           pnpm style:check applications/backend/src/web applications/backend/test/server-web.e2e.spec.ts deployment/gchat/smoke-client.mjs
@@ -78,10 +85,12 @@ jobs:
           python3 -m unittest discover -s deployment/gchat/tests -p 'test_*.py'
           for script in deployment/gchat/*.sh; do bash -n "$script"; done
       - name: Check production PWA in Chromium
+        if: ${{ !inputs.fast }}
         run: |
           pnpm --filter @gchat/e2e exec playwright install --with-deps chromium
           pnpm --filter @gchat/e2e test:pwa
       - name: Build server Web client
+        if: ${{ !inputs.fast }}
         run: pnpm --filter @gchat/web build:server
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
@@ -91,8 +100,9 @@ jobs:
             --build-arg "NODE_VERSION=$(cat .nvmrc)" \
             -f deployment/gchat/Dockerfile -t "$IMAGE" .
       - name: Verify packaged PWA, API and Web Push registration over HTTPS
+        if: ${{ !inputs.fast }}
         run: bash deployment/gchat/smoke.sh
-      - name: Package the exact tested image
+      - name: Package the release image
         run: bash deployment/gchat/package-release.sh
       - name: Publish immutable version assets
         run: |
