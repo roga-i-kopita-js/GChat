@@ -311,7 +311,9 @@ export class GChatClient {
     if (previous && previous.call_id === next.call_id && next.version < previous.version) return;
 
     if (previous?.call_id !== next.call_id) {
-      if (previous) this.disposeMedia();
+      // Ended calls already released their media. dial() may have acquired a
+      // fresh microphone for this call before its response/event arrives.
+      if (previous && previous.state !== 'ended') this.disposeMedia();
 
       this.sequence = Number(localStorage.getItem('gchat.sequence.' + next.call_id) ?? 0);
     }
