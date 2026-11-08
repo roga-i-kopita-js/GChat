@@ -31,8 +31,9 @@ test('standalone OpenAPI equals the HTTP application document from the same Nest
   };
   const builder = Test.createTestingModule({ imports: [AppModule] });
 
-  for (const provider of [DirectCallsWorker, SignalingWorker, PushWorker, PushClient])
+  for (const provider of [DirectCallsWorker, SignalingWorker, PushWorker, PushClient]) {
     builder.overrideProvider(provider).useValue({});
+  }
 
   builder.overrideProvider(DATABASE_POOL).useValue({ query: forbidden, end: async () => {} });
   builder
@@ -93,7 +94,9 @@ function decorate(ControllerClass, method, id) {
 
   Get()(ControllerClass.prototype, method, descriptor);
 
-  if (id) ApiOperation({ operationId: id })(ControllerClass.prototype, method, descriptor);
+  if (id) {
+    ApiOperation({ operationId: id })(ControllerClass.prototype, method, descriptor);
+  }
 }
 
 test('renaming a controller and its method preserves the explicit operationId', async () => {

@@ -30,7 +30,9 @@ export class RedisService implements OnModuleInit, OnApplicationShutdown {
         await this.ping();
       }, this.config.getOrThrow<number>('REDIS_STARTUP_TIMEOUT_MS'));
     } catch {
-      if (this.client.isOpen) this.client.destroy();
+      if (this.client.isOpen) {
+        this.client.destroy();
+      }
 
       throw new Error('Redis startup failed');
     }
@@ -43,7 +45,9 @@ export class RedisService implements OnModuleInit, OnApplicationShutdown {
   }
 
   async onApplicationShutdown(): Promise<void> {
-    if (!this.client.isOpen) return;
+    if (!this.client.isOpen) {
+      return;
+    }
 
     try {
       await this.withDeadline(
@@ -51,7 +55,9 @@ export class RedisService implements OnModuleInit, OnApplicationShutdown {
         this.config.getOrThrow<number>('REDIS_COMMAND_TIMEOUT_MS'),
       );
     } catch {
-      if (this.client.isOpen) this.client.destroy();
+      if (this.client.isOpen) {
+        this.client.destroy();
+      }
     }
   }
 

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>GChat</string>
+	<string>$(GCHAT_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -33,6 +33,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>GChat подключается к выбранному вами серверу в локальной сети.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>GChat использует микрофон для голосовых звонков и проверки доступа по вашему запросу.</string>
 	<key>NSCameraUsageDescription</key>

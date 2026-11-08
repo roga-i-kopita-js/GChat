@@ -1,20 +1,26 @@
 import { Code2, MessageCircle, Phone, Settings, ShieldCheck, X } from 'lucide-react';
 import type { JSX } from 'react';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { lazy, useEffect, useState, useSyncExternalStore } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 
 import { useAuth } from '../features/auth/AuthProvider';
 import { useCalls } from '../features/calls/CallsProvider';
-import { DiagnosticsDialog } from '../features/calls/DiagnosticsDialog';
-import { embedded } from '../shared/native/bridge';
-import { nativeRuntime } from '../shared/native/runtime';
+import { useDevice, useDevicePresentation } from '../shared/device/react';
+import { LazyPanel } from '../shared/ui/LazyPanel';
 import { useDebug } from '../shared/useDebug';
 
+const DiagnosticsDialog = lazy(
+  async (): Promise<{
+    default: typeof import('../features/calls/DiagnosticsDialog').DiagnosticsDialog;
+  }> => ({ default: (await import('../features/calls/DiagnosticsDialog')).DiagnosticsDialog }),
+);
+
 export function AppLayout(): JSX.Element {
+  const device = useDevice();
+  const presentation = useDevicePresentation();
   const { user } = useAuth();
-  const native = useSyncExternalStore(nativeRuntime.subscribe, nativeRuntime.getSnapshot);
   const debug = useDebug();
-  const { client, state, incoming, ongoing, peerName, setMobile } = useCalls();
+  const { state, incoming, ongoing, peerName, setMobile } = useCalls();
   const path = useLocation().pathname;
   const admin = path.startsWith('/admin');
   const settings = path.startsWith('/settings');
@@ -23,16 +29,20 @@ export function AppLayout(): JSX.Element {
   const [diagnostics, setDiagnostics] = useState(false);
 
   useEffect((): void => {
-    if (incoming || !debug) setDiagnostics(false);
+    if (incoming || !debug) {
+      setDiagnostics(false);
+    }
   }, [incoming, debug]);
 
-  if (!user) return <></>;
+  if (!user) {
+    return <></>;
+  }
 
   return (
     <div
       className={
         'app-shell' +
-        (embedded ? ' app-shell-native' : '') +
+        (presentation.callControls === 'host' ? ' app-shell-native' : '') +
         (dialogs ? ' app-shell-dialogs' : '') +
         (returnToCall ? ' app-shell-with-call' : '')
       }
@@ -59,11 +69,14 @@ export function AppLayout(): JSX.Element {
           (!state.owner ? (
             <div role="status" className="tab-banner">
               Звонками управляет другая вкладка GChat.
-              <button onClick={(): void => client.activate()} disabled={ongoing}>
+              <button
+                onClick={(): void => void device.calls.takeControl().catch((): void => {})}
+                disabled={ongoing}
+              >
                 Открыть здесь
               </button>
             </div>
-          ) : embedded && native.nativeCalls === false ? (
+          ) : presentation.callControls === 'host' && !presentation.callingAvailable ? (
             <div role="status" className="tab-banner">
               Звонки в этой сборке приложения пока недоступны.
             </div>
@@ -78,14 +91,14 @@ export function AppLayout(): JSX.Element {
             <button
               className="icon"
               aria-label="Закрыть сообщение"
-              onClick={(): void => client.clearError()}
+              onClick={(): void => device.calls.clearError()}
             >
               <X size={17} />
             </button>
           </div>
         )}
         <Outlet />
-        {!settings && !dialogs && debug && !embedded && (
+        {!settings && !dialogs && debug && presentation.callControls === 'application' && (
           <footer className="workspace-footer">
             <button onClick={(): void => setDiagnostics(true)}>
               <Code2 size={14} /> Диагностика
@@ -125,8 +138,18 @@ export function AppLayout(): JSX.Element {
           <span>Настройки</span>
         </NavLink>
       </nav>
-      {debug && !embedded && diagnostics && (
-        <DiagnosticsDialog close={(): void => setDiagnostics(false)} />
+      {debug && presentation.callControls === 'application' && diagnostics && (
+        <LazyPanel
+          pending={<p role="status">Загружаем диагностику…</p>}
+          failed={
+            <div role="alert">
+              <p>Не удалось загрузить диагностику.</p>
+              <button onClick={(): void => setDiagnostics(false)}>Закрыть диагностику</button>
+            </div>
+          }
+        >
+          <DiagnosticsDialog close={(): void => setDiagnostics(false)} />
+        </LazyPanel>
       )}
     </div>
   );

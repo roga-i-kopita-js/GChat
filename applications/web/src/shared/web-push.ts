@@ -35,25 +35,34 @@ export async function syncWebPush(
   return navigator.locks.request('gchat-web-push', async (): Promise<boolean> => {
     const registration = await readyPwa();
 
-    if (!current()) return false;
+    if (!current()) {
+      return false;
+    }
 
     let subscription = await registration.pushManager.getSubscription();
 
-    if (!current()) return false;
+    if (!current()) {
+      return false;
+    }
 
     if (subscription && !matchesVapid(subscription, key)) {
       await send(null);
 
-      if (!current()) return false;
+      if (!current()) {
+        return false;
+      }
 
-      if (!(await subscription.unsubscribe()))
+      if (!(await subscription.unsubscribe())) {
         throw new Error('Не удалось заменить подписку. Повторите попытку.');
+      }
 
       subscription = null;
       create = true;
     }
 
-    if (!current()) return false;
+    if (!current()) {
+      return false;
+    }
 
     if (!subscription && create && Notification.permission === 'granted') {
       subscription = await registration.pushManager.subscribe({
@@ -62,7 +71,9 @@ export async function syncWebPush(
       });
     }
 
-    if (!current()) return false;
+    if (!current()) {
+      return false;
+    }
 
     const json = subscription?.toJSON();
 

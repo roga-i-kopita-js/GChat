@@ -17,7 +17,9 @@ export function parseDialogKeys(raw: unknown, active: unknown): Map<string, Buff
     throw new Error('Invalid DIALOGS_ENCRYPTION_KEYS / DIALOGS_ACTIVE_KEY_ID');
   };
 
-  if (typeof raw !== 'string' || typeof active !== 'string') return fail();
+  if (typeof raw !== 'string' || typeof active !== 'string') {
+    return fail();
+  }
 
   let obj: unknown;
 
@@ -27,24 +29,31 @@ export function parseDialogKeys(raw: unknown, active: unknown): Map<string, Buff
     return fail();
   }
 
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return fail();
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    return fail();
+  }
 
   const keys = new Map<string, Buffer>();
   const values = new Set<string>();
 
   for (const [id, encoded] of Object.entries(obj)) {
-    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || typeof encoded !== 'string') return fail();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || typeof encoded !== 'string') {
+      return fail();
+    }
 
     const key = Buffer.from(encoded, 'base64');
 
-    if (key.length !== 32 || key.toString('base64') !== encoded || values.has(encoded))
+    if (key.length !== 32 || key.toString('base64') !== encoded || values.has(encoded)) {
       return fail();
+    }
 
     keys.set(id, key);
     values.add(encoded);
   }
 
-  if (!keys.has(active)) return fail();
+  if (!keys.has(active)) {
+    return fail();
+  }
 
   return keys;
 }
@@ -97,7 +106,9 @@ export class DialogsCrypto implements OnModuleInit {
             .from(dialogEncryptionKeys)
             .where(eq(dialogEncryptionKeys.keyId, id));
 
-          if (!row || !row.fingerprint.equals(fingerprint)) throw new Error();
+          if (!row || !row.fingerprint.equals(fingerprint)) {
+            throw new Error();
+          }
         }
       });
     } catch {
@@ -124,11 +135,12 @@ export class DialogsCrypto implements OnModuleInit {
         },
       );
 
-      if (row && row.attempts >= Math.floor(16777216 * 0.9))
+      if (row && row.attempts >= Math.floor(16777216 * 0.9)) {
         this.logger.warn('Dialogs encryption key budget low', {
           keyId: this.active,
           attempts: row.attempts,
         });
+      }
 
       return !!row;
     } catch {
@@ -142,7 +154,9 @@ export class DialogsCrypto implements OnModuleInit {
   ): Pick<MessageRow, 'iv' | 'ciphertext' | 'authTag'> {
     const key = this.keys.get(row.encryptionKeyId);
 
-    if (!key) throw this.error.serviceUnavailable();
+    if (!key) {
+      throw this.error.serviceUnavailable();
+    }
 
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
@@ -159,11 +173,14 @@ export class DialogsCrypto implements OnModuleInit {
   decrypt(row: MessageRow): MessageContent {
     const key = this.keys.get(row.encryptionKeyId);
 
-    if (!key) throw this.error.serviceUnavailable();
+    if (!key) {
+      throw this.error.serviceUnavailable();
+    }
 
     try {
-      if (row.encryptionVersion !== 1 || row.iv.length !== 12 || row.authTag.length !== 16)
+      if (row.encryptionVersion !== 1 || row.iv.length !== 12 || row.authTag.length !== 16) {
         throw new Error();
+      }
 
       const decipher = createDecipheriv('aes-256-gcm', key, row.iv, { authTagLength: 16 });
 
@@ -172,11 +189,15 @@ export class DialogsCrypto implements OnModuleInit {
       const plaintext = Buffer.concat([decipher.update(row.ciphertext), decipher.final()]);
       const content = contentValue(JSON.parse(plaintext.toString('utf8')), this.error);
 
-      if (!Buffer.from(JSON.stringify(content)).equals(plaintext)) throw new Error();
+      if (!Buffer.from(JSON.stringify(content)).equals(plaintext)) {
+        throw new Error();
+      }
 
       return content;
     } catch (cause) {
-      if (cause instanceof AppError && cause.code === 'SERVICE_UNAVAILABLE') throw cause;
+      if (cause instanceof AppError && cause.code === 'SERVICE_UNAVAILABLE') {
+        throw cause;
+      }
 
       throw this.error.internal();
     }

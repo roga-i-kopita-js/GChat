@@ -74,11 +74,12 @@ try {
     (await database.query("INSERT INTO gchat_groups(name) VALUES('близкие') RETURNING id")).rows[0]
       .id;
 
-  for (const id of users)
+  for (const id of users) {
     await database.query(
       'INSERT INTO gchat_group_members(group_id,user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',
       [group, id],
     );
+  }
 } finally {
   await database.end();
 }

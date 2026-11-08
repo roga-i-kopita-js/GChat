@@ -43,7 +43,9 @@ export class AuthRepository {
         .filter((row): boolean => row.disabledAt === null)
         .map(({ id, role }): { id: string; role: Account['role'] } => ({ id, role }));
     } catch (cause) {
-      if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
+      if (isDatabaseUnavailable(cause)) {
+        throw this.error.serviceUnavailable({ cause });
+      }
 
       throw cause;
     }
@@ -53,7 +55,9 @@ export class AuthRepository {
     try {
       return (await this.database.db.select().from(users).where(where).limit(1))[0];
     } catch (cause) {
-      if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
+      if (isDatabaseUnavailable(cause)) {
+        throw this.error.serviceUnavailable({ cause });
+      }
 
       throw cause;
     }

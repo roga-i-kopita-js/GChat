@@ -7,6 +7,11 @@
     "open": "open App/App.xcodeproj",
     "build": "xcodebuild -project App/App.xcodeproj -scheme GChat -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData CODE_SIGN_IDENTITY=- build",
     "test": "swift test --package-path NativeCore",
-    "build:core": "swift build --package-path NativeCore"
+    "test:media": "node MediaTests/run.mjs",
+    "build:core": "swift build --package-path NativeCore",
+    "bridge:serve": "node BridgeHarness/server.mjs",
+    "build:bridge": "xcodebuild -project App/App.xcodeproj -scheme GChat -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath BridgeHarness/DerivedData PRODUCT_BUNDLE_IDENTIFIER=com.gchat.bridgeharness GCHAT_DISPLAY_NAME='GChat Bridge' CODE_SIGN_ENTITLEMENTS=../BridgeHarness/BridgeHarness.entitlements CODE_SIGN_IDENTITY=- build",
+    "test:bridge": "node --test BridgeHarness/telemetry.test.mjs",
+    "bridge:build": "node BridgeHarness/build-navigation.mjs"
   }
 }

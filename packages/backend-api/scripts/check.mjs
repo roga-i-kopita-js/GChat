@@ -16,16 +16,19 @@ async function compare(expected, actual) {
   if (
     JSON.stringify(entries.map((e) => e.name).sort()) !==
     JSON.stringify(actualEntries.map((e) => e.name).sort())
-  )
+  ) {
     throw new Error(`Generated file set differs: ${expected}`);
+  }
 
   for (const entry of entries) {
     const left = join(expected, entry.name);
     const right = join(actual, entry.name);
 
-    if (entry.isDirectory()) await compare(left, right);
-    else if (!(await readFile(left)).equals(await readFile(right)))
+    if (entry.isDirectory()) {
+      await compare(left, right);
+    } else if (!(await readFile(left)).equals(await readFile(right))) {
       throw new Error(`Stale API artifact: ${left}`);
+    }
   }
 }
 
@@ -34,8 +37,9 @@ try {
   run(['--filter', '@gchat/backend', 'openapi:export', join(temporary, 'openapi.json')]);
   const snapshot = await readFile(join(root, 'openapi.json'));
 
-  if (!snapshot.equals(await readFile(join(temporary, 'openapi.json'))))
+  if (!snapshot.equals(await readFile(join(temporary, 'openapi.json')))) {
     throw new Error('Stale openapi.json; run pnpm api:generate');
+  }
 
   run(['generate', join(temporary, 'openapi.json'), join(temporary, 'generated')], root);
   await compare(join(root, 'src/generated'), join(temporary, 'generated'));

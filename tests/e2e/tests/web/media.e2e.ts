@@ -18,10 +18,11 @@ test.beforeEach((): void => {
 test.afterEach(async (): Promise<void> => {
   for (const context of contexts.splice(0)) {
     try {
-      for (const page of context.pages())
+      for (const page of context.pages()) {
         await page.evaluate(async (): Promise<void> => {
           await window.playbackProbe?.dispose();
         });
+      }
     } finally {
       await context.close();
     }
@@ -39,7 +40,9 @@ async function pair(
   ui.on('page', (page): void => {
     page.on('websocket', (socket): void => {
       // Vite HMR has its own socket on every page; only /ws is GChat signaling.
-      if (new URL(socket.url()).pathname !== '/ws') return;
+      if (new URL(socket.url()).pathname !== '/ws') {
+        return;
+      }
 
       signaling.opened++;
       socket.on('close', (): void => {
@@ -277,19 +280,24 @@ test('live audio survives real JWT expiry and one refresh shared by browser tabs
 
   // No frame payloads, request bodies or credentials are collected.
   context.on('request', (request): void => {
-    if (new URL(request.url()).pathname === '/api/auth/refresh') refreshRequests++;
+    if (new URL(request.url()).pathname === '/api/auth/refresh') {
+      refreshRequests++;
+    }
   });
   context.on('response', (response): void => {
     const path = new URL(response.url()).pathname;
 
-    if (path === '/api/auth/refresh') refreshStatuses.push(response.status());
+    if (path === '/api/auth/refresh') {
+      refreshStatuses.push(response.status());
+    }
 
     if (
       path.startsWith('/api/groups') &&
       response.status() === 200 &&
       refreshStatuses.includes(200)
-    )
+    ) {
       contactsAfterRefresh++;
+    }
   });
   const original = await session(web);
 
@@ -339,7 +347,9 @@ test('live audio survives real JWT expiry and one refresh shared by browser tabs
     ]);
     observations++;
 
-    if (observations % 10 === 0) console.log('Live audio continuity samples:', observations);
+    if (observations % 10 === 0) {
+      console.log('Live audio continuity samples:', observations);
+    }
 
     await new Promise<void>((resolve): void => {
       setTimeout(resolve, sampleInterval);
@@ -373,7 +383,9 @@ test('live audio survives real JWT expiry and one refresh shared by browser tabs
   expect(rotated.expiresAt).toBeGreaterThan(original.expiresAt);
   expect(rotated.pending).toBe(false);
 
-  for (const follower of followers) expect(await session(follower)).toEqual(rotated);
+  for (const follower of followers) {
+    expect(await session(follower)).toEqual(rotated);
+  }
 
   expect(signaling).toEqual({ opened: 1, closed: 0 });
   await tones(web, peer);

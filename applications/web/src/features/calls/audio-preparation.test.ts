@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { AudioPreparation } from './audio-preparation';
+import { AudioPreparation } from '../../shared/calls/audio-preparation';
 
 const close = vi.fn(async (): Promise<void> => {});
 const resume = vi.fn(async (): Promise<void> => {});

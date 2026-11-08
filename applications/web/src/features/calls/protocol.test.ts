@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { callSchema, mergeCall } from './protocol';
+import { callSchema, mergeCall } from '../../shared/calls/protocol';
 
 const call = callSchema.parse({
   call_id: '7b8b5b26-929c-4c11-a0ba-902bb7947853',

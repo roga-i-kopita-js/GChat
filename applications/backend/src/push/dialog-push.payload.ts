@@ -15,13 +15,17 @@ export function dialogPushPayload(message: MessageDto, apns: boolean): object {
   const body = message.content.kind === 'text' ? message.content.text : 'Стикер';
   const budget = apns ? 4096 : 3000;
 
-  if (Buffer.byteLength(JSON.stringify(build(body))) <= budget) return build(body);
+  if (Buffer.byteLength(JSON.stringify(build(body))) <= budget) {
+    return build(body);
+  }
 
   const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
   let prefix = '';
 
   for (const { segment } of segmenter.segment(body)) {
-    if (Buffer.byteLength(JSON.stringify(build(prefix + segment + '…'))) > budget) break;
+    if (Buffer.byteLength(JSON.stringify(build(prefix + segment + '…'))) > budget) {
+      break;
+    }
 
     prefix += segment;
   }

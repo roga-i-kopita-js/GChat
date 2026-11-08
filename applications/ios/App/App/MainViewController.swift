@@ -22,6 +22,11 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
 
     required init?(coder: NSCoder) { fatalError("Use init(server:sessions:)") }
 
+    override func willMove(toParent parent: UIViewController?) {
+        if parent == nil { plugin?.invalidateCycle() }
+        super.willMove(toParent: parent)
+    }
+
     override func instanceDescriptor() -> InstanceDescriptor {
         let descriptor = InstanceDescriptor(
             at: Bundle.main.bundleURL.appendingPathComponent("public"),

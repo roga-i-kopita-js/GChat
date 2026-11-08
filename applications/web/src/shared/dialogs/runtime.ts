@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { retryAfter } from '../api/client';
 import { prepareUpdate, updateChannel, updateLock, updateRequested } from '../pwa-update';
+import { DialogModels } from './live-models';
 import type { DialogMessage } from './model';
 import {
   commitPage,
@@ -41,23 +42,33 @@ interface Selection {
 
 export function dialogError(error: unknown): string {
   if (error instanceof StorageError) {
-    if (error.code === 'STORAGE_CONFLICT')
+    if (error.code === 'STORAGE_CONFLICT') {
       return 'Данные изменились в другой вкладке. Обновите и повторите.';
+    }
 
-    if (error.code === 'STORAGE_VERSION_UNSUPPORTED')
+    if (error.code === 'STORAGE_VERSION_UNSUPPORTED') {
       return 'Обновите приложение для доступа к переписке.';
+    }
 
     return 'Не удалось сохранить переписку на устройстве. Повторите попытку.';
   }
 
   if (error instanceof ApiError) {
-    if (error.code === 'DIALOG_NOT_ALLOWED') return 'Действие недоступно по текущим правам.';
+    if (error.code === 'DIALOG_NOT_ALLOWED') {
+      return 'Действие недоступно по текущим правам.';
+    }
 
-    if (error.code === 'NOT_FOUND') return 'Диалог недоступен.';
+    if (error.code === 'NOT_FOUND') {
+      return 'Диалог недоступен.';
+    }
 
-    if (error.status === 429) return 'Слишком много запросов. Повторите после паузы.';
+    if (error.status === 429) {
+      return 'Слишком много запросов. Повторите после паузы.';
+    }
 
-    if (error.code === 'VALIDATION_ERROR') return 'Проверьте сообщение: до 4000 символов.';
+    if (error.code === 'VALIDATION_ERROR') {
+      return 'Проверьте сообщение: до 4000 символов.';
+    }
   }
 
   return 'Не удалось обновить переписку. Проверьте соединение и повторите.';
@@ -85,6 +96,16 @@ export function wait(ms: number, signal: AbortSignal): Promise<void> {
 
 /** One session cycle, independent of route mounting. No socket or refresh-token ownership. */
 export class DialogRuntime {
+  private readonly models = new DialogModels(this);
+
+  listModel(): DialogModels['list'] {
+    return this.models.list;
+  }
+
+  conversationModel(id: string): ReturnType<DialogModels['conversation']> {
+    return this.models.conversation(id);
+  }
+
   private state: DialogSnapshot = {
     revision: 0,
     status: 'starting',
@@ -148,7 +169,9 @@ export class DialogRuntime {
   };
 
   private changed(error?: string | null): void {
-    if (this.signal.aborted) return;
+    if (this.signal.aborted) {
+      return;
+    }
 
     this.state = {
       ...this.state,
@@ -157,7 +180,9 @@ export class DialogRuntime {
       ...(error !== undefined ? { error } : {}),
     };
 
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 
   isUpdating(): boolean {
@@ -182,7 +207,9 @@ export class DialogRuntime {
   ): void {
     void navigator.locks
       .request(updateLock, { mode: 'shared', signal: this.signal }, async (): Promise<void> => {
-        if (!this.draftFlushers.has(flush)) return;
+        if (!this.draftFlushers.has(flush)) {
+          return;
+        }
 
         lease.held = true;
         await new Promise<void>((resolve): void => {
@@ -199,7 +226,9 @@ export class DialogRuntime {
     this.changed();
 
     for (const [flush, lease] of this.draftFlushers) {
-      if (!lease.held) continue;
+      if (!lease.held) {
+        continue;
+      }
 
       void flush()
         .then((): void => {
@@ -216,6 +245,7 @@ export class DialogRuntime {
   }
 
   private publish(id?: string): void {
+    this.models.committed(id);
     this.changed();
     this.channel?.postMessage({
       type: 'changed',
@@ -232,7 +262,9 @@ export class DialogRuntime {
       async (): Promise<T> => {
         this.signal.throwIfAborted();
 
-        if (this.updating) throw new DOMException('Updating', 'AbortError');
+        if (this.updating) {
+          throw new DOMException('Updating', 'AbortError');
+        }
 
         return operation();
       },
@@ -268,10 +300,12 @@ export class DialogRuntime {
         })
         .safeParse(event.data);
 
-      if (!envelope.success) return;
+      if (!envelope.success) {
+        return;
+      }
 
-      const message = envelope.data,
-        scope = message.scope;
+      const message = envelope.data;
+      const scope = message.scope;
 
       if (
         scope.serverOrigin !== this.scope.serverOrigin ||
@@ -279,21 +313,32 @@ export class DialogRuntime {
         scope.sessionId !== this.scope.sessionId ||
         scope.deviceId !== this.scope.deviceId ||
         message.epoch !== this.storage.epoch
-      )
+      ) {
         return;
+      }
 
-      if (message.type === 'event') this.event(message.event);
-      else if (message.type === 'cooldown' && message.until) {
-        if (message.group === 'get') this.getUntil = Math.max(this.getUntil, message.until);
+      if (message.type === 'event') {
+        this.event(message.event);
+      } else if (message.type === 'cooldown' && message.until) {
+        if (message.group === 'get') {
+          this.getUntil = Math.max(this.getUntil, message.until);
+        }
 
-        if (message.group === 'read') this.nextRead = Math.max(this.nextRead, message.until);
-      } else this.changed();
+        if (message.group === 'read') {
+          this.nextRead = Math.max(this.nextRead, message.until);
+        }
+      } else {
+        this.models.committed(message.id);
+        this.changed();
+      }
     };
     this.stops.push(
       subscribe((type, payload): void => {
         const event = eventSchema.safeParse({ type, payload });
 
-        if (!event.success) return;
+        if (!event.success) {
+          return;
+        }
 
         this.channel?.postMessage({
           type: 'event',
@@ -305,34 +350,48 @@ export class DialogRuntime {
       }),
     );
     const foreground = (): void => {
-      if (document.visibilityState === 'visible') this.refresh();
+      if (document.visibilityState === 'visible') {
+        this.refresh();
+      }
 
-      if (!this.active() && this.selected) this.selected.openRead = false;
+      if (!this.active() && this.selected) {
+        this.selected.openRead = false;
+      }
 
-      if (this.active()) void this.flushRead();
+      if (this.active()) {
+        void this.flushRead();
+      }
     };
     const prepare = this.prepareUpdate;
     const finished = (): void => {
       this.updating = false;
       this.networkController = new AbortController();
 
-      for (const [flush, lease] of this.draftFlushers)
-        if (!lease.held) this.acquireDraftLease(flush, lease);
+      for (const [flush, lease] of this.draftFlushers) {
+        if (!lease.held) {
+          this.acquireDraftLease(flush, lease);
+        }
+      }
 
       this.refresh();
     };
 
     this.updates = new BroadcastChannel(updateChannel);
     this.updates.onmessage = (event: MessageEvent<unknown>): void => {
-      if (event.data === 'prepare') this.prepareUpdate();
+      if (event.data === 'prepare') {
+        this.prepareUpdate();
+      }
     };
     this.updateMonitor = setInterval((): void => {
-      if (this.updating)
+      if (this.updating) {
         void updateRequested()
           .then((pending): void => {
-            if (!pending) finished();
+            if (!pending) {
+              finished();
+            }
           })
           .catch((): void => {});
+      }
     }, 1000);
 
     document.addEventListener('visibilitychange', foreground);
@@ -348,36 +407,50 @@ export class DialogRuntime {
       window.removeEventListener('gchat-update-finished', finished);
     });
     this.timer = setInterval((): void => {
-      if (this.visibleSection && document.visibilityState === 'visible') this.refresh();
+      if (this.visibleSection && document.visibilityState === 'visible') {
+        this.refresh();
+      }
     }, 30000);
     this.state = { ...this.state, status: 'ready', storageWarning: this.storage.warning ?? null };
     this.refresh();
   }
 
   refresh(): void {
-    if (this.signal.aborted || this.updating) return;
+    if (this.signal.aborted || this.updating) {
+      return;
+    }
 
     void this.refreshList().catch((): void => {});
 
-    if (this.selected) void this.sync(this.selected.id).catch((): void => {});
+    if (this.selected) {
+      void this.sync(this.selected.id).catch((): void => {});
+    }
   }
 
   section(visible: boolean): void {
     this.visibleSection = visible;
 
-    if (visible) this.refresh();
+    if (visible) {
+      this.refresh();
+    }
   }
 
   select(id: string | null): void {
-    if (this.selected?.id === id) return;
+    if (this.selected?.id === id) {
+      return;
+    }
 
     this.selected = id ? { id, atBottom: true, openRead: true, shown: 0 } : null;
 
-    if (id) void this.sync(id, true).catch((): void => {});
+    if (id) {
+      void this.sync(id, true).catch((): void => {});
+    }
   }
 
   shown(id: string, sequence: number, atBottom: boolean): void {
-    if (this.selected?.id !== id) return;
+    if (this.selected?.id !== id) {
+      return;
+    }
 
     this.selected.atBottom = atBottom;
     this.selected.shown = sequence;
@@ -387,27 +460,33 @@ export class DialogRuntime {
   private event(value: unknown): void {
     const parsed = eventSchema.safeParse(value);
 
-    if (!parsed.success || this.signal.aborted) return;
+    if (!parsed.success || this.signal.aborted) {
+      return;
+    }
 
-    const event = parsed.data,
-      id = event.payload.dialog_id;
+    const event = parsed.data;
+    const id = event.payload.dialog_id;
 
     this.metadataVersions.set(id, (this.metadataVersions.get(id) ?? 0) + 1);
 
     if (event.type === 'dialog.read_updated') {
       void this.tracked(async (): Promise<void> => {
         await this.storage.change(id, 'confirmRead', ({ record }): void => {
-          if (event.payload.reader_id === this.scope.accountId)
+          if (event.payload.reader_id === this.scope.accountId) {
             record.read = Math.max(record.read, event.payload.last_read_sequence);
-          else if (record.dialog?.peer_id === event.payload.reader_id)
+          } else if (record.dialog?.peer_id === event.payload.reader_id) {
             record.peer_read = Math.max(record.peer_read, event.payload.last_read_sequence);
+          }
         });
         this.publish(id);
       }).catch((): void => {});
     }
 
-    if (this.selected?.id === id) void this.sync(id).catch((): void => {});
-    else void this.metadata(id).catch((): void => {});
+    if (this.selected?.id === id) {
+      void this.sync(id).catch((): void => {});
+    } else {
+      void this.metadata(id).catch((): void => {});
+    }
 
     void this.refreshList().catch((): void => {});
   }
@@ -422,10 +501,11 @@ export class DialogRuntime {
     await previous;
 
     try {
-      while (this.activeGets >= 2)
+      while (this.activeGets >= 2) {
         await new Promise<void>((resolve): void => {
           this.getFinished.add(resolve);
         });
+      }
 
       await wait(Math.max(this.nextGet, this.getUntil) - Date.now(), this.networkSignal);
       this.activeGets++;
@@ -454,7 +534,9 @@ export class DialogRuntime {
     } finally {
       this.activeGets--;
 
-      for (const finished of this.getFinished) finished();
+      for (const finished of this.getFinished) {
+        finished();
+      }
 
       this.getFinished.clear();
     }
@@ -492,16 +574,21 @@ export class DialogRuntime {
 
         mergeMetadata(record, dialog);
 
-        if (stale && previous && record.dialog)
+        if (stale && previous && record.dialog) {
           record.dialog.has_unread_messages = previous.has_unread_messages;
+        }
       },
     );
 
-    if (value.record.read > dialog.last_read_sequence) this.dirty.add(dialog.dialog_id);
+    if (value.record.read > dialog.last_read_sequence) {
+      this.dirty.add(dialog.dialog_id);
+    }
   }
 
   async refreshList(offset = 0): Promise<void> {
-    if (this.listTask) return this.listTask;
+    if (this.listTask) {
+      return this.listTask;
+    }
 
     this.listTask = this.tracked(async (): Promise<void> => {
       const versions = new Map(this.metadataVersions);
@@ -558,8 +645,9 @@ export class DialogRuntime {
       this.signal.aborted ||
       !this.visibleSection ||
       document.visibilityState !== 'visible'
-    )
+    ) {
       return;
+    }
 
     const attempt = this.retryCounts.get(key) ?? 0;
 
@@ -570,8 +658,13 @@ export class DialogRuntime {
         (): void => {
           this.retries.delete(key);
 
-          if (!this.signal.aborted && this.visibleSection && document.visibilityState === 'visible')
+          if (
+            !this.signal.aborted &&
+            this.visibleSection &&
+            document.visibilityState === 'visible'
+          ) {
             callback();
+          }
         },
         [1000, 2000, 5000, 10000][attempt] ?? 30000,
       ),
@@ -586,6 +679,7 @@ export class DialogRuntime {
     }
 
     this.busy.add(id);
+    this.models.conversationChanged(id);
     this.changed();
 
     try {
@@ -599,7 +693,9 @@ export class DialogRuntime {
           record.permissions = rights.dialogs;
         });
 
-        if (!rights.dialogs.can_read) return;
+        if (!rights.dialogs.can_read) {
+          return;
+        }
 
         await navigator.locks.request(
           'gchat-dialog-sync:' + JSON.stringify(this.scope) + ':' + id,
@@ -621,7 +717,9 @@ export class DialogRuntime {
 
               await this.savePage(id, page, 'after', cursor);
 
-              if (this.updating || (!page.has_more && !this.dirty.has(id))) break;
+              if (this.updating || (!page.has_more && !this.dirty.has(id))) {
+                break;
+              }
             } while (!this.signal.aborted);
           },
         );
@@ -638,13 +736,15 @@ export class DialogRuntime {
               record.permissions = null;
             })
             .catch((): void => {});
-        } else if (!(error instanceof ApiError && error.code === 'NOT_FOUND'))
+        } else if (!(error instanceof ApiError && error.code === 'NOT_FOUND')) {
           this.retry(id, (): void => {
             void this.sync(id).catch((): void => {});
           });
+        }
       }
     } finally {
       this.busy.delete(id);
+      this.models.conversationChanged(id);
       this.changed();
     }
   }
@@ -694,8 +794,9 @@ export class DialogRuntime {
         !value.record.permissions?.can_read ||
         !value.record.has_older ||
         value.record.before_sequence === null
-      )
+      ) {
         return;
+      }
 
       const page = await this.history(id, { before_sequence: value.record.before_sequence });
 
@@ -706,10 +807,14 @@ export class DialogRuntime {
   async openPeer(peer: string): Promise<string> {
     const existing = this.opening.get(peer);
 
-    if (existing) return existing;
+    if (existing) {
+      return existing;
+    }
 
     const task = this.tracked(async (): Promise<string> => {
-      if (Date.now() < this.createUntil) throw new Error('RATE_LIMITED');
+      if (Date.now() < this.createUntil) {
+        throw new Error('RATE_LIMITED');
+      }
 
       try {
         const result = await this.request((api): ReturnType<typeof api.dialogsCreate> =>
@@ -741,7 +846,9 @@ export class DialogRuntime {
   async draft(id: string, text: string, expectedRevision: number): Promise<number> {
     const operation = (): Promise<StoredDialog> =>
       this.storage.change(id, 'saveDraft', ({ record }): void => {
-        if (record.draft.revision !== expectedRevision) throw new StorageError('STORAGE_CONFLICT');
+        if (record.draft.revision !== expectedRevision) {
+          throw new StorageError('STORAGE_CONFLICT');
+        }
 
         record.draft = { text, revision: expectedRevision + 1 };
       });
@@ -771,16 +878,21 @@ export class DialogRuntime {
         );
 
         if (prepared) {
-          if (JSON.stringify(prepared.content) !== JSON.stringify(pending.content))
+          if (JSON.stringify(prepared.content) !== JSON.stringify(pending.content)) {
             throw new StorageError('STORAGE_CONFLICT');
+          }
 
           return;
         }
 
-        if (!record.permissions?.can_send) throw new Error('FORBIDDEN');
+        if (!record.permissions?.can_send) {
+          throw new Error('FORBIDDEN');
+        }
 
         if (content.kind === 'text') {
-          if (record.draft.revision !== draftRevision) throw new StorageError('STORAGE_CONFLICT');
+          if (record.draft.revision !== draftRevision) {
+            throw new StorageError('STORAGE_CONFLICT');
+          }
 
           record.draft = { text: '', revision: record.draft.revision + 1 };
         }
@@ -797,26 +909,34 @@ export class DialogRuntime {
       const { record } = await this.storage.read(id);
       const pending = record.outbox.find((value): boolean => value.client_message_id === clientId);
 
-      if (pending) await this.attempt(id, pending);
+      if (pending) {
+        await this.attempt(id, pending);
+      }
     });
   }
 
   private sending = new Set<string>();
 
   private async attempt(id: string, pending: PendingMessage): Promise<void> {
-    if (this.sending.has(pending.client_message_id)) return;
+    if (this.sending.has(pending.client_message_id)) {
+      return;
+    }
 
     this.sending.add(pending.client_message_id);
 
     try {
-      if (Date.now() < this.sendUntil) throw new Error('RATE_LIMITED');
+      if (Date.now() < this.sendUntil) {
+        throw new Error('RATE_LIMITED');
+      }
 
       await this.storage.change(id, 'markAttempt', ({ record }): void => {
         const stored = record.outbox.find(
           (value): boolean => value.client_message_id === pending.client_message_id,
         );
 
-        if (!stored) throw new StorageError('STORAGE_CONFLICT');
+        if (!stored) {
+          throw new StorageError('STORAGE_CONFLICT');
+        }
 
         stored.state = 'sending';
         stored.error = null;
@@ -862,12 +982,15 @@ export class DialogRuntime {
   }
 
   private async flushRead(): Promise<void> {
-    if (this.reading || !this.selected || !this.active() || this.updating || this.signal.aborted)
+    if (this.reading || !this.selected || !this.active() || this.updating || this.signal.aborted) {
       return;
+    }
 
     const selected = this.selected;
 
-    if (!(selected.atBottom || selected.openRead) || !selected.shown) return;
+    if (!(selected.atBottom || selected.openRead) || !selected.shown) {
+      return;
+    }
 
     this.reading = true;
     let confirmed = 0;
@@ -890,8 +1013,9 @@ export class DialogRuntime {
               this.selected !== selected ||
               !this.active() ||
               !(selected.atBottom || selected.openRead)
-            )
+            ) {
               return;
+            }
 
             const { record } = await this.storage.read(selected.id);
 
@@ -905,8 +1029,9 @@ export class DialogRuntime {
 
             this.nextRead = Date.now() + 250;
 
-            if (this.storage.adapter === 'indexeddb')
+            if (this.storage.adapter === 'indexeddb') {
               await readDeadline(this.storage, this.nextRead);
+            }
 
             const result = await this.request((api): ReturnType<typeof api.dialogsRead> =>
               api.dialogsRead({
@@ -947,21 +1072,30 @@ export class DialogRuntime {
     } finally {
       this.reading = false;
 
-      if (confirmed && selected === this.selected && selected.shown > confirmed)
+      if (confirmed && selected === this.selected && selected.shown > confirmed) {
         void this.flushRead();
+      }
     }
   }
 
   stop(): void {
-    if (this.signal.aborted) return;
+    this.models.stop();
+
+    if (this.signal.aborted) {
+      return;
+    }
 
     this.controller.abort();
 
-    for (const finished of this.getFinished) finished();
+    for (const finished of this.getFinished) {
+      finished();
+    }
 
     this.getFinished.clear();
 
-    for (const lease of this.draftFlushers.values()) lease.release?.();
+    for (const lease of this.draftFlushers.values()) {
+      lease.release?.();
+    }
 
     this.draftFlushers.clear();
     this.storage.close();
@@ -970,9 +1104,13 @@ export class DialogRuntime {
     clearInterval(this.updateMonitor);
     this.updates?.close();
 
-    for (const timer of this.retries.values()) clearTimeout(timer);
+    for (const timer of this.retries.values()) {
+      clearTimeout(timer);
+    }
 
-    for (const stop of this.stops) stop();
+    for (const stop of this.stops) {
+      stop();
+    }
 
     this.state = { ...this.state, status: 'stopped' };
   }

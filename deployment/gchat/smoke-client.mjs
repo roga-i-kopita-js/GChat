@@ -139,16 +139,22 @@ socket.on('message', (data) => {
   const message = JSON.parse(data.toString());
   const operation = pending.get(message.request_id);
 
-  if (!operation) return;
+  if (!operation) {
+    return;
+  }
 
   pending.delete(message.request_id);
 
-  if (message.error)
+  if (message.error) {
     operation.reject(new Error('Smoke WSS command rejected: ' + message.error.code));
-  else operation.resolve(message.payload);
+  } else {
+    operation.resolve(message.payload);
+  }
 });
 socket.on('close', () => {
-  for (const operation of pending.values()) operation.reject(new Error('Smoke WSS closed'));
+  for (const operation of pending.values()) {
+    operation.reject(new Error('Smoke WSS closed'));
+  }
 
   pending.clear();
 });
@@ -216,7 +222,9 @@ try {
     function receive(raw) {
       const frame = JSON.parse(raw.toString());
 
-      if (frame.type !== 'dialog.messages_available') return;
+      if (frame.type !== 'dialog.messages_available') {
+        return;
+      }
 
       clearTimeout(timeout);
       socket.off('message', receive);
@@ -268,8 +276,9 @@ try {
   }
 } finally {
   // No call is created, and this disposable subscription never receives a real push.
-  if (registered && socket.readyState === WebSocket.OPEN)
+  if (registered && socket.readyState === WebSocket.OPEN) {
     await command('device.web_push', { subscription: null }).catch(() => {});
+  }
 
   clearTimeout(timer);
   socket.terminate();

@@ -10,6 +10,10 @@ import GChatCore
         CAPPluginMethod(name: "getDialogStorageContext", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "dialogStorage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "consumeDialogNotificationIntent", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "navigationReady", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "completeNavigation", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "httpRequest", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "httpCancel", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getCapabilities", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "webReady", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "login", returnType: CAPPluginReturnPromise),
@@ -17,11 +21,39 @@ import GChatCore
         CAPPluginMethod(name: "getAccessToken", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "placeCall", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "sendWsMessage", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "mediaCommand", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "executeDeviceCommand", returnType: CAPPluginReturnPromise)
     ] }
 
     private lazy var device = DeviceController(presenter: { [weak self] in self?.bridge?.viewController })
+    private lazy var media: NativeMediaController = {
+        let value = NativeMediaController(files: device, webView: { [weak self] in self?.webView })
+        value.onEvent = { [weak self] event in
+            guard let self, let cycle = self.cycle, self.mediaCycle == cycle else { return }
+            self.notifyListeners("mediaEvent", data: event.merging(["mediaVersion":1,"cycleId":cycle]) { _, new in new })
+        }
+        return value
+    }()
+    private var mediaGeneration = 0
+    private var mediaCycle: String?
+    private var mediaRequests: [String: Task<Void, Never>] = [:]
+    private var mediaReset: Task<Void, Never>?
+    private func resetMedia() {
+        mediaCycle = nil; mediaGeneration += 1
+        for task in mediaRequests.values { task.cancel() }
+        mediaRequests.removeAll()
+        let previous = mediaReset
+        mediaReset = Task { @MainActor in await previous?.value; await self.media.releaseViews() }
+    }
     private var deviceRequests = Set<String>()
+    private lazy var http = NativeHTTPBridge(server: server)
+    private var httpAuthenticated = false
+    private var pendingNavigationRoute: String?
+    private lazy var navigation: NativeNavigation = {
+        let value = NativeNavigation(server: server)
+        value.onCommand = { [weak self] command in self?.notifyListeners("navigationCommand", data: command) }
+        return value
+    }()
     private let server: ServerOrigin
     private let sessions: SessionManager
     private let transport: SharedWebSocket
@@ -73,6 +105,7 @@ import GChatCore
         }
         transport.onInvalidSession = { [weak self] in
             guard let self else { return }
+            self.http.reset()
             self.authRevision += 1
             let revision = self.authRevision
             if let cycle = self.cycle { self.sendLoggedOut(cycle) }
@@ -89,7 +122,21 @@ import GChatCore
         }
     }
 
-    func invalidateCycle() { device.reset(); cycle = nil; transport.attach(cycle: nil) }
+    // Debug harness records only fixed stage names and normalized codes, never payloads.
+    private func traceHarness(_ stage: String) {
+        #if DEBUG
+        guard let bundle = Bundle.main.bundleIdentifier,
+              bundle == "com.gchat.bridgeharness" || bundle.hasPrefix("com.gchat.bridgeharness.dev."),
+              let root = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+        let url = root.appendingPathComponent("gchat-bridge-diagnostics.txt")
+        var lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
+        lines.append(stage)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try? (lines.suffix(60).joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
+        #endif
+    }
+
+    func invalidateCycle() { pendingNavigationRoute = nil; navigation.reset(); httpAuthenticated = false; http.reset(); resetMedia(); device.reset(); cycle = nil; transport.attach(cycle: nil) }
 
     // Capacitor invokes Objective-C selectors on its background bridge queue.
     @objc nonisolated func getCapabilities(_ call: CAPPluginCall) {
@@ -97,7 +144,8 @@ import GChatCore
     }
 
     private func handleGetCapabilities(_ call: CAPPluginCall) {
-        call.resolve(["bridgeVersion": 1, "platform": "ios", "nativeAuth": true, "nativeCalls": false, "nativeWebSocket": true, "dialogStorageVersion": 1, "dialogNotificationsVersion": 1])
+        traceHarness("capabilities")
+        call.resolve(["bridgeVersion": 1, "platform": "ios", "httpVersion": 1, "navigationVersion": 1, "mediaVersion": 1, "nativeAuth": true, "nativeCalls": false, "nativeWebSocket": true, "dialogStorageVersion": 1, "dialogNotificationsVersion": 1])
     }
 
     @objc nonisolated func webReady(_ call: CAPPluginCall) {
@@ -105,6 +153,7 @@ import GChatCore
     }
 
     private func handleWebReady(_ call: CAPPluginCall) {
+        traceHarness("ready started")
         guard call.getInt("bridgeVersion") == 1 else {
             call.reject("Unsupported bridge", "UNSUPPORTED_VERSION")
             return
@@ -113,8 +162,10 @@ import GChatCore
             reject(call, NativeError.validation)
             return
         }
-        if self.cycle != cycle { device.reset() }
+        if self.cycle != cycle { resetMedia(); device.reset() }
         self.cycle = cycle
+        try? navigation.activate(cycle: cycle)
+        http.activate(cycle: cycle)
         transport.attach(cycle: cycle)
         let revision = authRevision
         // Keep React Router's current page across foreground resynchronization.
@@ -131,9 +182,11 @@ import GChatCore
                 let session = try await sessions.restore(force: true)
                 guard self.cycle == cycle, authRevision == revision else { reject(call, NativeError.unavailable); return }
                 sendState(session, cycle: cycle)
+                traceHarness("ready completed")
                 call.resolve()
             } catch {
                 guard self.cycle == cycle, authRevision == revision else { reject(call, NativeError.unavailable); return }
+                traceHarness("ready failed " + ((error as? NativeError)?.rawValue ?? "AUTH_FAILURE"))
                 if case NativeError.invalidSession = error {
                     sendLoggedOut(cycle)
                     sendState(nil, cycle: cycle)
@@ -154,6 +207,10 @@ import GChatCore
             reject(call, NativeError.validation)
             return
         }
+        navigation.cancelPending()
+        httpAuthenticated = false
+        http.reset()
+        http.activate(cycle: cycle)
         authRevision += 1
         let revision = authRevision
         Task { @MainActor in
@@ -173,6 +230,10 @@ import GChatCore
 
     private func handleLogout(_ call: CAPPluginCall) {
         guard let cycle else { reject(call, NativeError.unavailable); return }
+        navigation.cancelPending()
+        httpAuthenticated = false
+        http.reset()
+        http.activate(cycle: cycle)
         authRevision += 1
         let revision = authRevision
         Task { @MainActor in
@@ -217,6 +278,105 @@ import GChatCore
                 }
                 reject(call, error)
             }
+        }
+    }
+
+    @objc nonisolated func navigationReady(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            do {
+                guard let value = call.options as? [String: Any] else { throw DeviceCommandError("INVALID_ARGUMENT") }
+                let wasReady = self.navigation.isReady
+                try self.navigation.webReady(value)
+                let initialRoute = self.navigation.isReady ? self.pendingNavigationRoute : nil
+                if self.navigation.isReady { self.pendingNavigationRoute = nil }
+                call.resolve()
+                #if DEBUG
+                let bundle = Bundle.main.bundleIdentifier ?? ""
+                if !wasReady, self.navigation.isReady,
+                   (bundle == "com.gchat.bridgeharness" || bundle.hasPrefix("com.gchat.bridgeharness.dev.")),
+                   let cycle = self.cycle {
+                    self.runNavigationSmoke(cycle: cycle, initialRoute: initialRoute)
+                    return
+                }
+                #endif
+                if let initialRoute, let cycle = self.cycle { self.enqueueNavigation(initialRoute, cycle: cycle) }
+            } catch { call.reject("Navigation not ready", (error as? DeviceCommandError)?.code ?? "INTEGRATION_ERROR") }
+        }
+    }
+
+    @objc nonisolated func completeNavigation(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            do {
+                guard let value = call.options as? [String: Any] else { throw DeviceCommandError("INVALID_ARGUMENT") }
+                try self.navigation.complete(value)
+                call.resolve()
+            } catch { call.reject("Invalid navigation result", (error as? DeviceCommandError)?.code ?? "INTEGRATION_ERROR") }
+        }
+    }
+
+    #if DEBUG
+    private func runNavigationSmoke(cycle: String, initialRoute: String?) {
+        Task { @MainActor in
+            do {
+                guard self.cycle == cycle else { return }
+                if let initialRoute { _ = try await navigation.navigate(to: initialRoute, replace: true) }
+                guard self.cycle == cycle else { return }
+                let first = try await navigation.navigate(to: "/calls")
+                guard self.cycle == cycle else { return }
+                traceHarness("navigation smoke calls " + ((first["outcome"] as? String) ?? "failed"))
+                let second = try await navigation.navigate(to: "/settings/general/audio")
+                guard self.cycle == cycle else { return }
+                traceHarness("navigation smoke settings " + ((second["outcome"] as? String) ?? "failed"))
+                let id = UUID().uuidString.lowercased()
+                let replace = try await navigation.navigate(to: "/calls", replace: true, requestID: id)
+                guard self.cycle == cycle else { return }
+                let duplicate = try await navigation.navigate(to: "/calls", replace: true, requestID: id)
+                guard self.cycle == cycle else { return }
+                let passed = first["outcome"] as? String == "committed" && second["outcome"] as? String == "committed" &&
+                    replace["outcome"] as? String == "committed" && duplicate["id"] as? String == id
+                notifyListeners("navigationCheck", data: ["cycleId": cycle, "check": "native-roundtrip", "passed": passed])
+            } catch {
+                traceHarness("navigation smoke failed")
+                if self.cycle == cycle { notifyListeners("navigationCheck", data: ["cycleId": cycle, "check": "native-roundtrip", "passed": false]) }
+            }
+        }
+    }
+    #endif
+
+    @objc nonisolated func httpRequest(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            guard let envelope = call.options as? [String: Any] else {
+                call.reject("Invalid HTTP request", "INVALID_ARGUMENT"); return
+            }
+            self.traceHarness("http started")
+            do {
+                call.resolve(try await self.http.execute(envelope) {
+                    guard self.httpAuthenticated else { throw NativeHTTPFailure("network", "UNAUTHENTICATED") }
+                    return try await self.sessions.localSession()?.tokens.access_token
+                })
+                self.traceHarness("http completed")
+            } catch {
+                let failure = (error as? NativeHTTPFailure) ?? NativeHTTPFailure("network", "NETWORK_ERROR")
+                self.traceHarness("http failed " + failure.code)
+                if let code = failure.diagnosticTransportCode { self.traceHarness("http transport " + String(code)) }
+                var response: [String: Any] = ["httpVersion": 1, "error": failure.json]
+                // Only echo validated correlation identifiers, never arbitrary Web data.
+                if let cycle = envelope["cycleId"] as? String, UUID(uuidString: cycle) != nil,
+                   let id = envelope["requestId"] as? String, UUID(uuidString: id) != nil {
+                    response["cycleId"] = cycle; response["requestId"] = id
+                }
+                call.resolve(response)
+            }
+        }
+    }
+
+    @objc nonisolated func httpCancel(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            do {
+                guard let envelope = call.options as? [String: Any] else { throw NativeHTTPFailure("invalid", "INVALID_ARGUMENT") }
+                try self.http.cancel(envelope)
+                call.resolve()
+            } catch { call.reject("HTTP cancellation failed", (error as? NativeHTTPFailure)?.code ?? "INVALID_ARGUMENT") }
         }
     }
 
@@ -291,6 +451,42 @@ import GChatCore
         }
     }
 
+    @objc nonisolated func mediaCommand(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            guard let options = call.options as? [String: Any], Set(options.keys) == ["mediaVersion","cycleId","requestId","command","args"],
+                  call.getInt("mediaVersion") == 1, let cycle = call.getString("cycleId"), UUID(uuidString: cycle) != nil,
+                  let request = call.getString("requestId"), UUID(uuidString: request) != nil,
+                  let command = call.getString("command"), let args = options["args"] as? [String: Any] else { call.reject("Invalid media command", "INVALID_ARGUMENT"); return }
+            var response: [String: Any] = ["mediaVersion":1,"cycleId":cycle,"requestId":request]
+            guard self.cycle == cycle else { response["error"] = ["code":"CANCELLED"]; call.resolve(response); return }
+            if command == "cancel" {
+                guard Set(args.keys) == ["requestId"], let target = args["requestId"] as? String, UUID(uuidString: target) != nil else { call.reject("Invalid media cancellation", "INVALID_ARGUMENT"); return }
+                self.mediaRequests[target]?.cancel()
+                response["result"] = ["outcome":"completed"]; call.resolve(response); return
+            }
+            guard self.mediaRequests.count < 32, self.mediaRequests[request] == nil else { response["error"] = ["code":"BUSY"]; call.resolve(response); return }
+            let revision = self.authRevision
+            let generation = self.mediaGeneration
+            let task = Task { @MainActor in
+                defer { if self.mediaGeneration == generation { self.mediaRequests.removeValue(forKey:request) } }
+                do {
+                    await self.mediaReset?.value
+                    try Task.checkCancellation()
+                    guard try await self.sessions.hasLocalDeviceSession() else { throw DeviceCommandError("UNAUTHENTICATED") }
+                    guard self.cycle == cycle, self.authRevision == revision else { throw DeviceCommandError("CANCELLED") }
+                    self.mediaCycle = cycle
+                    response["result"] = try await self.media.execute(command,args:args)
+                    guard self.cycle == cycle, self.authRevision == revision else { throw DeviceCommandError("CANCELLED") }
+                } catch {
+                    response.removeValue(forKey:"result")
+                    response["error"] = ["code":error is CancellationError ? "CANCELLED" : (error as? DeviceCommandError)?.code ?? "IO_ERROR"]
+                }
+                call.resolve(response)
+            }
+            self.mediaRequests[request] = task
+        }
+    }
+
     @objc nonisolated func executeDeviceCommand(_ call: CAPPluginCall) {
         Task { @MainActor in
             let envelope: DeviceCommandEnvelope
@@ -327,16 +523,21 @@ import GChatCore
     }
 
     private func sendLoggedOut(_ cycle: String) {
+        navigation.cancelPending()
+        httpAuthenticated = false
         notificationIntent = nil
         notificationAccount = nil
         ChatNotifications.shared.clearIntent()
-        device.reset()
+        http.reset()
+        http.activate(cycle: cycle)
+        resetMedia(); device.reset()
         transport.stop()
         lastRoute = "/calls"
         notifyListeners("loggedOut", data: ["cycleId": cycle])
     }
 
     private func sendState(_ session: NativeSession?, cycle: String) {
+        httpAuthenticated = session != nil
         if let session, let account = session.accountID {
             if let expected = notificationAccount, expected != account { notificationIntent = nil }
             notificationAccount = account
@@ -349,10 +550,21 @@ import GChatCore
         ]
         if let session { route["accessToken"] = session.tokens.access_token }
         notifyListeners("route", data: route)
+        let target = session == nil ? server.loginRoute : lastRoute
+        if navigation.isReady { enqueueNavigation(target, cycle: cycle) }
+        else { pendingNavigationRoute = target }
         notifyListeners("callSnapshot", data: [
             "cycleId": cycle, "call": NSNull(), "runtime": ["status": "offline", "muted": false]
         ])
         notifyListeners("wsState", data: ["cycleId": cycle, "status": transport.status])
+    }
+
+    private func enqueueNavigation(_ target: String, cycle: String) {
+        let navigation = self.navigation
+        Task { @MainActor [weak self] in
+            guard self?.cycle == cycle else { return }
+            _ = try? await navigation.navigate(to: target, replace: true)
+        }
     }
 
     private func reject(_ call: CAPPluginCall, _ error: Error) {

@@ -60,6 +60,18 @@ final class ShellViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        DeviceController.prepareStorage()
+        #if DEBUG
+        // Test-only launch configuration; the ordinary app still uses its server picker.
+        let arguments = ProcessInfo.processInfo.arguments
+        if let bundle = Bundle.main.bundleIdentifier,
+           bundle == "com.gchat.bridgeharness" || bundle.hasPrefix("com.gchat.bridgeharness.dev."),
+           let index = arguments.firstIndex(of: "--bridge-server"), arguments.indices.contains(index + 1),
+           let server = try? ServerOrigin(arguments[index + 1]) {
+            open(server)
+            return
+        }
+        #endif
         if let saved = UserDefaults.standard.string(forKey: serverKey),
            let server = try? ServerOrigin(saved) {
             open(server)

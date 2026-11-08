@@ -137,19 +137,25 @@ export class StorageError extends Error {
 }
 
 export function checkText(text: string): string | null {
-  if (!text.trim()) return 'Введите сообщение';
+  if (!text.trim()) {
+    return 'Введите сообщение';
+  }
 
-  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(text))
+  if (/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(text)) {
     return 'Текст содержит некорректный символ';
+  }
 
-  if (Array.from(text).length > 4000) return 'Не больше 4000 символов';
+  if (Array.from(text).length > 4000) {
+    return 'Не больше 4000 символов';
+  }
 
   if (
     new TextEncoder().encode(
       JSON.stringify({ client_message_id: crypto.randomUUID(), content: { kind: 'text', text } }),
     ).length > 65536
-  )
+  ) {
     return 'Сообщение слишком большое';
+  }
 
   return null;
 }
@@ -187,7 +193,9 @@ export function mergeMetadata(
     peer_last_read_sequence: record.peer_read,
   };
 
-  if (permissions) record.permissions = permissions;
+  if (permissions) {
+    record.permissions = permissions;
+  }
 }
 
 export function commitPage(
@@ -198,21 +206,27 @@ export function commitPage(
   cursor?: number,
   accountId?: string,
 ): DialogMessage[] {
-  if (page.has_more && !page.messages.length) throw new StorageError('INVALID_PAGE');
+  if (page.has_more && !page.messages.length) {
+    throw new StorageError('INVALID_PAGE');
+  }
 
-  if (direction === 'after' && cursor !== record.sync_sequence)
+  if (direction === 'after' && cursor !== record.sync_sequence) {
     throw new StorageError('STORAGE_CONFLICT');
+  }
 
-  if (direction === 'before' && cursor !== record.before_sequence)
+  if (direction === 'before' && cursor !== record.before_sequence) {
     throw new StorageError('STORAGE_CONFLICT');
+  }
 
-  if (direction === 'initial' && record.initialized) throw new StorageError('STORAGE_CONFLICT');
+  if (direction === 'initial' && record.initialized) {
+    throw new StorageError('STORAGE_CONFLICT');
+  }
 
   const positions = page.messages.map((message): number => message.sequence);
 
   if (positions.length) {
-    const first = Math.min(...positions),
-      last = Math.max(...positions);
+    const first = Math.min(...positions);
+    const last = Math.max(...positions);
 
     record.ranges.push([direction === 'after' ? (cursor ?? first) + 1 : first, last]);
     record.ranges.sort((a, b): number => a[0] - b[0]);
@@ -220,22 +234,33 @@ export function commitPage(
       (ranges, range): [number, number][] => {
         const previous = ranges.at(-1);
 
-        if (previous && previous[1] + 1 >= range[0]) previous[1] = Math.max(previous[1], range[1]);
-        else ranges.push([...range]);
+        if (previous && previous[1] + 1 >= range[0]) {
+          previous[1] = Math.max(previous[1], range[1]);
+        } else {
+          ranges.push([...range]);
+        }
 
         return ranges;
       },
       [],
     );
 
-    if (direction === 'initial' || direction === 'after') record.sync_sequence = last;
+    if (direction === 'initial' || direction === 'after') {
+      record.sync_sequence = last;
+    }
 
-    if (direction === 'initial' || direction === 'before') record.before_sequence = first;
+    if (direction === 'initial' || direction === 'before') {
+      record.before_sequence = first;
+    }
   }
 
-  if (direction === 'initial') record.initialized = true;
+  if (direction === 'initial') {
+    record.initialized = true;
+  }
 
-  if (direction === 'initial' || direction === 'before') record.has_older = page.has_more;
+  if (direction === 'initial' || direction === 'before') {
+    record.has_older = page.has_more;
+  }
 
   const next = mergeMessages(messages, page.messages);
 

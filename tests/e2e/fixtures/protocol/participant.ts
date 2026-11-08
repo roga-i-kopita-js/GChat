@@ -57,13 +57,15 @@ class Participant {
     ).sub;
     await this.reconnect();
     this.timer = setInterval((): void => {
-      for (const call of this.calls.values())
+      for (const call of this.calls.values()) {
         if (
           call.call_id === this.callId &&
           ['connecting', 'active'].includes(call.state) &&
           this.socket?.readyState === WebSocket.OPEN
-        )
+        ) {
           void this.heartbeat(call.call_id);
+        }
+      }
     }, 2000);
   }
 
@@ -76,7 +78,9 @@ class Participant {
         try {
           const { call } = await this.request('call.get', { call_id: callId });
 
-          if (call.state === 'ended') return;
+          if (call.state === 'ended') {
+            return;
+          }
         } catch {
           /* Preserve the original failure below. */
         }
@@ -96,7 +100,9 @@ class Participant {
       body: JSON.stringify(body),
     });
 
-    if (!response.ok) throw new Error('HTTP_' + response.status);
+    if (!response.ok) {
+      throw new Error('HTTP_' + response.status);
+    }
 
     return response.status === 204 ? undefined : response.json();
   }
@@ -113,17 +119,24 @@ class Participant {
       const envelope: Envelope = JSON.parse(message.data);
       const call = envelope.payload?.call as Call | undefined;
 
-      if (call) this.remember(call);
+      if (call) {
+        this.remember(call);
+      }
 
       if (envelope.type === 'response') {
         const pending = this.pending.get(envelope.request_id!);
 
-        if (!pending) return;
+        if (!pending) {
+          return;
+        }
 
         this.pending.delete(envelope.request_id!);
 
-        if (envelope.error) pending.reject(new Error(envelope.error.code));
-        else pending.resolve(envelope.payload);
+        if (envelope.error) {
+          pending.reject(new Error(envelope.error.code));
+        } else {
+          pending.resolve(envelope.payload);
+        }
       } else {
         this.events.push(envelope);
 
@@ -137,19 +150,25 @@ class Participant {
               sdpMLineIndex: candidate.sdp_mline_index,
             };
 
-            if (this.pc?.remoteDescription)
+            if (this.pc?.remoteDescription) {
               void this.pc.addIceCandidate(ice).catch((error: Error): void => {
                 this.errors.push(error.message);
               });
-            else this.remoteIce.push(ice);
+            } else {
+              this.remoteIce.push(ice);
+            }
           }
         }
       }
     };
     socket.onclose = (event): void => {
-      if (event.code === 1008) this.closeMedia();
+      if (event.code === 1008) {
+        this.closeMedia();
+      }
 
-      for (const pending of this.pending.values()) pending.reject(new Error('SOCKET_CLOSED'));
+      for (const pending of this.pending.values()) {
+        pending.reject(new Error('SOCKET_CLOSED'));
+      }
 
       this.pending.clear();
     };
@@ -170,11 +189,15 @@ class Participant {
   private remember(call: Call): void {
     const previous = this.calls.get(call.call_id);
 
-    if (previous && previous.version > call.version) return;
+    if (previous && previous.version > call.version) {
+      return;
+    }
 
     this.calls.set(call.call_id, call);
 
-    if (call.state === 'ended' && this.callId === call.call_id) this.closeMedia();
+    if (call.state === 'ended' && this.callId === call.call_id) {
+      this.closeMedia();
+    }
   }
 
   async request(type: string, payload: object): Promise<any> {
@@ -207,7 +230,9 @@ class Participant {
       this.pending.delete(requestId);
       this.socket!.send(JSON.stringify({ type, request_id: requestId, payload }));
       pending.reject(new Error('UNKNOWN_RESULT'));
-    } else this.socket!.send(JSON.stringify({ type, request_id: requestId, payload }));
+    } else {
+      this.socket!.send(JSON.stringify({ type, request_id: requestId, payload }));
+    }
 
     return result;
   }
@@ -276,7 +301,9 @@ class Participant {
     this.source = destination.stream;
     this.streams.push(destination.stream);
 
-    for (const track of destination.stream.getTracks()) pc.addTrack(track, destination.stream);
+    for (const track of destination.stream.getTracks()) {
+      pc.addTrack(track, destination.stream);
+    }
 
     pc.ontrack = (event): void => {
       const stream = new MediaStream([event.track]);
@@ -295,7 +322,9 @@ class Participant {
         .play()
         .then((): void => {
           // A late playback completion must not attach to an ended/replaced call.
-          if (this.pc !== pc || pc.connectionState === 'closed' || this.audio !== context) return;
+          if (this.pc !== pc || pc.connectionState === 'closed' || this.audio !== context) {
+            return;
+          }
 
           this.analyser = context.createAnalyser();
           this.analyser.fftSize = 8192;
@@ -305,7 +334,9 @@ class Participant {
             .connect(context.destination);
         })
         .catch((): void => {
-          if (pc.connectionState !== 'closed') this.errors.push('AUDIO_PLAY_FAILED');
+          if (pc.connectionState !== 'closed') {
+            this.errors.push('AUDIO_PLAY_FAILED');
+          }
         });
     };
     this.localIce = [];
@@ -314,7 +345,9 @@ class Participant {
     pc.onicecandidate = (event): void => {
       this.localIce.push(event.candidate?.toJSON() ?? null);
 
-      if (this.iceReady) this.flushIce();
+      if (this.iceReady) {
+        this.flushIce();
+      }
     };
   }
 
@@ -325,7 +358,7 @@ class Participant {
 
     this.iceWork = this.iceWork
       .then(async (): Promise<void> => {
-        for (const candidate of candidates)
+        for (const candidate of candidates) {
           await this.request('rtc.ice', {
             call_id: callId,
             negotiation_id: negotiationId,
@@ -337,6 +370,7 @@ class Participant {
                 }
               : null,
           });
+        }
       })
       .catch((error: Error): void => {
         this.errors.push(error.message);
@@ -366,7 +400,7 @@ class Participant {
     await this.pc!.setRemoteDescription({ type: 'offer', sdp: offer.payload.sdp });
 
     // Candidates may have arrived before the test driver selected this offer.
-    for (const event of this.events)
+    for (const event of this.events) {
       if (
         event.type === 'rtc.ice' &&
         event.payload.negotiation_id === this.negotiation &&
@@ -380,6 +414,7 @@ class Participant {
           sdpMLineIndex: candidate.sdp_mline_index,
         });
       }
+    }
 
     await this.pc!.setLocalDescription(await this.pc!.createAnswer());
     await this.request('rtc.answer', {
@@ -401,19 +436,31 @@ class Participant {
 
     await this.pc!.setRemoteDescription({ type: 'answer', sdp: answer.payload.sdp });
 
-    for (const candidate of this.remoteIce.splice(0)) await this.pc!.addIceCandidate(candidate);
+    for (const candidate of this.remoteIce.splice(0)) {
+      await this.pc!.addIceCandidate(candidate);
+    }
   }
 
   setTone(enabled: boolean): void {
-    for (const track of this.source!.getAudioTracks()) track.enabled = enabled;
+    for (const track of this.source!.getAudioTracks()) {
+      track.enabled = enabled;
+    }
   }
 
   closeMedia(): void {
     this.pc?.close();
 
-    for (const stream of this.streams) for (const track of stream.getTracks()) track.stop();
+    for (const stream of this.streams) {
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+    }
 
-    for (const context of this.contexts) if (context.state !== 'closed') void context.close();
+    for (const context of this.contexts) {
+      if (context.state !== 'closed') {
+        void context.close();
+      }
+    }
 
     if (this.output) {
       this.output.pause();
@@ -454,8 +501,11 @@ class Participant {
       this.analyser.getFloatTimeDomainData(samples);
       let peak = 0;
 
-      for (let index = 1; index < spectrum.length; index++)
-        if (spectrum[index] > spectrum[peak]) peak = index;
+      for (let index = 1; index < spectrum.length; index++) {
+        if (spectrum[index] > spectrum[peak]) {
+          peak = index;
+        }
+      }
 
       peakHz = (peak * this.audio!.sampleRate) / this.analyser.fftSize;
       rms = Math.sqrt(
@@ -471,15 +521,18 @@ class Participant {
     let sourceEnergy = 0;
 
     stats?.forEach((stat): void => {
-      if (stat.type === 'outbound-rtp' && stat.kind === 'audio') sent += stat.bytesSent;
+      if (stat.type === 'outbound-rtp' && stat.kind === 'audio') {
+        sent += stat.bytesSent;
+      }
 
       if (stat.type === 'inbound-rtp' && stat.kind === 'audio') {
         received += stat.bytesReceived;
         receivedEnergy += stat.totalAudioEnergy ?? 0;
       }
 
-      if (stat.type === 'media-source' && stat.kind === 'audio')
+      if (stat.type === 'media-source' && stat.kind === 'audio') {
         sourceEnergy += stat.totalAudioEnergy ?? 0;
+      }
 
       if (stat.type === 'transport' && stat.selectedCandidatePairId) {
         const pair = stats.get(stat.selectedCandidatePairId);

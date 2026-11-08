@@ -4,7 +4,9 @@ void request('/spike/trace', { event: 'page-ready' }).catch(() => {});
 let readingIntent = false;
 
 async function consumeClickIntent() {
-  if (readingIntent || document.visibilityState !== 'visible') return;
+  if (readingIntent || document.visibilityState !== 'visible') {
+    return;
+  }
 
   readingIntent = true;
 
@@ -13,7 +15,9 @@ async function consumeClickIntent() {
     const key = new URL('/__gchat_launch_spike_intent', window.location.origin).href;
     const response = await cache.match(key);
 
-    if (!response) return;
+    if (!response) {
+      return;
+    }
 
     await cache.delete(key);
     const { createdAt } = await response.json();
@@ -32,8 +36,9 @@ async function consumeClickIntent() {
 
 window.addEventListener('pageshow', () => void consumeClickIntent());
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible')
+  if (document.visibilityState === 'visible') {
     void request('/spike/trace', { event: 'page-visible' }).catch(() => {});
+  }
 
   void consumeClickIntent();
 });
@@ -41,15 +46,18 @@ navigator.serviceWorker?.addEventListener('message', (event) => {
   if (
     event.source === navigator.serviceWorker.controller &&
     event.data?.type === 'gchat.launch-spike.clicked'
-  )
+  ) {
     void consumeClickIntent();
+  }
 });
 // Cover the cold-start race where the page is visible before notificationclick stores its intent.
 let intentChecks = 0;
 const intentTimer = setInterval(() => {
   void consumeClickIntent();
 
-  if (++intentChecks >= 15) clearInterval(intentTimer);
+  if (++intentChecks >= 15) {
+    clearInterval(intentTimer);
+  }
 }, 1000);
 
 const stages = {
@@ -61,8 +69,9 @@ const stages = {
 };
 let stage = 'worker';
 const ready = (async () => {
-  if (!window.isSecureContext || !('serviceWorker' in navigator))
+  if (!window.isSecureContext || !('serviceWorker' in navigator)) {
     throw new DOMException('secure context required', 'SecurityError');
+  }
 
   let timer;
 
@@ -115,7 +124,9 @@ async function request(path, body) {
         },
   );
 
-  if (!response.ok) throw new Error('request');
+  if (!response.ok) {
+    throw new Error('request');
+  }
 
   return response.json();
 }
@@ -167,7 +178,9 @@ document.getElementById('push').onclick = async () => {
     let subscription = await registration.pushManager.getSubscription();
 
     // This fixture generates fresh keys after every server restart.
-    if (subscription) await subscription.unsubscribe();
+    if (subscription) {
+      await subscription.unsubscribe();
+    }
 
     stage = 'subscription';
     status.textContent = stages[stage] + '…';
@@ -210,7 +223,9 @@ document.getElementById('update').onclick = async () => {
   try {
     const registration = await navigator.serviceWorker.getRegistration('/apps/');
 
-    if (!registration) throw new Error('registration');
+    if (!registration) {
+      throw new Error('registration');
+    }
 
     await registration.update();
     const installing = registration.installing;
@@ -236,7 +251,9 @@ document.getElementById('update').onclick = async () => {
         once: true,
       });
       registration.waiting.postMessage({ type: 'GCHAT_ACTIVATE' });
-    } else status.textContent = 'Тест актуален. Можно повторить отправку.';
+    } else {
+      status.textContent = 'Тест актуален. Можно повторить отправку.';
+    }
   } catch {
     status.textContent = 'Обновление не удалось. Закройте тестовую PWA и откройте снова.';
   }

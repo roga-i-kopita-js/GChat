@@ -29,7 +29,9 @@ export class ErrorFilter implements ExceptionFilter {
     const context = host.switchToHttp();
     const response = context.getResponse();
 
-    if (adapter.isHeadersSent(response)) return;
+    if (adapter.isHeadersSent(response)) {
+      return;
+    }
 
     const path = adapter.getRequestUrl(context.getRequest()).split('?')[0];
 

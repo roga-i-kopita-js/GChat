@@ -1,28 +1,22 @@
-import type { GroupMembersResponseDto, GroupsResponseDto } from '@gchat/backend-api';
-import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { Dispatch, JSX, ReactNode, SetStateAction } from 'react';
-import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { useRouteLoaderData } from 'react-router';
 
-import { embedded } from '../../shared/native/bridge';
+import type { ApplicationLoaderData } from '../../app/loaders';
+import { type Member, reasons } from '../../shared/calls/protocol';
+import { type CallPresentationState, useDeviceCallSnapshot } from '../../shared/device/react';
 import { useAuth } from '../auth/AuthProvider';
-import { request } from '../auth/session';
-import { type ClientState, GChatClient } from './client';
-import { type CallsClient, NativeCallsClient } from './native-client';
-import { type Member, reasons } from './protocol';
+import type { ContactsData } from './contacts';
+import { resolvePeerName } from './peer-name';
 
 type Setter<T> = Dispatch<SetStateAction<T>>;
 interface CallsRuntime {
-  client: CallsClient;
-  state: ClientState;
-  groups: UseQueryResult<GroupsResponseDto>;
-  members: UseQueryResult<GroupMembersResponseDto>;
-  groupId: string | null;
-  setGroupId: Setter<string | null>;
+  state: CallPresentationState;
   person: Member | null;
   setPerson: Setter<Member | null>;
   mobile: boolean;
   setMobile: Setter<boolean>;
-  call: ClientState['call'];
+  call: CallPresentationState['call'];
   incoming: boolean;
   ongoing: boolean;
   peerId: string | null;
@@ -30,91 +24,31 @@ interface CallsRuntime {
   status: string;
   duration: string;
   enabled: boolean;
-  selectedGroup: GroupsResponseDto['groups'][number] | undefined;
-  currentMembers: Member[];
 }
 
-export const callsClient: CallsClient = embedded ? new NativeCallsClient() : new GChatClient();
-
-const client = callsClient;
 const CallsContext = createContext<CallsRuntime | null>(null);
 
 export function CallsProvider({ children }: { children: ReactNode }): JSX.Element {
+  const root = useRouteLoaderData<ApplicationLoaderData>('application');
+
+  if (!root) {
+    throw new Error('Application loader is required');
+  }
+
+  const { device } = root;
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const state = useSyncExternalStore(client.subscribe, client.getSnapshot);
-  const [groupId, setGroupId] = useState<string | null>(null);
+  const state = useDeviceCallSnapshot();
   const [person, setPerson] = useState<Member | null>(null);
-  const [names, setNames] = useState<Record<string, string>>({});
+  const contacts = useRouteLoaderData<ContactsData>('contacts');
+  const [resolvedPeer, setResolvedPeer] = useState<{ id: string; name: string } | null>(null);
   const [now, setNow] = useState(Date.now());
   const [mobile, setMobile] = useState(false);
-  const groups = useQuery({
-    queryKey: ['groups', user?.sub, user?.role],
-    queryFn: async ({ signal }): Promise<GroupsResponseDto> =>
-      request((api): ReturnType<typeof api.groupsList> => api.groupsList({ signal })),
-    enabled: !!user,
-    retry: 1,
-    refetchOnWindowFocus: true,
-    refetchInterval: 60000,
-  });
-  const members = useQuery({
-    queryKey: ['members', user?.sub, user?.role, groupId],
-    queryFn: async ({ signal }): Promise<GroupMembersResponseDto> => {
-      if (!groupId && isAdmin) {
-        const all: GroupMembersResponseDto['members'] = [];
-        let offset = 0;
-
-        while (true) {
-          const page = await request((api): ReturnType<typeof api.adminListUsers> =>
-            api.adminListUsers({ query: { status: 'active', limit: 100, offset }, signal }),
-          );
-
-          all.push(...page.users.map(({ id, display_name }): Member => ({ id, display_name })));
-          offset += page.users.length;
-
-          if (!page.users.length || offset >= page.total) break;
-        }
-
-        return {
-          members: [
-            ...new Map(all.map((member): [string, Member] => [member.id, member])).values(),
-          ],
-        };
-      }
-
-      if (!groupId) return { members: [] };
-
-      return request((api): ReturnType<typeof api.groupsListMembers> =>
-        api.groupsListMembers({ path: { group_id: groupId }, signal }),
-      );
-    },
-    enabled: !!user && (!!groupId || isAdmin),
-    retry: 1,
-    refetchOnWindowFocus: true,
-    refetchInterval: 60000,
-  });
 
   useEffect((): void => {
-    setGroupId(null);
     setPerson(null);
-    setNames({});
+    setResolvedPeer(null);
     setMobile(false);
   }, [user?.sid]);
-  useEffect((): void => {
-    if (isAdmin && !groupId) return;
-
-    if (groups.data && !groups.data.groups.some((g): boolean => g.id === groupId))
-      setGroupId(isAdmin ? null : (groups.data.groups[0]?.id ?? null));
-  }, [groups.data, groupId, isAdmin]);
-  useEffect((): void => {
-    if (members.data)
-      setNames((previous): Record<string, string> => ({
-        ...previous,
-        ...Object.fromEntries(
-          members.data.members.map((member): [string, string] => [member.id, member.display_name]),
-        ),
-      }));
-  }, [members.data]);
   useEffect((): (() => void) => {
     const timer = setInterval((): void => setNow(Date.now()), 1000);
 
@@ -125,45 +59,37 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
       setMobile(true);
     }
   }, [state.call?.call_id, state.call?.state, user?.sub]);
-  // Resolve names in other groups as well, without expanding backend read permissions.
-  useEffect((): (() => void) => {
-    let cancelled = false;
-
-    if (groups.data)
-      void Promise.all(
-        groups.data.groups.map(async (group): Promise<void> => {
-          try {
-            const data = await request((api): ReturnType<typeof api.groupsListMembers> =>
-              api.groupsListMembers({ path: { group_id: group.id } }),
-            );
-
-            if (!cancelled)
-              setNames((old): Record<string, string> => ({
-                ...old,
-                ...Object.fromEntries(
-                  data.members.map((m): [string, string] => [m.id, m.display_name]),
-                ),
-              }));
-          } catch {
-            /* Selected group displays its own loading error. */
-          }
-        }),
-      );
-
-    return (): void => {
-      cancelled = true;
-    };
-  }, [groups.data]);
-
   const call = state.call;
   const incoming = !!call && call.recipient_id === user?.sub && call.state === 'ringing';
   const peerId = call ? (call.caller_id === user?.sub ? call.recipient_id : call.caller_id) : null;
+  const loadedName =
+    contacts?.sid === user?.sid
+      ? contacts?.members.find((member): boolean => member.id === peerId)?.display_name
+      : undefined;
+
+  useEffect((): (() => void) => {
+    const controller = new AbortController();
+
+    if (peerId && !loadedName && person?.id !== peerId) {
+      void resolvePeerName(device, peerId, controller.signal)
+        .then((name): void => {
+          if (!controller.signal.aborted && name) {
+            setResolvedPeer({ id: peerId, name });
+          }
+        })
+        .catch((): void => {});
+    }
+
+    return (): void => controller.abort();
+  }, [device, peerId, user?.sid, loadedName, person?.id]);
   const peerName = peerId
-    ? (names[peerId] ?? (person?.id === peerId ? person.display_name : 'Собеседник'))
+    ? (loadedName ??
+      (person?.id === peerId
+        ? person.display_name
+        : resolvedPeer?.id === peerId
+          ? resolvedPeer.name
+          : 'Собеседник'))
     : '';
-  const selectedGroup = groups.data?.groups.find((group): boolean => group.id === groupId);
-  const currentMembers =
-    members.data?.members.filter((member): boolean => member.id !== user?.sub) ?? [];
   const ongoing = !!call && call.state !== 'ended';
   const seconds = call?.started_at
     ? Math.max(
@@ -190,12 +116,7 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
   const enabled = state.owner && state.connection === 'online' && !state.busy;
 
   const value: CallsRuntime = {
-    client,
     state,
-    groups,
-    members,
-    groupId,
-    setGroupId,
     person,
     setPerson,
     mobile,
@@ -208,8 +129,6 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
     status,
     duration,
     enabled,
-    selectedGroup,
-    currentMembers,
   };
 
   return <CallsContext value={value}>{children}</CallsContext>;
@@ -218,7 +137,9 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
 export function useCalls(): CallsRuntime {
   const value = useContext(CallsContext);
 
-  if (!value) throw new Error('CallsProvider is required');
+  if (!value) {
+    throw new Error('CallsProvider is required');
+  }
 
   return value;
 }

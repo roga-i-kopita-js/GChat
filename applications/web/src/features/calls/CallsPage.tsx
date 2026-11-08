@@ -2,7 +2,6 @@ import {
   ArrowLeft,
   Headphones,
   MessageCircle,
-  Mic,
   Phone,
   RefreshCw,
   ShieldCheck,
@@ -10,46 +9,50 @@ import {
   WifiOff,
 } from 'lucide-react';
 import type { JSX } from 'react';
-import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { lazy, useEffect, useRef, useState } from 'react';
+import { useLoaderData, useNavigate, useRevalidator, useSearchParams } from 'react-router';
 
-import { useDeviceBridge } from '../../shared/device/context';
+import type { Member } from '../../shared/calls/protocol';
 import { deviceErrorMessage } from '../../shared/device/messages';
+import { useDevice, useDevicePresentation } from '../../shared/device/react';
 import { useBootstrap } from '../../shared/dialogs/context';
 import { dialogError } from '../../shared/dialogs/runtime';
-import { embedded } from '../../shared/native/bridge';
-import { Avatar, Modal, Select } from '../../shared/ui';
+import { Avatar, Select } from '../../shared/ui';
+import { LazyPanel } from '../../shared/ui/LazyPanel';
 import { useAuth } from '../auth/AuthProvider';
-import { CallCard } from './CallCard';
+import { CallCardSlot } from './CallCardSlot';
 import { useCalls } from './CallsProvider';
-import type { Member } from './protocol';
+import type { ContactsData } from './contacts';
+
+const ContactDetails = lazy(
+  async (): Promise<{ default: typeof import('./ContactDetails').ContactDetails }> => ({
+    default: (await import('./ContactDetails')).ContactDetails,
+  }),
+);
 
 export function CallsPage(): JSX.Element {
+  const device = useDevice();
+  const presentation = useDevicePresentation();
   const { user } = useAuth();
   const { runtime: dialogs } = useBootstrap();
   const navigate = useNavigate();
-  const {
-    client,
-    groups,
-    groupId,
-    setGroupId,
-    members,
-    selectedGroup,
-    currentMembers,
-    mobile,
-    setMobile,
-    person,
-    setPerson,
-    ongoing,
-    enabled,
-    peerId,
-    call,
-    incoming,
-  } = useCalls();
-  const [confirm, setConfirm] = useState(false);
+  const { mobile, setMobile, person, setPerson, ongoing, enabled, peerId, call, incoming } =
+    useCalls();
+  const contacts = useLoaderData<ContactsData>();
+  const revalidator = useRevalidator();
+  const [, setParams] = useSearchParams();
+  const groupId = contacts.groupId;
+  const groups = contacts.sid === user?.sid ? contacts.groups : [];
+  const currentMembers =
+    contacts.sid === user?.sid
+      ? contacts.members.filter((member): boolean => member.id !== user?.sub)
+      : [];
+  const selectedGroup = groups.find((group): boolean => group.id === groupId);
+  const setGroupId = (id: string | null): void => {
+    setParams(id ? { group: id } : {});
+  };
   const [prepareError, setPrepareError] = useState('');
   const [preparing, setPreparing] = useState(false);
-  const bridge = useDeviceBridge();
   const attempt = useRef(0);
   const preparingRef = useRef(false);
 
@@ -61,7 +64,9 @@ export function CallsPage(): JSX.Element {
   );
 
   async function dial(peer: string): Promise<void> {
-    if (preparingRef.current) return;
+    if (preparingRef.current) {
+      return;
+    }
 
     preparingRef.current = true;
     const id = ++attempt.current;
@@ -70,20 +75,26 @@ export function CallsPage(): JSX.Element {
     setPrepareError('');
 
     try {
-      const result = await bridge.execute({ command: 'call.prepareOutgoing', args: {} });
-
-      if (result.outcome === 'completed' && id === attempt.current) await client.dial(peer);
+      if (id === attempt.current) {
+        await device.calls.dial(peer);
+      }
     } catch (error) {
-      if (id === attempt.current) setPrepareError(deviceErrorMessage(error));
+      if (id === attempt.current) {
+        setPrepareError(deviceErrorMessage(error));
+      }
     } finally {
       preparingRef.current = false;
 
-      if (id === attempt.current) setPreparing(false);
+      if (id === attempt.current) {
+        setPreparing(false);
+      }
     }
   }
 
   function write(peer: string): void {
-    if (!dialogs) return;
+    if (!dialogs) {
+      return;
+    }
 
     setPrepareError('');
     void dialogs
@@ -94,17 +105,18 @@ export function CallsPage(): JSX.Element {
       .catch((cause): void => setPrepareError(dialogError(cause)));
   }
 
-  useEffect((): void => {
-    if (call && call.state !== 'ended') setConfirm(false);
-  }, [call?.call_id, call?.state]);
   function select(member: Member): void {
-    if (ongoing) return;
+    if (ongoing) {
+      return;
+    }
 
     setPerson(member);
     setMobile(true);
   }
 
-  if (!user) return <></>;
+  if (!user) {
+    return <></>;
+  }
 
   return (
     <>
@@ -120,7 +132,7 @@ export function CallsPage(): JSX.Element {
               <Users size={19} />
             </span>
             <div>
-              {groups.data && (groups.data.groups.length > 1 || user.role === 'admin') ? (
+              {groups.length > 1 || user.role === 'admin' ? (
                 <Select
                   aria-label="Группа контактов"
                   className="contacts-group-select"
@@ -132,17 +144,14 @@ export function CallsPage(): JSX.Element {
                   }}
                 >
                   {user.role === 'admin' && <option value="">Все пользователи</option>}
-                  {groups.data.groups.map((group): JSX.Element => (
+                  {groups.map((group): JSX.Element => (
                     <option key={group.id} value={group.id}>
                       {group.name}
                     </option>
                   ))}
                 </Select>
               ) : (
-                <h2>
-                  {selectedGroup?.name ??
-                    (user.role === 'admin' ? 'Все пользователи' : 'Мои контакты')}
-                </h2>
+                <h2>{selectedGroup?.name ?? 'Мои контакты'}</h2>
               )}
               <p>
                 {currentMembers.length
@@ -151,7 +160,7 @@ export function CallsPage(): JSX.Element {
               </p>
             </div>
           </div>
-          {groups.isError || members.isError ? (
+          {contacts.error ? (
             <div className="list-empty">
               <WifiOff size={30} />
               <h3>Не удалось загрузить контакты</h3>
@@ -159,14 +168,14 @@ export function CallsPage(): JSX.Element {
               <button
                 className="secondary"
                 onClick={(): void => {
-                  void groups.refetch();
-                  void members.refetch();
+                  void revalidator.revalidate();
                 }}
               >
                 <RefreshCw size={16} /> Повторить
               </button>
             </div>
-          ) : groups.isPending || (members.isFetching && !members.data) ? (
+          ) : contacts.sid !== user.sid ||
+            (revalidator.state === 'loading' && !currentMembers.length) ? (
             <div className="skeleton-list" aria-label="Загрузка контактов">
               {[0, 1, 2, 3].map((id): JSX.Element => (
                 <div className="skeleton-row" key={id}>
@@ -179,7 +188,7 @@ export function CallsPage(): JSX.Element {
             <div className="list-empty">
               <Users size={32} />
               <h3>
-                {user.role === 'admin' || groups.data?.groups.length
+                {user.role === 'admin' || groups.length
                   ? 'Здесь пока нет собеседников'
                   : 'У вас пока нет групп'}
               </h3>
@@ -241,36 +250,20 @@ export function CallsPage(): JSX.Element {
             </button>
           )}
           {call ? (
-            (embedded || !incoming) && <CallCard />
+            (presentation.callControls === 'host' || !incoming) && <CallCardSlot />
           ) : person ? (
-            <div className="person-preview">
-              <span className="eyebrow">ГОЛОСОВОЙ ЗВОНОК</span>
-              <Avatar name={person.display_name} large />
-              <h2>{person.display_name}</h2>
-              <p>
-                Хороший разговор начинается
-                <br />с одного звонка.
-              </p>
-              <div className="person-actions">
-                <button
-                  className="primary"
-                  disabled={!enabled}
-                  onClick={(): void => setConfirm(true)}
-                >
-                  <Phone size={19} /> Позвонить
-                </button>
-                <button
-                  className="secondary"
-                  disabled={!dialogs}
-                  onClick={(): void => write(person.id)}
-                >
-                  <MessageCircle size={19} /> Написать сообщение
-                </button>
-              </div>
-              <div className="detail-note">
-                <Mic size={15} /> Понадобится доступ к микрофону
-              </div>
-            </div>
+            <LazyPanel
+              key={person.id}
+              pending={<p role="status">Загружаем карточку…</p>}
+              failed={
+                <p role="alert">
+                  Не удалось загрузить карточку собеседника. Быстрый звонок доступен в списке
+                  контактов.
+                </p>
+              }
+            >
+              <ContactDetails dial={dial} write={write} canWrite={!!dialogs} />
+            </LazyPanel>
           ) : (
             <div className="welcome-panel">
               <div className="welcome-orbit">
@@ -296,33 +289,6 @@ export function CallsPage(): JSX.Element {
           )}
         </section>
       </div>
-      {confirm && person && (
-        <Modal title="Позвонить?" close={(): void => setConfirm(false)}>
-          <div className="confirm-person">
-            <Avatar name={person.display_name} />
-            <strong>{person.display_name}</strong>
-          </div>
-          <p>
-            {embedded
-              ? 'Звонок начнётся в приложении.'
-              : 'Браузер запросит разрешение на микрофон.'}
-          </p>
-          <div className="modal-actions">
-            <button className="secondary" onClick={(): void => setConfirm(false)}>
-              Отмена
-            </button>
-            <button
-              className="primary"
-              onClick={(): void => {
-                setConfirm(false);
-                void dial(person.id);
-              }}
-            >
-              <Phone size={17} /> Позвонить
-            </button>
-          </div>
-        </Modal>
-      )}
     </>
   );
 }

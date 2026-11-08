@@ -7,11 +7,16 @@ import { login } from '../../fixtures/web/actions';
 test('dialogs send, recover unknown results, retain drafts, render stickers and preserve mobile navigation', async ({
   browser,
 }, testInfo): Promise<void> => {
-  const a = await browser.newContext(),
-    b = await browser.newContext();
-  const anna = await a.newPage(),
-    maxim = await b.newPage();
+  const a = await browser.newContext();
+  const b = await browser.newContext();
+  const anna = await a.newPage();
+  const maxim = await b.newPage();
   const errors: string[] = [];
+  const modules = new Set<string>();
+
+  maxim.on('request', (request): void => {
+    modules.add(new URL(request.url()).pathname);
+  });
 
   anna.on('pageerror', (error): void => {
     errors.push(error.message);
@@ -28,16 +33,36 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
     await expect(open).toBeEnabled();
     await open.click();
     await expect(anna.getByLabel('Сообщение', { exact: true })).toBeVisible();
-    const url = anna.url(),
-      text = 'Тест переписки ' + randomUUID();
+    const sidebar = anna.getByRole('region', { name: 'Диалоги', exact: true });
+
+    await sidebar.evaluate((element): void => {
+      element.setAttribute('data-instance', 'original');
+    });
+    await anna
+      .getByRole('navigation', { name: 'Основные разделы' })
+      .getByRole('link', { name: 'Диалоги', exact: true })
+      .click();
+    await expect(anna.getByRole('heading', { name: 'Выберите диалог', exact: true })).toBeVisible();
+    await expect(sidebar).toHaveAttribute('data-instance', 'original');
+    await anna.goBack();
+    await expect(anna.getByLabel('Сообщение', { exact: true })).toBeVisible();
+    await expect(sidebar).toHaveAttribute('data-instance', 'original');
+    const url = anna.url();
+    const text = 'Тест переписки ' + randomUUID();
 
     await anna.getByLabel('Сообщение', { exact: true }).fill(text);
     await anna.getByRole('button', { name: 'Отправить сообщение', exact: true }).click();
     await expect(anna.locator('.dialog-message-text').filter({ hasText: text })).toHaveCount(1);
     await maxim.getByRole('link', { name: 'Диалоги', exact: true }).click();
     await expect(maxim.getByRole('link', { name: /Анна/ })).toBeVisible();
+    expect(
+      [...modules].some((path): boolean => /\/(DialogConversationRoute|Composer)\.tsx$/.test(path)),
+    ).toBe(false);
     await maxim.getByRole('link', { name: /Анна/ }).click();
     await expect(maxim.locator('.dialog-message-text').filter({ hasText: text })).toBeVisible();
+    expect(
+      [...modules].some((path): boolean => path.endsWith('/DialogConversationRoute.tsx')),
+    ).toBe(true);
     await maxim.bringToFront();
     await expect(
       anna
@@ -79,7 +104,9 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
         await route.fetch();
         await route.abort('failed');
         failedResponse = true;
-      } else await route.continue();
+      } else {
+        await route.continue();
+      }
     });
     await anna.getByLabel('Сообщение', { exact: true }).fill(unknown);
     await anna.getByRole('button', { name: 'Отправить сообщение', exact: true }).click();
@@ -127,8 +154,8 @@ test('tabs share one WSS, resolve draft conflicts explicitly, flush before updat
 
   await other.goto(page.url());
   await expect(other.getByLabel('Сообщение', { exact: true })).toBeVisible();
-  const own = 'Первый черновик ' + randomUUID(),
-    peer = 'Второй черновик ' + randomUUID();
+  const own = 'Первый черновик ' + randomUUID();
+  const peer = 'Второй черновик ' + randomUUID();
 
   await Promise.all([
     page.getByLabel('Сообщение', { exact: true }).fill(own),
@@ -193,8 +220,8 @@ test('tabs share one WSS, resolve draft conflicts explicitly, flush before updat
       const database = await new Promise<IDBDatabase>((resolve): void => {
         request.onsuccess = (): void => resolve(request.result);
       });
-      const tx = database.transaction('messages'),
-        count = tx.objectStore('messages').count();
+      const tx = database.transaction('messages');
+      const count = tx.objectStore('messages').count();
       const result = await new Promise<number>((resolve): void => {
         count.onsuccess = (): void => resolve(count.result);
       });

@@ -35,7 +35,9 @@ export function parseAuthKeys(env: Record<string, unknown>): AuthKeys {
     const jwtKid = String(env.AUTH_JWT_ACTIVE_KID ?? '');
     const rotationKid = String(env.AUTH_ROTATION_ACTIVE_KID ?? '');
 
-    if (!jwtKid || !rotationKid) throw new Error();
+    if (!jwtKid || !rotationKid) {
+      throw new Error();
+    }
 
     const privateKey = createPrivateKey(
       String(env.AUTH_JWT_PRIVATE_KEY ?? '').replace(/\\n/g, '\n'),
@@ -48,8 +50,9 @@ export function parseAuthKeys(env: Record<string, unknown>): AuthKeys {
       !rotationValues ||
       Array.isArray(publicValues) ||
       Array.isArray(rotationValues)
-    )
+    ) {
       throw new Error();
+    }
 
     const publicKeys = new Map(
       Object.entries(publicValues).map(
@@ -61,7 +64,9 @@ export function parseAuthKeys(env: Record<string, unknown>): AuthKeys {
     );
     const rotationKeys = new Map(
       Object.entries(rotationValues).map(([kid, value]): [string, Buffer] => {
-        if (typeof value !== 'string' || !/^[A-Za-z0-9+/]{43}=$/.test(value)) throw new Error();
+        if (typeof value !== 'string' || !/^[A-Za-z0-9+/]{43}=$/.test(value)) {
+          throw new Error();
+        }
 
         return [kid, Buffer.from(value, 'base64')];
       }),
@@ -76,8 +81,9 @@ export function parseAuthKeys(env: Record<string, unknown>): AuthKeys {
       !createPublicKey(privateKey)
         .export({ type: 'spki', format: 'der' })
         .equals(publicKeys.get(jwtKid)!.export({ type: 'spki', format: 'der' }))
-    )
+    ) {
       throw new Error();
+    }
 
     return { jwtKid, privateKey, publicKeys, rotationKid, rotationKeys };
   } catch {
@@ -119,7 +125,9 @@ export class AuthCrypto implements OnModuleInit {
   }
 
   async hashPassword(password: string | Buffer): Promise<string> {
-    if (this.active >= 2) throw this.error.serviceUnavailable();
+    if (this.active >= 2) {
+      throw this.error.serviceUnavailable();
+    }
 
     this.active++;
 
@@ -131,7 +139,9 @@ export class AuthCrypto implements OnModuleInit {
   }
 
   async verifyPassword(password: string, hash?: string): Promise<boolean> {
-    if (this.active >= 2) throw this.error.serviceUnavailable();
+    if (this.active >= 2) {
+      throw this.error.serviceUnavailable();
+    }
 
     this.active++;
 
@@ -176,7 +186,9 @@ export class AuthCrypto implements OnModuleInit {
         (header): ReturnType<typeof createPublicKey> => {
           const key = header.kid ? this.keys.publicKeys.get(header.kid) : undefined;
 
-          if (!key) throw this.error.accessTokenInvalid();
+          if (!key) {
+            throw this.error.accessTokenInvalid();
+          }
 
           return key;
         },
@@ -201,12 +213,15 @@ export class AuthCrypto implements OnModuleInit {
         typeof payload.iat !== 'number' ||
         typeof payload.exp !== 'number' ||
         payload.exp <= payload.iat
-      )
+      ) {
         throw new Error();
+      }
 
       return { userId: payload.sub, sessionId: payload.sid };
     } catch (cause) {
-      if (cause instanceof errors.JWTExpired) throw this.error.accessTokenExpired();
+      if (cause instanceof errors.JWTExpired) {
+        throw this.error.accessTokenExpired();
+      }
 
       throw this.error.accessTokenInvalid();
     }
@@ -227,7 +242,9 @@ export class AuthCrypto implements OnModuleInit {
       (header: JWEHeaderParameters | undefined): Buffer => {
         const key = header?.kid ? this.keys.rotationKeys.get(header.kid) : undefined;
 
-        if (!key) throw this.error.serviceUnavailable();
+        if (!key) {
+          throw this.error.serviceUnavailable();
+        }
 
         return key;
       },

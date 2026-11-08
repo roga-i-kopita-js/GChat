@@ -11,6 +11,7 @@
     <key>GChatHarnessServer</key><string>$(GCHAT_HARNESS_SERVER)</string>
     <key>GChatHarnessLogin</key><string>$(GCHAT_HARNESS_LOGIN)</string>
     <key>GChatHarnessPeerID</key><string>$(GCHAT_HARNESS_PEER_ID)</string>
+    <key>NSCameraUsageDescription</key><string>GChat проверяет камеру и PiP во время тестового звонка по вашему действию.</string>
     <key>NSMicrophoneUsageDescription</key><string>Аудиостенд GChat проверяет голосовой звонок по вашему действию.</string>
     <key>NSLocalNetworkUsageDescription</key><string>Аудиостенд подключается к тестовому backend и TURN на вашем Mac в локальной сети.</string>
     <key>UIBackgroundModes</key><array><string>audio</string><string>voip</string></array>

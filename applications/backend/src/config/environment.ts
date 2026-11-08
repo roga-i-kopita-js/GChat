@@ -101,30 +101,35 @@ export function validateEnvironment(
     !turnUrls.every(
       (url: unknown): boolean => typeof url === 'string' && /^turns?:[^\s]+$/.test(url),
     )
-  )
+  ) {
     throw new Error('DIRECT_CALLS_TURN_URLS must contain TURN URLs');
+  }
 
   if (
     typeof env.DIRECT_CALLS_TURN_SHARED_SECRET !== 'string' ||
     !env.DIRECT_CALLS_TURN_SHARED_SECRET.trim()
-  )
+  ) {
     throw new Error('DIRECT_CALLS_TURN_SHARED_SECRET is required');
+  }
 
   const rawApnsEnabled = String(env.APNS_ENABLED ?? 'true');
 
-  if (!['true', 'false'].includes(rawApnsEnabled))
+  if (!['true', 'false'].includes(rawApnsEnabled)) {
     throw new Error('APNS_ENABLED must be true or false');
+  }
 
   const apnsEnabled = rawApnsEnabled === 'true';
 
   if (apnsEnabled) {
     for (const name of ['APNS_TEAM_ID', 'APNS_KEY_ID', 'APNS_PRIVATE_KEY_FILE', 'APNS_BUNDLE_ID']) {
-      if (typeof env[name] !== 'string' || !env[name].trim())
+      if (typeof env[name] !== 'string' || !env[name].trim()) {
         throw new Error(name + ' is required');
+      }
     }
 
-    if (!['sandbox', 'production'].includes(String(env.APNS_ENVIRONMENT)))
+    if (!['sandbox', 'production'].includes(String(env.APNS_ENVIRONMENT))) {
       throw new Error('APNS_ENVIRONMENT must be sandbox or production');
+    }
   }
 
   const drift = Math.ceil(timeouts.REDLOCK_LEASE_MS! * 0.01) + 2;

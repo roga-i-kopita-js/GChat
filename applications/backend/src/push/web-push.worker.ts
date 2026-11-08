@@ -23,10 +23,14 @@ export class WebPushWorker implements OnApplicationBootstrap, OnModuleDestroy {
   ) {}
 
   onApplicationBootstrap(): void {
-    if (!this.config.get<boolean>('WEB_PUSH_ENABLED', false)) return;
+    if (!this.config.get<boolean>('WEB_PUSH_ENABLED', false)) {
+      return;
+    }
 
     this.timer = setInterval((): void => {
-      if (this.running) return;
+      if (this.running) {
+        return;
+      }
 
       this.running = this.tick()
         .catch((): void => {
@@ -41,7 +45,9 @@ export class WebPushWorker implements OnApplicationBootstrap, OnModuleDestroy {
 
   private async tick(): Promise<void> {
     for (const job of await this.store.claim('web_push', 4)) {
-      if (!job.leaseToken || !job.deviceId || !job.sessionId) continue;
+      if (!job.leaseToken || !job.deviceId || !job.sessionId) {
+        continue;
+      }
 
       try {
         const target = await this.devices.resolveWebPushTarget(job.deviceId, job.sessionId);
@@ -67,9 +73,9 @@ export class WebPushWorker implements OnApplicationBootstrap, OnModuleDestroy {
 
         const result = await this.client.send(target, call.call_id, call.ringing_deadline);
 
-        if (result.status >= 200 && result.status < 300)
+        if (result.status >= 200 && result.status < 300) {
           await this.store.repeatWebPush(job.id, job.leaseToken);
-        else if (result.status === 404 || result.status === 410) {
+        } else if (result.status === 404 || result.status === 410) {
           await this.devices.invalidateWebPushTarget(target.sessionId, target.version);
           await this.store.complete(job.id, job.leaseToken, 'cancelled');
         } else if (result.status === 429 || result.status >= 500) {

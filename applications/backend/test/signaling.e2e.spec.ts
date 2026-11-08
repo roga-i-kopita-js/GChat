@@ -28,7 +28,9 @@ function message(socket: WebSocket, type: string, payload: object): Promise<any>
     const receive = (raw: Buffer): void => {
       const result = JSON.parse(raw.toString());
 
-      if (result.request_id !== id) return;
+      if (result.request_id !== id) {
+        return;
+      }
 
       clearTimeout(timer);
       socket.off('message', receive);
@@ -113,7 +115,9 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
   });
 
   afterEach((): void => {
-    for (const socket of sockets) socket.terminate();
+    for (const socket of sockets) {
+      socket.terminate();
+    }
 
     sockets.length = 0;
   });
@@ -128,10 +132,11 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
     socket.on('error', (): void => {});
     await once(socket, 'open');
 
-    if (register)
+    if (register) {
       expect((await message(socket, 'device.register', { device_id: id })).payload).toEqual({
         device_id: id,
       });
+    }
 
     return socket;
   }

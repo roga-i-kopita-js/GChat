@@ -130,7 +130,9 @@ describe('Best effort dialog push', (): void => {
 
     f.apns.send.mockImplementation((): Promise<never> => new Promise((): void => {}));
 
-    for (let i = 0; i < 105; i++) f.events.publish(f.notice);
+    for (let i = 0; i < 105; i++) {
+      f.events.publish(f.notice);
+    }
 
     await jest.advanceTimersByTimeAsync(0);
     expect(f.apns.send).toHaveBeenCalledTimes(4);

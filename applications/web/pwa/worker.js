@@ -26,8 +26,9 @@ self.addEventListener('install', (event) => {
           }),
         );
 
-        if (results.some((result) => result.status === 'rejected'))
+        if (results.some((result) => result.status === 'rejected')) {
           throw new Error('Incomplete frontend deployment');
+        }
 
         await cache.put(
           startUrl,
@@ -44,7 +45,9 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data?.type === 'GCHAT_ACTIVATE') event.waitUntil(self.skipWaiting());
+  if (event.data?.type === 'GCHAT_ACTIVATE') {
+    event.waitUntil(self.skipWaiting());
+  }
 });
 
 self.addEventListener('activate', (event) => {
@@ -53,7 +56,9 @@ self.addEventListener('activate', (event) => {
       const prefix = config.cachePrefix;
 
       for (const key of await caches.keys()) {
-        if (key.startsWith(prefix) && key !== cacheName) await caches.delete(key);
+        if (key.startsWith(prefix) && key !== cacheName) {
+          await caches.delete(key);
+        }
       }
 
       await self.clients.claim();
@@ -64,11 +69,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
 
-  if (request.method !== 'GET') return;
+  if (request.method !== 'GET') {
+    return;
+  }
 
   const url = new URL(request.url);
 
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin) {
+    return;
+  }
 
   const navigation =
     request.mode === 'navigate' &&
@@ -78,7 +87,9 @@ self.addEventListener('fetch', (event) => {
         )
       : url.pathname === config.startPath || url.pathname.startsWith(config.startPath + '/'));
 
-  if (!navigation && !assetUrls.has(url.href)) return;
+  if (!navigation && !assetUrls.has(url.href)) {
+    return;
+  }
 
   event.respondWith(
     (async () => {
@@ -189,11 +200,15 @@ self.addEventListener('notificationclick', (event) => {
       if (existing) {
         await existing.focus();
 
-        if (validDialog) existing.postMessage({ type: 'dialog.notification', dialogId: id });
+        if (validDialog) {
+          existing.postMessage({ type: 'dialog.notification', dialogId: id });
+        }
       } else {
         const target = new URL(config.startUrl, self.location.origin);
 
-        if (validDialog) target.searchParams.set('dialog_id', id);
+        if (validDialog) {
+          target.searchParams.set('dialog_id', id);
+        }
 
         await self.clients.openWindow(validDialog ? target.href : config.startUrl);
       }

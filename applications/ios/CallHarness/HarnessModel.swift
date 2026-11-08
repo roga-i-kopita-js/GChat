@@ -18,6 +18,62 @@ import UIKit
     @Published private(set) var outputDevice = ""
     @Published private(set) var lastCallEvent = "событий звонка ещё нет"
     @Published var error = ""
+    @Published private(set) var cameraStatus = "released"
+    @Published private(set) var pictureInPicture = "inactive"
+    @Published private(set) var hasCamera = false
+    @Published private(set) var recordingVideo = false
+    @Published var cameraExpanded = true
+    private var cameraSession: String?
+    private var cameraFacing = "front"
+    private var recordingID: String?
+    private let cameraFiles = HarnessCameraFiles()
+    lazy var camera: NativeMediaController = {
+        let controller = NativeMediaController(files:cameraFiles,webView:{nil})
+        controller.onEvent = { [weak self] event in
+            guard let self else { return }
+            if let state = event["state"] as? [String:Any], let status = state["status"] as? String {
+                self.cameraStatus = status; self.hasCamera = status != "released"
+                self.recordingVideo = state["recording"] as? String == "recording"
+                if state["recording"] as? String == "idle" { self.recordingID = nil }
+                self.cameraFacing = state["facing"] as? String ?? self.cameraFacing
+            }
+            if let pip = event["pip"] as? String { self.pictureInPicture = pip }
+            self.saveDiagnostics()
+        }
+        return controller
+    }()
+    func startCamera() async {
+        do { _ = try await cameraHandle(); hasCamera = true } catch { show(error) }
+    }
+    private func cameraHandle() async throws -> String {
+        if let cameraSession, (try? await camera.execute("camera.state",args:["sessionId":cameraSession])) != nil { return cameraSession }
+        let result = try await camera.execute("camera.open",args:["facing":cameraFacing,"lifetime":"call"])
+        guard let id = result["sessionId"] as? String else { throw NativeError.unavailable }
+        cameraSession = id; return id
+    }
+    func closeCamera() async {
+        do { _ = try await camera.execute("camera.close",args:[:]); cameraSession = nil; hasCamera = false; recordingID = nil }
+        catch { show(error) }
+    }
+    func switchCamera() async {
+        do { let id = try await cameraHandle(); _ = try await camera.execute("camera.facing",args:["sessionId":id,"facing":cameraFacing == "front" ? "back" : "front"]) }
+        catch { show(error) }
+    }
+    func takePhoto() async {
+        do { let id = try await cameraHandle(); _ = try await camera.execute("camera.photo",args:["sessionId":id]); error = "Фото сохранено в Data." }
+        catch { show(error) }
+    }
+    func recordVideo() async {
+        do {
+            if let recordingID {
+                _ = try await camera.execute("camera.stopRecording",args:["recordingId":recordingID]); self.recordingID = nil; error = "Видео сохранено в Data."
+            } else {
+                let id = try await cameraHandle(); let result = try await camera.execute("camera.record",args:["sessionId":id])
+                guard let recording = result["recordingId"] as? String else { throw NativeError.unavailable }
+                recordingID = recording
+            }
+        } catch { show(error) }
+    }
     private let media = WebRTCMedia()
     private let system = CallSystem()
     private var sessions: SessionManager?
@@ -47,6 +103,8 @@ import UIKit
             "Получено WSS: \(transportMessages); последнее: \(lastTransportEvent)",
             "Сбросов CallKit: \(systemResets); call.current: \(lastCurrent)",
             "CallKit: " + system.diagnostics,
+            "Камера: " + cameraStatus + "; PiP: " + pictureInPicture,
+            "PiP lifecycle: " + camera.pictureInPictureDiagnostics,
             "Звонок: " + (calls?.state.call?.call_id.uuidString.lowercased() ?? "нет"),
             "Состояние: " + phase,
             "Медиа: \(audioConnected ? "connected" : "disconnected"); выбранное устройство: \(calls?.selected ?? false)",
@@ -209,7 +267,9 @@ import UIKit
     }
 
     private func changed() {
-        guard let calls, let accountID else { return }
+        guard let calls, let accountID else { camera.selectCall(nil,audioActive:false); return }
+        let selected = calls.selected && calls.state.phase != nil && calls.state.phase != .ended ? calls.state.call?.call_id : nil
+        camera.selectCall(selected,audioActive:media.connected && selected != nil)
         phase = calls.state.phase?.rawValue ?? "нет звонка"
         muted = calls.muted
         audioConnected = media.connected
@@ -242,7 +302,7 @@ import UIKit
         } catch { show(error) }
     }
     private func show(_ cause: Error) {
-        error = (cause as? AuthFailure)?.code ?? (cause as? NativeError)?.rawValue ?? "Операция недоступна"
+        error = (cause as? AuthFailure)?.code ?? (cause as? DeviceCommandError)?.code ?? (cause as? NativeError)?.rawValue ?? "Операция недоступна"
         saveDiagnostics()
     }
 }

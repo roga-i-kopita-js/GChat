@@ -24,7 +24,9 @@ function account(id = targetId, status = 'active'): Record<string, unknown> {
 async function setup(page: Page, role = 'admin', path = '/', withSession = true): Promise<void> {
   await page.addInitScript(
     ({ role, adminId, withSession }): void => {
-      if (!withSession) return;
+      if (!withSession) {
+        return;
+      }
 
       const now = Math.floor(Date.now() / 1000);
       const jwt = btoa(
@@ -56,12 +58,15 @@ async function setup(page: Page, role = 'admin', path = '/', withSession = true)
     const path = new URL(route.request().url()).pathname;
     let body: unknown = {};
 
-    if (path === '/api/groups') body = { groups: [] };
-    else if (path === '/api/admin/users') body = { users: [account(), account(adminId)], total: 2 };
-    else if (path === '/api/admin/groups')
+    if (path === '/api/groups') {
+      body = { groups: [] };
+    } else if (path === '/api/admin/users') {
+      body = { users: [account(), account(adminId)], total: 2 };
+    } else if (path === '/api/admin/groups') {
       body = { groups: [{ id: 'group', name: 'команда' }], total: 1 };
-    else if (path.startsWith('/api/admin/users/')) body = { user: account(path.split('/')[4]) };
-    else {
+    } else if (path.startsWith('/api/admin/users/')) {
+      body = { user: account(path.split('/')[4]) };
+    } else {
       await route.fulfill({
         status: 503,
         json: { error: { code: 'SERVICE_UNAVAILABLE', message: 'Unavailable' } },
@@ -201,7 +206,9 @@ test('confirms access changes and cancels without sending an operation', async (
     .getByRole('button', { name: 'Подтвердить', exact: true })
     .boundingBox();
 
-  if (!cancelBox || !confirmBox) throw new Error('Confirmation buttons must be visible');
+  if (!cancelBox || !confirmBox) {
+    throw new Error('Confirmation buttons must be visible');
+  }
 
   expect(Math.abs(cancelBox.y - confirmBox.y)).toBeLessThan(1);
   expect(Math.abs(cancelBox.width - confirmBox.width)).toBeLessThan(1);
@@ -351,7 +358,9 @@ test('direct admin URL denies a user before any administrative request', async (
   let requests = 0;
 
   page.on('request', (request): void => {
-    if (new URL(request.url()).pathname.startsWith('/api/admin')) requests++;
+    if (new URL(request.url()).pathname.startsWith('/api/admin')) {
+      requests++;
+    }
   });
   await setup(page, 'user', `/admin/users/${targetId}`);
   await expect(page.getByRole('heading', { name: 'Доступ запрещён' })).toBeVisible();
@@ -362,7 +371,10 @@ test('login returns to the protected deep link and unknown URLs show not found',
   page,
 }): Promise<void> => {
   await setup(page, 'admin', `/admin/users/${targetId}?status=disabled`, false);
-  await expect(page).toHaveURL(/\/login$/);
+  await expect(page).toHaveURL(/\/login\?returnTo=/);
+  expect(new URL(page.url()).searchParams.get('returnTo')).toBe(
+    `/admin/users/${targetId}?status=disabled`,
+  );
   await page.route('**/api/auth/login', async (route): Promise<void> => {
     const now = Math.floor(Date.now() / 1000);
     const jwt = Buffer.from(
@@ -424,7 +436,9 @@ test('route changes keep the signaling owner and active call; incoming calls app
     socket.onMessage((message): void => {
       const command = JSON.parse(String(message));
       const payload =
-        command.type === 'device.register' ? { device_id: 'test-device' } : { call: current };
+        command.type === 'device.register'
+          ? { device_id: '00000000-0000-4000-8000-000000000099' }
+          : { call: current };
 
       socket.send(JSON.stringify({ type: 'response', request_id: command.request_id, payload }));
     });
@@ -541,8 +555,9 @@ test('password forms can reveal and copy a draft without submitting it', async (
   let mutations = 0;
 
   page.on('request', (request): void => {
-    if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/admin'))
+    if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/admin')) {
       mutations++;
+    }
   });
   await page.evaluate((): void => {
     Object.defineProperty(navigator, 'clipboard', {
@@ -556,9 +571,9 @@ test('password forms can reveal and copy a draft without submitting it', async (
   });
 
   for (const action of ['create', 'password']) {
-    if (action === 'create')
+    if (action === 'create') {
       await page.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
-    else {
+    } else {
       await page
         .getByRole('region', { name: 'Список аккаунтов' })
         .getByRole('link')
@@ -610,8 +625,9 @@ test('search waits for a typing pause and cancels pending work when leaving the 
   page.on('request', (request): void => {
     const url = new URL(request.url());
 
-    if (url.pathname === '/api/admin/users' && url.searchParams.get('q'))
+    if (url.pathname === '/api/admin/users' && url.searchParams.get('q')) {
       queries.push(url.searchParams.get('q') ?? '');
+    }
   });
   const search = page.getByRole('textbox', { name: 'Поиск по имени или логину' });
 
@@ -674,4 +690,356 @@ test('admin calls list includes active users across pages and without groups', a
     page.getByRole('button', { name: 'Позвонить: Администратор', exact: true }),
   ).toHaveCount(0);
   expect(offsets).toEqual([0, 2]);
+});
+
+test('contact group belongs to the URL and survives reload and browser history', async ({
+  page,
+}): Promise<void> => {
+  await setup(page, 'user');
+  const first = '00000000-0000-4000-8000-000000000031';
+  const second = '00000000-0000-4000-8000-000000000032';
+
+  await page.route('**/api/groups', async (route): Promise<void> => {
+    await route.fulfill({
+      json: {
+        groups: [
+          { id: first, name: 'Первая группа' },
+          { id: second, name: 'Вторая группа' },
+        ],
+      },
+    });
+  });
+  await page.route('**/api/groups/*/members', async (route): Promise<void> => {
+    const selected = route.request().url().includes(second);
+
+    await route.fulfill({
+      json: {
+        members: [
+          { id: targetId, display_name: selected ? 'Второй собеседник' : 'Первый собеседник' },
+        ],
+      },
+    });
+  });
+  await page.goto('/calls');
+  const groups = page.getByRole('combobox', { name: 'Группа контактов' });
+
+  await groups.selectOption(first);
+  await expect(page).toHaveURL(new RegExp(`\\?group=${first}$`));
+  await groups.selectOption(second);
+  await expect(
+    page.getByRole('button', { name: 'Второй собеседник Голосовой звонок' }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(groups).toHaveValue(second);
+  await page.goBack();
+  await expect(groups).toHaveValue(first);
+  await expect(
+    page.getByRole('button', { name: 'Первый собеседник Голосовой звонок' }),
+  ).toBeVisible();
+});
+
+test('loads page modules on demand and keeps the parent list across nested detail navigation', async ({
+  page,
+}): Promise<void> => {
+  const modules: string[] = [];
+
+  page.on('request', (request): void => {
+    modules.push(new URL(request.url()).pathname);
+  });
+  await setup(page);
+  await expect(page.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
+  expect(
+    modules.some((path): boolean =>
+      /\/(UsersPage|DialogsPage|SettingsIndexRoute)\.tsx$/.test(path),
+    ),
+  ).toBe(false);
+  await openAdmin(page);
+  const list = page.getByRole('region', { name: 'Список аккаунтов' });
+
+  await list.evaluate((element): void => {
+    element.setAttribute('data-instance', 'original');
+  });
+  await list.getByRole('link').filter({ hasText: 'Анна' }).click();
+  await expect(page.getByRole('dialog', { name: 'Карточка аккаунта', exact: true })).toBeVisible();
+  await expect(list).toHaveAttribute('data-instance', 'original');
+  await page.goBack();
+  await expect(page.getByRole('dialog', { name: 'Карточка аккаунта', exact: true })).toHaveCount(0);
+  await expect(list).toHaveAttribute('data-instance', 'original');
+  await page.goForward();
+  await expect(page.getByRole('dialog', { name: 'Карточка аккаунта', exact: true })).toBeVisible();
+  await expect(list).toHaveAttribute('data-instance', 'original');
+  await page.reload();
+  await expect(page.getByRole('dialog', { name: 'Карточка аккаунта', exact: true })).toContainText(
+    'Анна',
+  );
+});
+
+test('shows pending navigation while importing settings and resolves nested settings routes', async ({
+  page,
+}): Promise<void> => {
+  await setup(page);
+  await expect(page.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve): void => {
+    release = resolve;
+  });
+
+  await page.route(
+    /\/features\/settings\/SettingsIndexRoute\.tsx(?:\?|$)/,
+    async (route): Promise<void> => {
+      await gate;
+      await route.continue();
+    },
+  );
+  await page.getByRole('link', { name: 'Настройки', exact: true }).click();
+
+  try {
+    await expect(page.getByRole('status').filter({ hasText: 'Загружаем страницу…' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toBeVisible();
+  } finally {
+    release();
+  }
+
+  await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Основные', exact: false }).click();
+  await expect(page).toHaveURL(/\/settings\/general$/);
+  await page.getByRole('link', { name: /Микрофон/ }).click();
+  await expect(page.getByRole('heading', { name: 'Микрофон', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Микрофон', exact: true })).toBeVisible();
+  await page.goto('/settings/general/unknown');
+  await expect(page.getByRole('heading', { name: 'Настройка не найдена' })).toBeVisible();
+});
+
+test('contains lazy import failures inside the section and preserves the application shell', async ({
+  page,
+}): Promise<void> => {
+  await setup(page);
+  await expect(page.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
+  await page.route(
+    /\/features\/settings\/SettingsIndexRoute\.tsx(?:\?|$)/,
+    async (route): Promise<void> => {
+      await route.abort('failed');
+    },
+  );
+  await page.getByRole('link', { name: 'Настройки', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Не удалось открыть страницу' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toBeVisible();
+  await page.getByRole('link', { name: 'К звонкам', exact: true }).click();
+  await expect(page.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
+});
+
+test('settings imports only the page being opened', async ({ page }): Promise<void> => {
+  const pages = new Set<string>();
+
+  page.on('request', (request): void => {
+    const match = new URL(request.url()).pathname.match(
+      /\/features\/settings\/(Settings\w+Route)\.tsx$/,
+    );
+
+    if (match) {
+      pages.add(match[1]);
+    }
+  });
+  await setup(page);
+  await page.getByRole('link', { name: 'Настройки', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
+  expect([...pages]).toEqual(['SettingsIndexRoute']);
+  await page.getByRole('link', { name: 'Основные', exact: false }).click();
+  await expect(page.getByRole('heading', { name: 'Основные', exact: true })).toBeVisible();
+  expect([...pages]).toEqual(['SettingsIndexRoute', 'SettingsGeneralRoute']);
+
+  for (const [name, module] of [
+    ['Микрофон', 'SettingsMicrophoneRoute'],
+    ['Динамики и звук', 'SettingsAudioRoute'],
+    ['Push-уведомления', 'SettingsPushRoute'],
+    ['Камера', 'SettingsCameraRoute'],
+    ['Геопозиция', 'SettingsGeolocationRoute'],
+    ['Файлы и папки', 'SettingsFilesRoute'],
+  ]) {
+    const before = new Set(pages);
+
+    await page.getByRole('link', { name: new RegExp(name) }).click();
+    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+    expect([...pages].filter((item): boolean => !before.has(item))).toEqual([module]);
+    await page.getByRole('link', { name: 'Назад', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Основные', exact: true })).toBeVisible();
+  }
+});
+
+test('contacts do not import person details, call card or diagnostics before opening them', async ({
+  page,
+}): Promise<void> => {
+  const modules = new Set<string>();
+
+  page.on('request', (request): void => {
+    modules.add(new URL(request.url()).pathname);
+  });
+  await page.addInitScript((): void => localStorage.setItem('debug', '1'));
+  await setup(page);
+  await expect(page.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
+  expect(
+    [...modules].some((path): boolean =>
+      /\/(ContactDetails|CallCard|DiagnosticsDialog)\.tsx$/.test(path),
+    ),
+  ).toBe(false);
+  await page.getByRole('button', { name: 'Анна Голосовой звонок', exact: true }).click();
+  await expect(page.locator('.person-preview')).toContainText('Анна');
+  expect([...modules].some((path): boolean => path.endsWith('/ContactDetails.tsx'))).toBe(true);
+  expect(
+    [...modules].some((path): boolean => /\/(CallCard|DiagnosticsDialog)\.tsx$/.test(path)),
+  ).toBe(false);
+  await page.getByRole('button', { name: 'Диагностика', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'Диагностика соединения', exact: true }),
+  ).toBeVisible();
+  expect([...modules].some((path): boolean => path.endsWith('/DiagnosticsDialog.tsx'))).toBe(true);
+  expect([...modules].some((path): boolean => path.endsWith('/CallCard.tsx'))).toBe(false);
+});
+
+test('incoming call can be rejected while the card loads and after its import fails', async ({
+  page,
+}): Promise<void> => {
+  let sendEvent: (payload: object) => void = (): void => {};
+  let current: Record<string, unknown> | null = null;
+  let rejected = 0;
+  let connections = 0;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve): void => {
+    release = resolve;
+  });
+
+  await page.route(/\/features\/calls\/CallCard\.tsx(?:\?|$)/, async (route): Promise<void> => {
+    await gate;
+    await route.abort('failed');
+  });
+  await page.routeWebSocket('**/ws', (socket): void => {
+    connections++;
+    sendEvent = (payload): void => socket.send(JSON.stringify({ type: 'call.updated', payload }));
+    socket.onMessage((message): void => {
+      const command = JSON.parse(String(message));
+
+      if (command.type === 'call.reject') {
+        rejected++;
+        current = {
+          ...current,
+          state: 'ended',
+          ended_at: new Date().toISOString(),
+          end_reason: 'rejected',
+          version: 2,
+        };
+      }
+
+      const payload =
+        command.type === 'device.register'
+          ? { device_id: '00000000-0000-4000-8000-000000000099' }
+          : { call: current };
+
+      socket.send(JSON.stringify({ type: 'response', request_id: command.request_id, payload }));
+    });
+  });
+  await setup(page);
+  await page.route('**/api/auth/ws-ticket', async (route): Promise<void> => {
+    await route.fulfill({
+      json: { ticket: 'test-ticket', expires_at: new Date(Date.now() + 60000).toISOString() },
+    });
+  });
+  await page.reload();
+  await openAdmin(page);
+  await expect.poll((): number => connections).toBe(1);
+  current = {
+    call_id: '00000000-0000-4000-8000-000000000012',
+    state: 'ringing',
+    caller_id: targetId,
+    recipient_id: adminId,
+    created_at: new Date().toISOString(),
+    started_at: null,
+    ended_at: null,
+    end_reason: null,
+    recovery_id: null,
+    recovery_deadline: null,
+    ringing_deadline: null,
+    connecting_deadline: null,
+    version: 1,
+  };
+  sendEvent({ call: current });
+  const incoming = page.getByRole('dialog', { name: 'Входящий звонок', exact: true });
+
+  try {
+    await expect(incoming.getByRole('button', { name: 'Принять', exact: true })).toBeEnabled();
+    await expect(incoming.getByRole('button', { name: 'Отклонить', exact: true })).toBeEnabled();
+    await expect(incoming.getByText('Загружаем экран звонка…', { exact: true })).toBeVisible();
+  } finally {
+    release();
+  }
+
+  await expect(incoming.getByRole('alert')).toContainText('Не удалось загрузить экран звонка.');
+  await incoming.getByRole('button', { name: 'Отклонить', exact: true }).click();
+  await expect(incoming).toHaveCount(0);
+  expect(rejected).toBe(1);
+  expect(connections).toBe(1);
+  await expect(page).toHaveURL(/\/admin\/users$/);
+});
+
+test('one blocker protects a dirty admin form on Back and preserves it when staying', async ({
+  page,
+}): Promise<void> => {
+  await setup(page);
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
+  const form = page.getByRole('dialog', { name: 'Создать аккаунт' });
+
+  await form.getByLabel('Имя', { exact: true }).fill('Несохранённое имя');
+  await page.goBack();
+  const guard = page.getByRole('dialog', { name: 'Несохранённые изменения' });
+
+  await expect(guard).toBeVisible();
+  await guard.getByRole('button', { name: 'Остаться', exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/users$/);
+  await expect(form.getByLabel('Имя', { exact: true })).toHaveValue('Несохранённое имя');
+  expect(
+    await page.evaluate((): boolean => {
+      const event = new Event('beforeunload', { cancelable: true });
+
+      window.dispatchEvent(event);
+
+      return event.defaultPrevented;
+    }),
+  ).toBe(true);
+  await page.goBack();
+  await expect(guard).toBeVisible();
+  await guard.getByRole('button', { name: 'Уйти без сохранения', exact: true }).click();
+  await expect(page).toHaveURL(/\/calls$/);
+  await expect(form).toHaveCount(0);
+});
+
+test('restoring pristine input removes protection and session invalidation bypasses dirty forms', async ({
+  page,
+}): Promise<void> => {
+  await setup(page);
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
+  const field = page
+    .getByRole('dialog', { name: 'Создать аккаунт' })
+    .getByLabel('Имя', { exact: true });
+
+  await field.fill('черновик');
+  await field.fill('');
+  expect(
+    await page.evaluate((): boolean => {
+      const event = new Event('beforeunload', { cancelable: true });
+
+      window.dispatchEvent(event);
+
+      return event.defaultPrevented;
+    }),
+  ).toBe(false);
+  await field.fill('Секретный черновик');
+  await page.evaluate((): void => {
+    localStorage.removeItem('gchat.session.v1');
+    window.dispatchEvent(new Event('gchat-session'));
+  });
+  await expect(page.getByRole('heading', { name: 'Вход в GChat', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Несохранённые изменения' })).toHaveCount(0);
+  await expect(field).toHaveCount(0);
 });

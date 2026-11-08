@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+import type { DeviceFailure } from './api';
+import { DeviceErrorCode } from './error-code';
+import { deviceErrorMessage } from './messages';
+
 export const permissionSchema = z.enum([
   'unknown',
   'prompt',
@@ -77,7 +81,11 @@ const page = z.strictObject({
 const id = z.strictObject({ id: uuid });
 const target = z.strictObject({ id: uuid, destinationDirectoryId: uuid, name });
 
+export const storageAreaSchema = z.enum(['data', 'temporary', 'cache']);
+
 export const argsSchemas = {
+  'storage.getRoot': z.strictObject({ area: storageAreaSchema }),
+  'storage.getUsage': z.strictObject({ area: storageAreaSchema }),
   'device.state.read': empty,
   'device.changes.wait': z.strictObject({
     afterRevision: integer,
@@ -134,6 +142,11 @@ export const argsSchemas = {
 };
 
 export const resultsSchemas = {
+  'storage.getRoot': refSchema,
+  'storage.getUsage': z.strictObject({
+    usedBytes: integer.nullable(),
+    quotaBytes: integer.nullable(),
+  }),
   'device.state.read': stateSchema,
   'device.changes.wait': z.strictObject({
     revision: integer,
@@ -214,11 +227,34 @@ export class DeviceError extends Error {
   readonly completedIds?: string[];
   readonly destinationId?: string;
 
-  constructor(
-    readonly code: string,
-    details: Record<string, unknown> = {},
-  ) {
-    super(code);
+  readonly code: DeviceErrorCode;
+  readonly service: string;
+  readonly operation: string;
+
+  constructor(failure: DeviceFailure);
+  constructor(code: string, details?: Record<string, unknown>);
+  constructor(input: string | DeviceFailure, details: Record<string, unknown> = {}) {
+    const raw = typeof input === 'string' ? input : input.code;
+    const code =
+      Object.values(DeviceErrorCode).find((value): boolean => value === raw) ??
+      DeviceErrorCode.OperationFailed;
+
+    super(deviceErrorMessage({ code }));
+    this.code = code;
+    this.service =
+      typeof input === 'string'
+        ? typeof details.command === 'string'
+          ? details.command.split('.')[0]
+          : 'device'
+        : input.service;
+    this.operation =
+      typeof input === 'string'
+        ? typeof details.command === 'string'
+          ? details.command
+          : 'operation'
+        : input.operation;
+    details = typeof input === 'string' ? details : { ...input.details };
+
     this.details = {
       ...(code === 'OUTCOME_UNKNOWN'
         ? { outcome: 'unknown' }
@@ -239,15 +275,24 @@ export class DeviceError extends Error {
 }
 
 export function failure(error: unknown): DeviceError {
-  if (error instanceof DeviceError) return error;
+  if (error instanceof DeviceError) {
+    return error;
+  }
 
-  if (error instanceof DOMException) {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    typeof error.name === 'string'
+  ) {
     const codes: Record<string, string> = {
       AbortError: 'CANCELLED',
       NotAllowedError: 'PERMISSION_DENIED',
       SecurityError: 'PERMISSION_DENIED',
       NotFoundError: 'NOT_FOUND',
       NotReadableError: 'DEVICE_UNAVAILABLE',
+      OverconstrainedError: 'DEVICE_UNAVAILABLE',
+      NotSupportedError: 'UNSUPPORTED',
       QuotaExceededError: 'STORAGE_FULL',
       InvalidModificationError: 'CONFLICT',
     };

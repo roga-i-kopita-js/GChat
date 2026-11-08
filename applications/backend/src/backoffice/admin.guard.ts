@@ -10,7 +10,9 @@ export class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const { user } = context.switchToHttp().getRequest<{ user?: AuthIdentity }>();
 
-    if (user?.role !== 'admin') throw this.error.forbidden();
+    if (user?.role !== 'admin') {
+      throw this.error.forbidden();
+    }
 
     return true;
   }

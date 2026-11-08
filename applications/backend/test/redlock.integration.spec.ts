@@ -46,7 +46,11 @@ integration('Redlock with real Redis', (): void => {
       services.map((service): Promise<void> => service.beforeApplicationShutdown()),
     );
 
-    for (const client of clients) if (client.isOpen) client.destroy();
+    for (const client of clients) {
+      if (client.isOpen) {
+        client.destroy();
+      }
+    }
   });
 
   it('serializes independent clients and releases on exception', async (): Promise<void> => {

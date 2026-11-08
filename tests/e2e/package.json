@@ -10,6 +10,8 @@
     "backend": "node scripts/backend.mjs",
     "dev": "vite --host 127.0.0.1",
     "test": "playwright test",
+    "pretest:device": "pnpm --filter @gchat/web typecheck",
+    "test:device": "playwright test --config device.config.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write --ignore-unknown --ignore-path .gitignore --ignore-path ../../.prettierignore .",
     "format:check": "prettier --check --ignore-unknown --ignore-path .gitignore --ignore-path ../../.prettierignore .",

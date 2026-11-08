@@ -10,7 +10,9 @@ function enabled(): boolean {
 
 function subscribe(change: () => void): () => void {
   const storage = (event: StorageEvent): void => {
-    if (event.key === 'debug' || event.key === null) change();
+    if (event.key === 'debug' || event.key === null) {
+      change();
+    }
   };
 
   window.addEventListener('storage', storage);

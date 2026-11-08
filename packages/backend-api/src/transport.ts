@@ -75,7 +75,9 @@ export class ApiTransport {
   private readonly options: BackendApiOptions;
 
   constructor(options: BackendApiOptions) {
-    if (!options?.baseUrl) throw new TypeError('baseUrl is required');
+    if (!options?.baseUrl) {
+      throw new TypeError('baseUrl is required');
+    }
 
     this.options = { ...options };
   }
@@ -89,13 +91,17 @@ export class ApiTransport {
       const value: unknown =
         section && Object.getOwnPropertyDescriptor(section, parameter.name)?.value;
 
-      if (value === undefined) continue;
+      if (value === undefined) {
+        continue;
+      }
 
       if (parameter.in === 'path') {
         path = path.replace(`{${parameter.name}}`, encodeURIComponent(String(value)));
       } else if (Array.isArray(value)) {
         if (parameter.explode !== false) {
-          for (const entry of value) query.append(parameter.name, String(entry));
+          for (const entry of value) {
+            query.append(parameter.name, String(entry));
+          }
         } else {
           query.append(parameter.name, value.join(','));
         }
@@ -107,12 +113,16 @@ export class ApiTransport {
     const url = `${this.options.baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}${query.size ? `?${query}` : ''}`;
     const headers = new Headers({ Accept: 'application/json' });
 
-    if (args.body !== undefined) headers.set('Content-Type', 'application/json');
+    if (args.body !== undefined) {
+      headers.set('Content-Type', 'application/json');
+    }
 
     if (operation.protected) {
       const token = await this.options.getAccessToken?.();
 
-      if (token) headers.set('Authorization', `Bearer ${token}`);
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
     }
 
     const fetch = this.options.fetch ?? globalThis.fetch;
@@ -134,14 +144,20 @@ export class ApiTransport {
               ? response.json()
               : response.text());
     } catch (cause) {
-      if (!(cause instanceof SyntaxError)) throw cause;
+      if (!(cause instanceof SyntaxError)) {
+        throw cause;
+      }
 
-      if (!response.ok) throw new ApiError(response, undefined, cause);
+      if (!response.ok) {
+        throw new ApiError(response, undefined, cause);
+      }
 
       throw new ApiResponseParseError(response, cause);
     }
 
-    if (!response.ok) throw new ApiError(response, data);
+    if (!response.ok) {
+      throw new ApiError(response, data);
+    }
 
     return { data, status: response.status, headers: response.headers };
   }

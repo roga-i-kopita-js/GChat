@@ -10,6 +10,7 @@ import {
   StorageError,
 } from '../../shared/dialogs/model';
 import { dialogError, type DialogRuntime } from '../../shared/dialogs/runtime';
+import { useNavigationProtection } from '../../shared/navigation-protection';
 import { stickers } from './stickers';
 
 export function Composer({
@@ -28,18 +29,22 @@ export function Composer({
   const [panel, setPanel] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
-  const current = useRef(draft.text),
-    revision = useRef(draft.revision),
-    dirty = useRef(false);
+  const current = useRef(draft.text);
+  const revision = useRef(draft.revision);
+  const dirty = useRef(false);
   const tail = useRef(Promise.resolve());
   const conflictRef = useRef(false);
   const mounted = useRef(true);
 
   const save = useCallback(async (): Promise<void> => {
     const run = async (): Promise<void> => {
-      if (!dirty.current) return;
+      if (!dirty.current) {
+        return;
+      }
 
-      if (conflictRef.current) throw new StorageError('STORAGE_CONFLICT');
+      if (conflictRef.current) {
+        throw new StorageError('STORAGE_CONFLICT');
+      }
 
       const value = current.current;
 
@@ -48,12 +53,16 @@ export function Composer({
 
         revision.current = next;
 
-        if (current.current === value) dirty.current = false;
+        if (current.current === value) {
+          dirty.current = false;
+        }
       } catch (cause) {
         if (cause instanceof StorageError && cause.code === 'STORAGE_CONFLICT') {
           conflictRef.current = true;
 
-          if (mounted.current) setConflict(true);
+          if (mounted.current) {
+            setConflict(true);
+          }
         }
 
         if (mounted.current) {
@@ -70,6 +79,14 @@ export function Composer({
     return task;
   }, [runtime, id]);
 
+  useNavigationProtection({
+    dirty: (): boolean => dirty.current,
+    flush: save,
+    discard: (): void => {
+      dirty.current = false;
+      conflictRef.current = false;
+    },
+  });
   useEffect((): (() => void) => runtime.protectDraft(save), [runtime, save]);
   useEffect((): void => {
     if (draft.revision > revision.current && !dirty.current) {
@@ -79,7 +96,9 @@ export function Composer({
     }
   }, [draft.text, draft.revision]);
   useEffect((): (() => void) => {
-    if (!dirty.current) return (): void => {};
+    if (!dirty.current) {
+      return (): void => {};
+    }
 
     const timer = setTimeout((): void => {
       void save().catch((): void => {});
@@ -88,54 +107,22 @@ export function Composer({
     return (): void => clearTimeout(timer);
   }, [text, save]);
   useEffect((): (() => void) => {
-    let replay = false;
+    mounted.current = true;
     const visibility = (): void => {
-      if (document.visibilityState !== 'visible') void save().catch((): void => {});
-    };
-    const navigation = (event: MouseEvent): void => {
-      if (
-        replay ||
-        !dirty.current ||
-        event.defaultPrevented ||
-        event.button !== 0 ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.shiftKey ||
-        event.altKey
-      )
-        return;
-
-      const anchor = event.target instanceof Element ? event.target.closest('a') : null;
-
-      if (
-        !(anchor instanceof HTMLAnchorElement) ||
-        anchor.origin !== location.origin ||
-        anchor.target === '_blank'
-      )
-        return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      void save()
-        .then((): void => {
-          replay = true;
-          anchor.click();
-          replay = false;
-        })
-        .catch((): void => {});
+      if (document.visibilityState !== 'visible') {
+        void save().catch((): void => {});
+      }
     };
     const prepare = (): void => {
       void save().catch((): void => {});
     };
 
     document.addEventListener('visibilitychange', visibility);
-    document.addEventListener('click', navigation, true);
     window.addEventListener('gchat-prepare-update', prepare);
 
     return (): void => {
       mounted.current = false;
       document.removeEventListener('visibilitychange', visibility);
-      document.removeEventListener('click', navigation, true);
       window.removeEventListener('gchat-prepare-update', prepare);
       void save().catch((): void => {});
     };
@@ -157,8 +144,9 @@ export function Composer({
       setConflict(false);
       setError('');
 
-      if (keepMine) await save();
-      else {
+      if (keepMine) {
+        await save();
+      } else {
         current.current = saved.record.draft.text;
         setText(current.current);
         dirty.current = false;
@@ -168,7 +156,9 @@ export function Composer({
     }
   }
   async function send(sticker?: string): Promise<void> {
-    if (busy || conflict) return;
+    if (busy || conflict) {
+      return;
+    }
 
     const value = current.current;
     const validation = sticker ? null : checkText(value);
@@ -179,7 +169,9 @@ export function Composer({
       return;
     }
 
-    if (sticker && !isStickerId(sticker)) return;
+    if (sticker && !isStickerId(sticker)) {
+      return;
+    }
 
     setBusy(true);
     setError('');
@@ -187,11 +179,15 @@ export function Composer({
     try {
       await save();
 
-      if (sticker && isStickerId(sticker))
+      if (sticker && isStickerId(sticker)) {
         await runtime.send(id, { kind: 'sticker', sticker_id: sticker });
-      else await runtime.send(id, { kind: 'text', text: value }, revision.current);
+      } else {
+        await runtime.send(id, { kind: 'text', text: value }, revision.current);
+      }
     } catch (cause) {
-      if (mounted.current) setError(dialogError(cause));
+      if (mounted.current) {
+        setError(dialogError(cause));
+      }
     } finally {
       const saved = await runtime.view(id).catch((): null => null);
 
@@ -245,7 +241,9 @@ export function Composer({
           className="dialog-stickers"
           aria-label="Стикеры"
           onKeyDown={(event): void => {
-            if (event.key === 'Escape') closePanel();
+            if (event.key === 'Escape') {
+              closePanel();
+            }
           }}
         >
           <div>

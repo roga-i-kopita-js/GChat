@@ -93,10 +93,11 @@ describe('Dialog encryption', (): void => {
       { ciphertext: randomBytes(12) },
       { encryptionVersion: 2 },
       { iv: randomBytes(11) },
-    ])
+    ]) {
       expect((): unknown => crypto.decrypt({ ...row, ...encrypted, ...change })).toThrow(
         expect.objectContaining({ code: 'INTERNAL_ERROR' }),
       );
+    }
 
     expect((): unknown =>
       crypto.decrypt({ ...row, ...encrypted, encryptionKeyId: 'missing' }),
@@ -115,8 +116,9 @@ describe('Dialog encryption', (): void => {
       JSON.stringify({ 'bad key': key }),
       JSON.stringify({ one: key.slice(0, -1) }),
       JSON.stringify({ one: Buffer.alloc(31).toString('base64') }),
-    ])
+    ]) {
       expect((): unknown => parseDialogKeys(raw, 'one')).toThrow('Invalid DIALOGS');
+    }
 
     expect(parseDialogKeys(JSON.stringify({ one: key }), 'one').get('one')?.length).toBe(32);
   });

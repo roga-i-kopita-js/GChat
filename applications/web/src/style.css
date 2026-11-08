@@ -1991,3 +1991,43 @@ button svg {
 .push-settings p {
   margin-block: 10px;
 }
+
+.call-camera-preview {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(78px + env(safe-area-inset-bottom));
+  width: min(120px, 30vw);
+  aspect-ratio: 9 / 16;
+  z-index: 20;
+  border: 1px solid #dce3ed;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.call-camera-preview > video,
+.call-camera-preview > div {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.call-camera-preview > p {
+  position: absolute;
+  inset: auto 0 0;
+  margin: 0;
+  padding: 8px;
+  background: #fff;
+  font-size: 12px;
+}
+
+[data-gchat-surface] {
+  min-height: 100dvh;
+}
+.native-camera-surface-visible,
+.native-camera-surface-visible body {
+  background: transparent;
+}
+.native-camera-surface-visible [data-gchat-surface] {
+  background: #f4f6f9;
+  clip-path: var(--native-camera-clip, none);
+}
+
+.native-camera-surface-visible .call-camera-preview {border-radius: 0;}

@@ -19,6 +19,10 @@
 		A20000000000000000000001 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001; };
 		A20000000000000000000002 /* GChatPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002; };
 		A20000000000000000000003 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003; };
+		A20000000000000000000005 /* NativeCameraCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005; };
+		A20000000000000000000006 /* NativeMediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000006; };
+		A20000000000000000000007 /* NativeAudioRoutePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007; };
+		A20000000000000000000008 /* NativeCallPictureInPicture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +40,10 @@
 		A10000000000000000000001 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		A10000000000000000000002 /* GChatPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GChatPlugin.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A10000000000000000000005 /* NativeCameraCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCameraCapture.swift; sourceTree = "<group>"; };
+		A10000000000000000000006 /* NativeMediaController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMediaController.swift; sourceTree = "<group>"; };
+		A10000000000000000000007 /* NativeAudioRoutePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAudioRoutePicker.swift; sourceTree = "<group>"; };
+		A10000000000000000000008 /* NativeCallPictureInPicture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallPictureInPicture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -74,6 +82,10 @@
 				A10000000000000000000001 /* MainViewController.swift */,
 				A10000000000000000000002 /* GChatPlugin.swift */,
 				A10000000000000000000004 /* DeviceController.swift */,
+				A10000000000000000000008 /* NativeCallPictureInPicture.swift */,
+				A10000000000000000000007 /* NativeAudioRoutePicker.swift */,
+				A10000000000000000000006 /* NativeMediaController.swift */,
+				A10000000000000000000005 /* NativeCameraCapture.swift */,
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
@@ -171,6 +183,10 @@
 				A20000000000000000000001 /* MainViewController.swift in Sources */,
 				A20000000000000000000002 /* GChatPlugin.swift in Sources */,
 				A20000000000000000000004 /* DeviceController.swift in Sources */,
+				A20000000000000000000008 /* NativeCallPictureInPicture.swift in Sources */,
+				A20000000000000000000007 /* NativeAudioRoutePicker.swift in Sources */,
+				A20000000000000000000006 /* NativeMediaController.swift in Sources */,
+				A20000000000000000000005 /* NativeCameraCapture.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -315,6 +331,7 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gchat.app;
+				GCHAT_DISPLAY_NAME = GChat;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				GCHAT_APNS_ENVIRONMENT = development;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -338,6 +355,7 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gchat.app;
+				GCHAT_DISPLAY_NAME = GChat;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				GCHAT_APNS_ENVIRONMENT = production;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

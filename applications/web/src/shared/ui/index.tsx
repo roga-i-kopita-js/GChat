@@ -50,7 +50,15 @@ export function Modal({
   }, []);
 
   return (
-    <dialog ref={ref} onCancel={close} className="modal" aria-label={title}>
+    <dialog
+      ref={ref}
+      onCancel={(event): void => {
+        event.preventDefault();
+        close();
+      }}
+      className="modal"
+      aria-label={title}
+    >
       <button className="icon close" aria-label="Закрыть" onClick={close}>
         <X size={20} />
       </button>

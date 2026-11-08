@@ -36,7 +36,9 @@ export class BackofficeService {
         read ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined,
       );
     } catch (cause) {
-      if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
+      if (isDatabaseUnavailable(cause)) {
+        throw this.error.serviceUnavailable({ cause });
+      }
 
       throw cause;
     }
@@ -107,7 +109,9 @@ export class BackofficeService {
     action: 'password' | 'disable' | 'enable',
     password?: string,
   ): Promise<AdminUserResponseDto> {
-    if (action === 'disable' && actor.userId === id) throw this.error.forbidden();
+    if (action === 'disable' && actor.userId === id) {
+      throw this.error.forbidden();
+    }
 
     const hash = action === 'password' ? await this.accounts.preparePassword(password!) : undefined;
 

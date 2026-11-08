@@ -69,7 +69,9 @@ export class AuthService {
     const sid = sessionId(input.refresh_token);
     const initial = sid ? await this.sessions.read(sid) : undefined;
 
-    if (!sid || !initial) throw this.error.sessionInvalid();
+    if (!sid || !initial) {
+      throw this.error.sessionInvalid();
+    }
 
     const hash = tokenHash(input.refresh_token);
 
@@ -77,8 +79,9 @@ export class AuthService {
       const account = await this.sessions.lockAccount(tx, initial.userId);
       const state = await this.sessions.read(sid, tx, true);
 
-      if (!account || account.disabledAt || !state || state.userId !== account.id)
+      if (!account || account.disabledAt || !state || state.userId !== account.id) {
         throw this.error.sessionInvalid();
+      }
 
       const now = await this.sessions.now(tx);
 
@@ -91,8 +94,9 @@ export class AuthService {
         return this.crypto.decrypt(state.rotationEncrypted!, sid, input.request_id);
       }
 
-      if (!matches(state.refreshTokenHash, hash) || state.rotationRequestId === input.request_id)
+      if (!matches(state.refreshTokenHash, hash) || state.rotationRequestId === input.request_id) {
         throw this.error.sessionInvalid();
+      }
 
       this.limits.check(sid, 'refresh', true, `${input.request_id}:${hash}`);
       const tokens = await this.crypto.issue(account, sid);
@@ -118,7 +122,9 @@ export class AuthService {
     const sid = sessionId(token);
     const initial = sid ? await this.sessions.read(sid) : undefined;
 
-    if (!sid || !initial) return;
+    if (!sid || !initial) {
+      return;
+    }
 
     const hash = tokenHash(token);
 
@@ -126,7 +132,9 @@ export class AuthService {
       await this.sessions.lockAccount(tx, initial.userId);
       const state = await this.sessions.read(sid, tx, true);
 
-      if (!state || state.userId !== initial.userId) return;
+      if (!state || state.userId !== initial.userId) {
+        return;
+      }
 
       const now = await this.sessions.now(tx);
 
@@ -180,14 +188,18 @@ export class AuthService {
       .where(and(eq(authSessions.id, sid), eq(authSessions.userId, userId)))
       .for('share');
 
-    if (!session) throw this.error.sessionInvalid();
+    if (!session) {
+      throw this.error.sessionInvalid();
+    }
   }
 
   async authenticate(token: string): Promise<AuthIdentity> {
     const identity = await this.crypto.verifyAccess(token);
     const state = await this.sessions.access(identity.userId, identity.sessionId);
 
-    if (!state || state.account.disabledAt || !state.session) throw this.error.sessionInvalid();
+    if (!state || state.account.disabledAt || !state.session) {
+      throw this.error.sessionInvalid();
+    }
 
     return {
       ...identity,

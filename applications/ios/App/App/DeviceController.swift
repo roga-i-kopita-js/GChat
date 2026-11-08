@@ -5,9 +5,13 @@ import UserNotifications
 import UniformTypeIdentifiers
 import GChatCore
 
-@MainActor final class DeviceController: NSObject, @preconcurrency CLLocationManagerDelegate, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
+@MainActor final class DeviceController: NSObject, NativeMediaFiles, @preconcurrency CLLocationManagerDelegate, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
     private static let sharedFiles = DeviceFiles()
     private static let sharedFileQueue = DispatchQueue(label: "gchat.device.files", qos: .userInitiated)
+    static func prepareStorage() {
+        let files = sharedFiles
+        sharedFileQueue.async { try? files.prepareStorage() }
+    }
     private let files = DeviceController.sharedFiles
     private let fileQueue = DeviceController.sharedFileQueue
     private let presenter: () -> UIViewController?
@@ -116,6 +120,15 @@ import GChatCore
     private func fileWork<T>(_ work: @escaping (DeviceFiles) throws -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in fileQueue.async { [files] in continuation.resume(with: Result { try work(files) }) } }
     }
+
+    func disposeDocument() async {
+        reset()
+        _ = try? await fileWork { _ in () }
+    }
+
+    func createCapture(extension suffix: String) async throws -> URL { try await fileWork { try $0.createCapture(extension: suffix) } }
+    func commitCapture(_ url: URL) async throws -> [String: Any] { try await fileWork { try $0.commitCapture(url) } }
+    func abortCapture(_ url: URL) async { _ = try? await fileWork { $0.abortCapture(url) } }
 
     private func state() async throws -> [String: Any] {
         let push = await pushState()

@@ -21,7 +21,9 @@ async function discoverControllers(root: string): Promise<Type<unknown>[]> {
   const files = await readdir(root, { recursive: true });
 
   for (const file of files.sort()) {
-    if (!file.endsWith('.controller.js')) continue;
+    if (!file.endsWith('.controller.js')) {
+      continue;
+    }
 
     const exports: Record<string, unknown> = await import(pathToFileURL(join(root, file)).href);
 
@@ -45,7 +47,9 @@ export async function exportOpenApiDocument(): Promise<OpenAPIObject> {
     const dependencies: Type<unknown>[] =
       Reflect.getMetadata('design:paramtypes', controller) ?? [];
 
-    for (const dependency of dependencies) tokens.add(dependency);
+    for (const dependency of dependencies) {
+      tokens.add(dependency);
+    }
 
     const targets = [
       controller,
@@ -57,7 +61,9 @@ export async function exportOpenApiDocument(): Promise<OpenAPIObject> {
     for (const target of targets) {
       const guards: Type<unknown>[] = Reflect.getMetadata(GUARDS_METADATA, target) ?? [];
 
-      for (const guard of guards) tokens.add(guard);
+      for (const guard of guards) {
+        tokens.add(guard);
+      }
     }
   }
 
@@ -69,7 +75,9 @@ export async function exportOpenApiDocument(): Promise<OpenAPIObject> {
     })),
   });
 
-  for (const token of tokens) builder.overrideGuard(token).useValue({});
+  for (const token of tokens) {
+    builder.overrideGuard(token).useValue({});
+  }
 
   const module = await builder.compile();
   const app = module.createNestApplication();

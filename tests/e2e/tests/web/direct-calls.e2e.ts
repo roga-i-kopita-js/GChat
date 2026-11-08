@@ -117,7 +117,7 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
       anna.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true }),
     ).toBeEnabled();
     await maxim.getByRole('button', { name: 'Елена Соколова Голосовой звонок' }).click();
-    await maxim.getByRole('link', { name: /Максим Волков @maxim/ }).click();
+    await maxim.getByRole('link', { name: 'Настройки', exact: true }).click();
     await expect(maxim.getByRole('main', { name: 'Настройки', exact: true })).toBeVisible();
     await anna.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true }).click();
     await expect(anna.getByRole('dialog')).not.toBeVisible();

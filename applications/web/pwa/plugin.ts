@@ -20,7 +20,9 @@ export function pwaPlugin(server: boolean): Plugin {
   manifest.scope = server ? '/apps/client' : '/';
   manifest.start_url = `${startPath}/calls`;
 
-  for (const icon of manifest.icons) icon.src = base + icon.src.replace(/^\//, '');
+  for (const icon of manifest.icons) {
+    icon.src = base + icon.src.replace(/^\//, '');
+  }
 
   return {
     name: 'gchat-pwa',
@@ -29,7 +31,9 @@ export function pwaPlugin(server: boolean): Plugin {
     generateBundle(_options, bundle): void {
       const htmlAsset = bundle['index.html'];
 
-      if (htmlAsset?.type !== 'asset') throw new Error('PWA requires index.html');
+      if (htmlAsset?.type !== 'asset') {
+        throw new Error('PWA requires index.html');
+      }
 
       const html = String(htmlAsset.source);
       const assets = Object.keys(bundle)
@@ -52,11 +56,13 @@ export function pwaPlugin(server: boolean): Plugin {
         .update(manifestSource)
         .update(String(nativeLaunchSpike));
 
-      for (const name of readdirSync(resolve(directory, '../public/icons')))
+      for (const name of readdirSync(resolve(directory, '../public/icons'))) {
         version.update(readFileSync(resolve(directory, '../public/icons', name)));
+      }
 
-      for (const name of ['apple-touch-icon.png', 'favicon.ico'])
+      for (const name of ['apple-touch-icon.png', 'favicon.ico']) {
         version.update(readFileSync(resolve(directory, '../public', name)));
+      }
 
       const prefix = `gchat-shell-${server ? 'server' : 'root'}-`;
 

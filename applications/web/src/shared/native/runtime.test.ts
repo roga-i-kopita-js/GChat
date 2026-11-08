@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 type Mocks = {
   listeners: Map<string, (event: unknown) => void>;
   plugin: Record<
+    | 'httpRequest'
+    | 'httpCancel'
     | 'getCapabilities'
     | 'webReady'
     | 'getAccessToken'
@@ -18,6 +20,8 @@ type Mocks = {
 const mock = vi.hoisted((): Mocks => ({
   listeners: new Map<string, (event: unknown) => void>(),
   plugin: {
+    httpRequest: vi.fn(),
+    httpCancel: vi.fn(),
     getCapabilities: vi.fn(),
     webReady: vi.fn(),
     getAccessToken: vi.fn(),
@@ -34,8 +38,8 @@ vi.mock('@capacitor/core', (): object => ({
   registerPlugin: (): unknown => mock.plugin,
 }));
 
-import { currentSession, login, logout, request } from '../../features/auth/session';
-import { NativeCallsClient } from '../../features/calls/native-client';
+import { NativeCallsClient } from '../calls/native-client';
+import { currentSession, login, logout, request } from '../session/session';
 import { bridgeError, serverUrl } from './bridge';
 import { nativeRuntime, type NativeState } from './runtime';
 
@@ -110,8 +114,11 @@ beforeEach((): void => {
       throw new Error('Native stored a token');
     },
   });
+  mock.plugin.httpCancel.mockResolvedValue({});
   mock.plugin.getCapabilities.mockResolvedValue({
     bridgeVersion: 1,
+    httpVersion: 1,
+    navigationVersion: 1,
     platform: 'ios',
     nativeAuth: true,
     nativeCalls: true,
@@ -125,7 +132,9 @@ beforeEach((): void => {
 
       return {
         remove: async (): Promise<void> => {
-          if (mock.listeners.get(name) === listener) mock.listeners.delete(name);
+          if (mock.listeners.get(name) === listener) {
+            mock.listeners.delete(name);
+          }
         },
       };
     },
@@ -197,6 +206,8 @@ describe('native bridge handshake and synchronization', (): void => {
   it('supports an auth-only shell and keeps dialing unavailable', async (): Promise<void> => {
     mock.plugin.getCapabilities.mockResolvedValueOnce({
       bridgeVersion: 1,
+      httpVersion: 1,
+      navigationVersion: 1,
       platform: 'ios',
       nativeAuth: true,
       nativeCalls: false,
@@ -310,8 +321,9 @@ describe('native auth transport', (): void => {
       'https://gchat.test/path',
       'http://gchat.test',
       'https://gchat.test/?token=secret',
-    ])
+    ]) {
       expect((): string => serverUrl(value)).toThrow();
+    }
   });
 
   it('retries HTTP exactly once on ACCESS_TOKEN_EXPIRED using native refresh and no HTTP auth', async (): Promise<void> => {
@@ -320,27 +332,35 @@ describe('native auth transport', (): void => {
     const refreshed = token('A', 'two');
 
     mock.plugin.getAccessToken.mockResolvedValue({ accessToken: refreshed });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (path: string, init: RequestInit): Promise<Response> => {
-        paths.push(path);
-        expect(init.cache).toBe('no-store');
-        expect(new Headers(init.headers).get('Authorization')).toBe(
-          'Bearer ' + (paths.length === 1 ? token() : refreshed),
-        );
+    mock.plugin.httpRequest.mockImplementation(
+      async (envelope: Record<string, unknown>): Promise<unknown> => {
+        const value = envelope.request as { url: string; headers: [string, string][] };
 
-        return new Response(
-          JSON.stringify({ error: { code: 'ACCESS_TOKEN_EXPIRED', message: 'Expired' } }),
-          { status: 401, headers: { 'Content-Type': 'application/json' } },
-        );
-      }),
+        paths.push(value.url);
+        expect(new Headers(value.headers).get('Authorization')).toBe('Bearer native');
+
+        return {
+          httpVersion: 1,
+          cycleId: envelope.cycleId,
+          requestId: envelope.requestId,
+          result: {
+            status: 401,
+            statusText: '',
+            headers: [['Content-Type', 'application/json']],
+            bodyBase64: btoa(
+              JSON.stringify({ error: { code: 'ACCESS_TOKEN_EXPIRED', message: 'Expired' } }),
+            ),
+            url: value.url,
+          },
+        };
+      },
     );
     await expect(
       request((api): ReturnType<typeof api.groupsList> => api.groupsList()),
     ).rejects.toMatchObject({
       code: 'ACCESS_TOKEN_EXPIRED',
     });
-    expect(paths).toEqual(['/api/groups', '/api/groups']);
+    expect(paths).toEqual(['https://gchat.test/api/groups', 'https://gchat.test/api/groups']);
     expect(mock.plugin.getAccessToken).toHaveBeenCalledExactlyOnceWith({ forceRefresh: true });
   });
 
@@ -352,17 +372,13 @@ describe('native auth transport', (): void => {
       started = resolve;
     });
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn((_path: string, init: RequestInit): Promise<Response> => {
-        expect(init.signal?.aborted).toBe(false);
-        started();
+    mock.plugin.httpRequest.mockImplementation((_envelope: unknown): Promise<unknown> => {
+      started();
 
-        return new Promise((resolve): void => {
-          complete = resolve;
-        });
-      }),
-    );
+      return new Promise((resolve): void => {
+        complete = resolve;
+      });
+    });
     const pending = request((api): ReturnType<typeof api.groupsList> => api.groupsList());
     const assertion = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
 
@@ -411,6 +427,8 @@ describe('shared native WebSocket', (): void => {
   async function socketReady(): Promise<void> {
     mock.plugin.getCapabilities.mockResolvedValueOnce({
       bridgeVersion: 1,
+      httpVersion: 1,
+      navigationVersion: 1,
       platform: 'ios',
       nativeAuth: true,
       nativeCalls: false,

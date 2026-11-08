@@ -107,10 +107,11 @@ async function media(a: Page, b: Page, id: string, unavailableTurn = false): Pro
   return negotiation;
 }
 async function connected(a: Page, b: Page, id: string, negotiation: string): Promise<void> {
-  for (const page of [a, b])
+  for (const page of [a, b]) {
     await expect
       .poll(async (): Promise<string> => (await snapshot(page)).connection, { timeout: 20000 })
       .toBe('connected');
+  }
 
   await command(a, 'call.connected', { call_id: id, negotiation_id: negotiation });
   await command(b, 'call.connected', { call_id: id, negotiation_id: negotiation });
@@ -238,10 +239,11 @@ test('two complete calls: one negotiation, decoded audio both ways, release and 
     expect(await command(b, 'call.accept', { call_id: id })).toEqual(accepted);
     const negotiation = await media(a, b, id);
 
-    for (const page of [a, b])
+    for (const page of [a, b]) {
       await expect
         .poll(async (): Promise<string> => (await snapshot(page)).connection, { timeout: 20000 })
         .toBe('connected');
+    }
 
     await command(a, 'call.connected', { call_id: id, negotiation_id: negotiation });
     expect((await command(a, 'call.get', { call_id: id })).call.state).toBe('connecting');
@@ -257,7 +259,9 @@ test('two complete calls: one negotiation, decoded audio both ways, release and 
       participants.every((p: any): boolean => p.connected_negotiation_id === negotiation),
     ).toBe(true);
 
-    for (const page of [a, b]) expect((await snapshot(page)).audioSink).toBe('none');
+    for (const page of [a, b]) {
+      expect((await snapshot(page)).audioSink).toBe('none');
+    }
 
     await audio(a, b);
 

@@ -18,7 +18,9 @@ export function observePlayback(): void {
       output = this;
       void result
         .then(async (): Promise<void> => {
-          if (stream !== input || this.srcObject !== input) return;
+          if (stream !== input || this.srcObject !== input) {
+            return;
+          }
 
           const options: AudioContextOptions & { sinkId: { type: 'none' } } = {
             sampleRate: 48000,
@@ -69,8 +71,11 @@ export function observePlayback(): void {
         analyser.getFloatTimeDomainData(values);
         let peak = 0;
 
-        for (let index = 1; index < spectrum.length; index++)
-          if (spectrum[index] > spectrum[peak]) peak = index;
+        for (let index = 1; index < spectrum.length; index++) {
+          if (spectrum[index] > spectrum[peak]) {
+            peak = index;
+          }
+        }
 
         peakHz = (peak * context.sampleRate) / analyser.fftSize;
         rms = Math.sqrt(
@@ -91,7 +96,11 @@ export function observePlayback(): void {
     dispose: async (): Promise<void> => {
       HTMLMediaElement.prototype.play = play;
 
-      for (const item of contexts) if (item.state !== 'closed') await item.close();
+      for (const item of contexts) {
+        if (item.state !== 'closed') {
+          await item.close();
+        }
+      }
     },
   };
 }

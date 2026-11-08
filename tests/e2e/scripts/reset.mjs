@@ -12,10 +12,15 @@ try {
   await database.query('DELETE FROM gchat_direct_calls');
   await redis.connect();
 
-  for await (const keys of redis.scanIterator({ MATCH: 'gchat:web-test:direct-calls:*' }))
-    if (keys.length) await redis.del(keys);
+  for await (const keys of redis.scanIterator({ MATCH: 'gchat:web-test:direct-calls:*' })) {
+    if (keys.length) {
+      await redis.del(keys);
+    }
+  }
 } finally {
-  if (redis.isOpen) await redis.close();
+  if (redis.isOpen) {
+    await redis.close();
+  }
 
   await database.end();
 }

@@ -12,14 +12,21 @@ export function generatePassword(): string {
 
 export function mutationError(cause: unknown): string {
   if (cause instanceof ApiError && cause.status >= 400 && cause.status < 500 && cause.code) {
-    if (cause.code === 'LOGIN_TAKEN') return 'Логин уже занят. Укажите другой.';
+    if (cause.code === 'LOGIN_TAKEN') {
+      return 'Логин уже занят. Укажите другой.';
+    }
 
-    if (cause.code === 'FORBIDDEN') return 'Недостаточно прав для этой операции.';
+    if (cause.code === 'FORBIDDEN') {
+      return 'Недостаточно прав для этой операции.';
+    }
 
-    if (cause.code === 'VALIDATION_ERROR')
+    if (cause.code === 'VALIDATION_ERROR') {
       return 'Проверьте имя, группу, логин и длину пароля (15–128 символов).';
+    }
 
-    if (cause.code === 'NOT_FOUND') return 'Аккаунт больше не найден. Обновите список.';
+    if (cause.code === 'NOT_FOUND') {
+      return 'Аккаунт больше не найден. Обновите список.';
+    }
 
     return 'Операция отклонена. Проверьте доступ и данные перед новым действием.';
   }

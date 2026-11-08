@@ -1,53 +1,64 @@
-import { useQueryClient } from '@tanstack/react-query';
 import type { JSX, ReactNode } from 'react';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef } from 'react';
+import { useRevalidator } from 'react-router';
 
-import { currentSession, identity } from './session';
+import type { ApplicationDevice } from '../../app/device';
+import { SessionEvent } from '../../shared/device';
+import { useDeviceState } from '../../shared/device/react';
 
 type AuthState = {
   session: boolean;
-  user: ReturnType<typeof identity> | null;
+  user: {
+    sub: string;
+    sid: string;
+    login: string;
+    display_name: string;
+    role: 'user' | 'admin';
+  } | null;
 };
 const AuthContext = createContext<AuthState | null>(null);
 
-function readAuth(): AuthState {
-  const session = currentSession();
+export function AuthProvider({
+  device,
+  children,
+}: {
+  device: ApplicationDevice;
+  children: ReactNode;
+}): JSX.Element {
+  const revalidator = useRevalidator();
+  const state = useDeviceState(device.session, SessionEvent.StateChanged);
+  const generation = useRef(state.generation);
 
-  return { session: !!session, user: session ? identity(session) : null };
-}
+  useEffect(
+    (): (() => void) =>
+      device.session.on(SessionEvent.StateChanged, (next): void => {
+        if (generation.current !== next.generation) {
+          generation.current = next.generation;
+          void revalidator.revalidate();
+        }
+      }),
+    [device, revalidator.revalidate],
+  );
+  const user =
+    state.identity && state.status === 'authenticated'
+      ? {
+          sub: state.identity.id,
+          sid: String(state.generation),
+          login: state.identity.login,
+          display_name: state.identity.displayName,
+          role: state.identity.role,
+        }
+      : null;
 
-export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [state, setState] = useState(readAuth);
-  const cache = useQueryClient();
-
-  useEffect((): (() => void) => {
-    let sid = state.user?.sid ?? null;
-    const sync = (): void => {
-      const next = readAuth();
-      const nextSid = next.user?.sid ?? null;
-
-      if (sid !== nextSid) cache.clear();
-
-      sid = nextSid;
-      setState(next);
-    };
-
-    window.addEventListener('gchat-session', sync);
-    window.addEventListener('storage', sync);
-
-    return (): void => {
-      window.removeEventListener('gchat-session', sync);
-      window.removeEventListener('storage', sync);
-    };
-  }, [cache]);
-
-  return <AuthContext value={state}>{children}</AuthContext>;
+  return <AuthContext value={{ session: !!user, user }}>{children}</AuthContext>;
 }
 
 export function useAuth(): AuthState {
   const value = useContext(AuthContext);
 
-  if (!value) throw new Error('AuthProvider is required');
+  if (!value) {
+    throw new Error('AuthProvider is required');
+  }
 
   return value;
 }

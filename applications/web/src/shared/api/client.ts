@@ -1,21 +1,20 @@
 import { ApiError, BackendApi } from '@gchat/backend-api';
 
-export class ClientError extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly retryAfter = 0,
-  ) {
-    super(message);
-  }
-}
+import { embedded, nativeHttp } from '../native/bridge';
+import { ClientError } from './client-error';
 
-export function createApi(accessToken?: string, cycleSignal?: AbortSignal): BackendApi {
+export { ClientError } from './client-error';
+
+export function createApi(
+  accessToken?: string | (() => string | undefined),
+  cycleSignal?: AbortSignal,
+): BackendApi {
   return new BackendApi({
     baseUrl: '/api',
-    getAccessToken: (): string | undefined => accessToken,
+    getAccessToken: (): string | undefined =>
+      typeof accessToken === 'function' ? accessToken() : accessToken,
     fetch: (input, init): Promise<Response> =>
-      globalThis.fetch(input, {
+      (embedded ? nativeHttp.request : globalThis.fetch)(input, {
         ...init,
         cache: 'no-store',
         signal: cycleSignal
@@ -26,15 +25,21 @@ export function createApi(accessToken?: string, cycleSignal?: AbortSignal): Back
 }
 
 export function errorMessage(cause: unknown, fallback: string): string {
-  if (cause instanceof ApiError && !cause.code) return 'Сервис временно недоступен';
+  if (cause instanceof ApiError && !cause.code) {
+    return 'Сервис временно недоступен';
+  }
 
   return cause instanceof Error ? cause.message : fallback;
 }
 
 export function retryAfter(cause: unknown): number {
-  if (cause instanceof ClientError) return cause.retryAfter;
+  if (cause instanceof ClientError) {
+    return cause.retryAfter;
+  }
 
-  if (!(cause instanceof ApiError)) return 0;
+  if (!(cause instanceof ApiError)) {
+    return 0;
+  }
 
   const seconds = Number(cause.headers.get('Retry-After') ?? 0);
 

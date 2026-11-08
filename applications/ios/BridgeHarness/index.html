@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'none'; img-src 'none'; frame-src 'none'"
+    />
+    <title>GChat Bridge Harness</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font: 17px system-ui;
+      }
+      body {
+        margin: 0 auto;
+        padding: 24px 20px 60px;
+        max-width: 680px;
+      }
+      h1 {
+        font-size: 28px;
+      }
+      h2 {
+        font-size: 21px;
+        margin-top: 28px;
+      }
+      button,
+      input {
+        box-sizing: border-box;
+        font: inherit;
+        min-height: 48px;
+        padding: 10px 14px;
+        margin: 5px 0;
+        width: 100%;
+        border: 1px solid #8888;
+        border-radius: 10px;
+      }
+      button {
+        background: #315ce5;
+        color: white;
+      }
+      button:disabled {
+        opacity: 0.5;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        background: #8881;
+        padding: 14px;
+        border-radius: 10px;
+        font-size: 14px;
+      }
+      .hint {
+        opacity: 0.7;
+        font-size: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>GChat Bridge Harness</h1>
+    <p>Проверка Swift-плагина из WKWebView</p>
+    <pre id="status" role="status">Подключение…</pre>
+    <h2>Нативный HTTP</h2>
+    <p class="hint">
+      Запросы выполняет URLSession. Fetch WebView запрещён CSP. Тесты не меняют данные backend.
+    </p>
+    <button id="http">Проверить HTTP и ограничения</button>
+    <button id="cancel">Проверить отмену и старый цикл</button>
+    <h2>Тестовая сессия</h2>
+    <p class="hint">
+      Для системных команд подключите изолированный backend. Пароль передаётся только native Auth.
+    </p>
+    <form id="login">
+      <input
+        name="login"
+        autocomplete="username"
+        value="anna"
+        placeholder="Тестовый логин"
+        required
+      />
+      <input
+        name="password"
+        value="gchat-web-test-password"
+        type="password"
+        autocomplete="current-password"
+        placeholder="Пароль"
+        required
+      />
+      <button>Войти в тестовый аккаунт</button>
+    </form>
+    <button id="logout">Выйти с подтверждением сервера</button>
+    <h2>Разрешения и устройства</h2>
+    <button id="state">Прочитать состояние без запроса разрешений</button>
+    <button data-resource="microphone">Запросить микрофон</button>
+    <button data-resource="camera">Запросить камеру</button>
+    <button data-resource="geolocation">Запросить геопозиционное разрешение</button>
+    <button data-test="microphone">Тест микрофона</button>
+    <button data-test="sound">Тест звука</button>
+    <button id="stop">Остановить текущий тест</button>
+    <button id="settings">Открыть настройки приложения</button>
+    <h2>Навигация</h2>
+    <button id="navigation">Проверить навигацию</button>
+    <h2>Внутреннее хранилище</h2>
+    <button id="storage">Проверить Data / Temporary / Cache</button>
+    <p class="hint">
+      Создаются только собственные тестовые файлы приложения. Результаты видит проверяющий.
+    </p>
+    <h2>Файлы</h2>
+    <button id="pick">Выбрать файл и прочитать метаданные</button>
+    <button id="retained">Проверить сохранённые доступы</button>
+    <h2>Связь с проверяющим</h2>
+    <p id="telemetry" role="status">Подключение к журналу…</p>
+    <button id="heard">Звук слышал</button>
+    <button id="not-heard">Звука не слышал</button>
+    <h2>Ход проверки</h2>
+    <pre id="results" aria-live="polite">Ожидание команды</pre>
+    <script type="module" src="/apps/static/bridge-harness.js"></script>
+  </body>
+</html>

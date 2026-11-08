@@ -36,22 +36,34 @@ export class SignalingAdapter extends WsAdapter {
       let identity: Promise<AuthIdentity>;
 
       try {
-        if (info.req.url !== '/ws') throw this.error.accessTokenInvalid();
+        if (info.req.url !== '/ws') {
+          throw this.error.accessTokenInvalid();
+        }
 
         if (header) {
-          if (protocols.length) throw this.error.validation();
+          if (protocols.length) {
+            throw this.error.validation();
+          }
 
-          if (!/^Bearer [^\s]+$/i.test(header)) throw this.error.accessTokenInvalid();
+          if (!/^Bearer [^\s]+$/i.test(header)) {
+            throw this.error.accessTokenInvalid();
+          }
 
           identity = this.auth.authenticate(header.slice(7));
         } else {
-          if (!protocols.length) throw this.error.accessTokenInvalid();
+          if (!protocols.length) {
+            throw this.error.accessTokenInvalid();
+          }
 
-          if (protocols.length !== 2 || !protocols.includes('gchat')) throw this.error.validation();
+          if (protocols.length !== 2 || !protocols.includes('gchat')) {
+            throw this.error.validation();
+          }
 
           const ticket = protocols.find((value): boolean => value.startsWith('ticket.'))?.slice(7);
 
-          if (!ticket || !/^[A-Za-z0-9_-]{43}$/.test(ticket)) throw this.error.validation();
+          if (!ticket || !/^[A-Za-z0-9_-]{43}$/.test(ticket)) {
+            throw this.error.validation();
+          }
 
           identity = this.tickets.redeem(ticket, info.req.headers.origin);
         }

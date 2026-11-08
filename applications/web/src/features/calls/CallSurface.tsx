@@ -12,7 +12,9 @@ export function CallSurface({
   const ref = useRef<HTMLDialogElement>(null);
 
   useEffect((): (() => void) | undefined => {
-    if (!incoming) return;
+    if (!incoming) {
+      return;
+    }
 
     const dialog = ref.current;
 

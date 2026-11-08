@@ -9,7 +9,9 @@ import { fileURLToPath } from 'node:url';
 
 const host = process.env.GCHAT_IOS_LAN_IP;
 
-if (!isIPv4(host ?? '')) throw new Error('Set GCHAT_IOS_LAN_IP to Mac LAN IPv4');
+if (!isIPv4(host ?? '')) {
+  throw new Error('Set GCHAT_IOS_LAN_IP to Mac LAN IPv4');
+}
 
 const component = process.argv[2];
 const backendOrigin = 'http://127.0.0.1:3300';
@@ -17,7 +19,9 @@ const backendOrigin = 'http://127.0.0.1:3300';
 function child(command, args, cwd, env) {
   const processChild = spawn(command, args, { cwd, env, stdio: 'inherit' });
 
-  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => processChild.kill(signal));
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => processChild.kill(signal));
+  }
 
   processChild.on('exit', (code) => {
     process.exitCode = code ?? 1;
@@ -37,8 +41,9 @@ if (component === 'backend') {
     database.pathname !== '/gchat_web_test' ||
     settings.REDIS_URL !== 'redis://127.0.0.1:56389/0' ||
     settings.REDIS_KEY_PREFIX !== 'gchat:web-test:'
-  )
+  ) {
     throw new Error('Refusing non-E2E database settings');
+  }
 
   child(
     process.execPath,
@@ -79,8 +84,9 @@ if (component === 'backend') {
   const cert = await readFile(process.env.GCHAT_IOS_TLS_CERT);
   const parsed = new X509Certificate(cert);
 
-  if (parsed.ca || !parsed.checkIP(host) || !parsed.keyUsage?.includes('1.3.6.1.5.5.7.3.1'))
+  if (parsed.ca || !parsed.checkIP(host) || !parsed.keyUsage?.includes('1.3.6.1.5.5.7.3.1')) {
     throw new Error('Use a serverAuth certificate with matching IP SAN, not a CA certificate');
+  }
 
   const server = https.createServer(
     { cert, key: await readFile(process.env.GCHAT_IOS_TLS_KEY), minVersion: 'TLSv1.2' },
@@ -107,7 +113,9 @@ if (component === 'backend') {
       );
 
       request.on('error', () => {
-        if (!res.headersSent) res.writeHead(502);
+        if (!res.headersSent) {
+          res.writeHead(502);
+        }
 
         res.end();
       });
@@ -135,9 +143,13 @@ if (component === 'backend') {
           '\r\n',
       );
 
-      if (peerHead.length) socket.write(peerHead);
+      if (peerHead.length) {
+        socket.write(peerHead);
+      }
 
-      if (head.length) peer.write(head);
+      if (head.length) {
+        peer.write(head);
+      }
 
       socket.pipe(peer);
       peer.pipe(socket);
@@ -152,4 +164,6 @@ if (component === 'backend') {
     upstream.end();
   });
   server.listen(8446, host, () => console.log(`iPhone test backend: https://${host}:8446`));
-} else throw new Error('Choose backend, peer or https');
+} else {
+  throw new Error('Choose backend, peer or https');
+}

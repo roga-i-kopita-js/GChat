@@ -85,7 +85,9 @@ async function database(): Promise<IDBDatabase> {
       store.createIndex('namespace', 'namespace');
       store.createIndex('account', 'account');
 
-      if (name === 'messages') store.createIndex('dialog', ['namespace', 'dialogId']);
+      if (name === 'messages') {
+        store.createIndex('dialog', ['namespace', 'dialogId']);
+      }
     }
   };
   request.onblocked = (): void => {
@@ -121,7 +123,9 @@ export async function purgeAccount(
           const store = tx.objectStore(name);
           const keys = await result(store.index('account').getAllKeys(key));
 
-          for (const id of keys) store.delete(id);
+          for (const id of keys) {
+            store.delete(id);
+          }
         }
 
         await done;
@@ -160,8 +164,8 @@ export class IndexedDialogStorage implements DialogStorage {
         'gchat-dialog-account:' + accountKey(scope),
         async (): Promise<IndexedDialogStorage> => {
           const tx = db.transaction(['control', 'records', 'messages'], 'readwrite');
-          const done = completed(tx),
-            key = accountKey(scope);
+          const done = completed(tx);
+          const key = accountKey(scope);
           let control: Control | undefined = await result(tx.objectStore('control').get(key));
 
           // A new authenticated session cannot reopen cache left behind by a revoked one.
@@ -173,8 +177,9 @@ export class IndexedDialogStorage implements DialogStorage {
             for (const name of ['records', 'messages']) {
               const store = tx.objectStore(name);
 
-              for (const id of await result(store.index('account').getAllKeys(key)))
+              for (const id of await result(store.index('account').getAllKeys(key))) {
                 store.delete(id);
+              }
             }
 
             control = {
@@ -198,14 +203,17 @@ export class IndexedDialogStorage implements DialogStorage {
   }
 
   private async check(tx: IDBTransaction): Promise<void> {
-    if (this.closed) throw new StorageError('STORAGE_STALE_CONTEXT');
+    if (this.closed) {
+      throw new StorageError('STORAGE_STALE_CONTEXT');
+    }
 
     const control: Control | undefined = await result(
       tx.objectStore('control').get(accountKey(this.scope)),
     );
 
-    if (control?.epoch !== this.epoch || control.sessionId !== this.scope.sessionId)
+    if (control?.epoch !== this.epoch || control.sessionId !== this.scope.sessionId) {
       throw new StorageError('STORAGE_STALE_CONTEXT');
+    }
   }
 
   private async load(tx: IDBTransaction, id: string): Promise<StoredDialog> {
@@ -262,7 +270,9 @@ export class IndexedDialogStorage implements DialogStorage {
     return navigator.locks.request(
       'gchat-dialog-storage:' + this.namespace,
       async (): Promise<StoredDialog> => {
-        if (this.closed) throw new StorageError('STORAGE_STALE_CONTEXT');
+        if (this.closed) {
+          throw new StorageError('STORAGE_STALE_CONTEXT');
+        }
 
         const tx = this.db.transaction(['control', 'records', 'messages'], 'readwrite');
         const done = completed(tx);
@@ -287,12 +297,13 @@ export class IndexedDialogStorage implements DialogStorage {
             record: value.record,
           });
 
-          for (const message of value.messages)
+          for (const message of value.messages) {
             tx.objectStore('messages').put({
               ...common,
               key: this.namespace + ':' + message.message_id,
               message,
             });
+          }
 
           await done;
 
@@ -324,18 +335,21 @@ export async function readDeadline(storage: DialogStorage, next?: number): Promi
 
   try {
     const tx = db.transaction('control', next === undefined ? 'readonly' : 'readwrite');
-    const done = completed(tx),
-      key = accountKey(storage.scope);
+    const done = completed(tx);
+    const key = accountKey(storage.scope);
     const control: Control | undefined = await result(tx.objectStore('control').get(key));
 
     if (
       !control ||
       control.epoch !== storage.epoch ||
       control.sessionId !== storage.scope.sessionId
-    )
+    ) {
       throw new StorageError('STORAGE_STALE_CONTEXT');
+    }
 
-    if (next !== undefined) tx.objectStore('control').put({ ...control, nextReadAt: next });
+    if (next !== undefined) {
+      tx.objectStore('control').put({ ...control, nextReadAt: next });
+    }
 
     await done;
 

@@ -12,10 +12,14 @@ export function parseBrowserOrigins(value: unknown): string[] {
     throw new Error('SIGNALING_BROWSER_ORIGINS must be a JSON array');
   }
 
-  if (!Array.isArray(origins)) throw new Error('SIGNALING_BROWSER_ORIGINS must be a JSON array');
+  if (!Array.isArray(origins)) {
+    throw new Error('SIGNALING_BROWSER_ORIGINS must be a JSON array');
+  }
 
   return origins.map((origin: unknown): string => {
-    if (typeof origin !== 'string') throw new Error('Invalid browser origin');
+    if (typeof origin !== 'string') {
+      throw new Error('Invalid browser origin');
+    }
 
     let url: URL;
 
@@ -31,8 +35,9 @@ export function parseBrowserOrigins(value: unknown): string[] {
       url.password ||
       (url.protocol !== 'https:' &&
         !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)))
-    )
+    ) {
       throw new Error('Browser origins must be exact HTTPS origins or localhost');
+    }
 
     return origin;
   });
@@ -48,7 +53,9 @@ export class BrowserOrigin {
   assert(origin: string | undefined): string {
     const allowed = this.config.get<string[]>('SIGNALING_BROWSER_ORIGINS') ?? [];
 
-    if (!origin || !allowed.includes(origin)) throw this.error.forbidden();
+    if (!origin || !allowed.includes(origin)) {
+      throw this.error.forbidden();
+    }
 
     return origin;
   }

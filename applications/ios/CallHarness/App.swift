@@ -48,6 +48,17 @@ import UIKit
                             .disabled(["нет звонка", "ended"].contains(model.phase))
                         Button(model.muted ? "Включить микрофон" : "Выключить микрофон") { model.mute() }
                         if model.audioConnected {
+                            Button("Включить камеру звонка") { Task { await model.startCamera() } }
+                                .disabled(model.hasCamera)
+                        }
+                        if model.hasCamera {
+                            Text("Камера: " + model.cameraStatus + "; PiP: " + model.pictureInPicture)
+                            Button("Сменить камеру") { Task { await model.switchCamera() } }.disabled(model.recordingVideo)
+                            Button("Сохранить фото") { Task { await model.takePhoto() } }
+                            Button(model.recordingVideo ? "Остановить запись" : "Записать видео без звука") { Task { await model.recordVideo() } }
+                            Button("Закрыть камеру") { Task { await model.closeCamera() } }
+                        }
+                        if model.audioConnected {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Аудиоустройство")
@@ -70,6 +81,14 @@ import UIKit
                     }
                 }
                 if !model.error.isEmpty { Section("Результат") { Text(model.error) } }
+            }
+            .safeAreaInset(edge:.bottom) {
+                if model.hasCamera {
+                    VStack(spacing:4) {
+                        CallCameraPreview(camera:model.camera).frame(height:model.cameraExpanded ? 240 : 90)
+                        Button(model.cameraExpanded ? "Компактный preview" : "Большой preview") { model.cameraExpanded.toggle() }
+                    }.padding(8).background(.regularMaterial)
+                }
             }
             .task(id: scenePhase) {
                 model.sceneChanged(String(describing: scenePhase))

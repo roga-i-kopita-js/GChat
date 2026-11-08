@@ -41,7 +41,9 @@ export class HealthcheckController {
       checks,
     };
 
-    if (!healthy) throw new ReadinessError(response);
+    if (!healthy) {
+      throw new ReadinessError(response);
+    }
 
     return response;
   }

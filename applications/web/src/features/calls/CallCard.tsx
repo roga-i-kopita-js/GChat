@@ -1,25 +1,19 @@
 import { ArrowRight, Mic, MicOff, Phone, PhoneOff, ShieldCheck, Volume2 } from 'lucide-react';
 import type { JSX } from 'react';
 
-import { embedded } from '../../shared/native/bridge';
+import { useDevice, useDevicePresentation } from '../../shared/device/react';
 import { Avatar } from '../../shared/ui';
 import { useCalls } from './CallsProvider';
 
 export function CallCard(): JSX.Element | null {
-  const {
-    client,
-    state,
-    call,
-    incoming,
-    peerName,
-    duration,
-    status,
-    enabled,
-    setPerson,
-    setMobile,
-  } = useCalls();
+  const device = useDevice();
+  const presentation = useDevicePresentation();
+  const { state, call, incoming, peerName, duration, status, enabled, setPerson, setMobile } =
+    useCalls();
 
-  if (!call) return null;
+  if (!call) {
+    return null;
+  }
 
   return (
     <div className={'call-card ' + (call.state === 'ended' ? 'ended' : '')}>
@@ -52,14 +46,14 @@ export function CallCard(): JSX.Element | null {
         <button
           className="secondary"
           onClick={(): void => {
-            void client.playAudio();
+            void device.calls.activateAudio().catch((): void => {});
           }}
         >
           <Volume2 size={18} /> Включить звук
         </button>
       )}
       {incoming && state.error && <p role="alert">{state.error}</p>}
-      {embedded && call.state !== 'ended' && (
+      {presentation.callControls === 'host' && call.state !== 'ended' && (
         <p className="call-hint">Управление звонком доступно в приложении.</p>
       )}
       <div className="call-controls">
@@ -69,19 +63,19 @@ export function CallCard(): JSX.Element | null {
             onClick={(): void => {
               setPerson(null);
               setMobile(false);
-              client.dismiss();
+              void device.calls.dismissEnded().catch((): void => {});
             }}
           >
             Вернуться к контактам
             <ArrowRight size={17} />
           </button>
-        ) : embedded ? null : incoming ? (
+        ) : presentation.callControls === 'host' ? null : incoming ? (
           <>
             <button
               className="round-action decline"
               disabled={!enabled}
               onClick={(): void => {
-                void client.end(true);
+                void device.calls.end().catch((): void => {});
               }}
             >
               <span>
@@ -93,7 +87,7 @@ export function CallCard(): JSX.Element | null {
               className="round-action accept"
               disabled={!enabled}
               onClick={(): void => {
-                void client.accept();
+                void device.calls.accept().catch((): void => {});
               }}
             >
               <span>
@@ -109,7 +103,7 @@ export function CallCard(): JSX.Element | null {
                 className={'round-action mute' + (state.muted ? ' muted' : '')}
                 aria-pressed={state.muted}
                 disabled={!state.owner}
-                onClick={(): void => client.mute()}
+                onClick={(): void => void device.calls.setMuted(!state.muted).catch((): void => {})}
               >
                 <span>{state.muted ? <MicOff size={25} /> : <Mic size={25} />}</span>
                 {state.muted ? 'Включить микрофон' : 'Микрофон'}
@@ -119,7 +113,7 @@ export function CallCard(): JSX.Element | null {
               className="round-action decline"
               disabled={!enabled}
               onClick={(): void => {
-                void client.end();
+                void device.calls.end().catch((): void => {});
               }}
             >
               <span>

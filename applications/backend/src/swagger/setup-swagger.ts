@@ -10,12 +10,16 @@ export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
 
   for (const module of app.get(ModulesContainer).values()) {
     for (const { metatype } of module.controllers.values()) {
-      if (!metatype) continue;
+      if (!metatype) {
+        continue;
+      }
 
       for (const name of scanner.getAllMethodNames(metatype.prototype)) {
         const method = metatype.prototype[name];
 
-        if (!Reflect.hasMetadata(METHOD_METADATA, method)) continue;
+        if (!Reflect.hasMetadata(METHOD_METADATA, method)) {
+          continue;
+        }
 
         const operation: { operationId?: string } =
           Reflect.getMetadata('swagger/apiOperation', method) ?? {};

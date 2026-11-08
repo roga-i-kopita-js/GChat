@@ -57,8 +57,9 @@ export class AuthAccounts {
       !displayName ||
       [...displayName].length > 80 ||
       (login !== undefined && (typeof login !== 'string' || !/^[a-z0-9._-]{3,32}$/.test(login)))
-    )
+    ) {
       throw this.error.validation();
+    }
 
     const passwordHash = await this.preparePassword(input.password);
 
@@ -66,8 +67,9 @@ export class AuthAccounts {
   }
 
   async preparePassword(password: string): Promise<string> {
-    if (typeof password !== 'string' || [...password].length < 15 || [...password].length > 128)
+    if (typeof password !== 'string' || [...password].length < 15 || [...password].length > 128) {
       throw this.error.validation();
+    }
 
     return this.crypto.hashPassword(password);
   }
@@ -85,9 +87,13 @@ export class AuthAccounts {
         .onConflictDoNothing({ target: users.login })
         .returning(accountProjection);
 
-      if (account) return account;
+      if (account) {
+        return account;
+      }
 
-      if (input.login !== undefined) throw this.error.loginTaken();
+      if (input.login !== undefined) {
+        throw this.error.loginTaken();
+      }
     }
 
     throw this.error.serviceUnavailable();
@@ -121,7 +127,9 @@ export class AuthAccounts {
   async get(tx: DatabaseTransaction, id: string): Promise<SafeAccount> {
     const [row] = await tx.select(accountProjection).from(users).where(eq(users.id, id));
 
-    if (!row) throw this.error.notFound();
+    if (!row) {
+      throw this.error.notFound();
+    }
 
     return row;
   }
@@ -137,15 +145,23 @@ export class AuthAccounts {
       .for('update');
     const current = rows.find((row): boolean => row.id === actor.userId);
 
-    if (!current || current.disabledAt) throw this.error.sessionInvalid();
+    if (!current || current.disabledAt) {
+      throw this.error.sessionInvalid();
+    }
 
     const session = await this.sessions.read(actor.sessionId, tx, true);
 
-    if (session?.userId !== current.id) throw this.error.sessionInvalid();
+    if (session?.userId !== current.id) {
+      throw this.error.sessionInvalid();
+    }
 
-    if (current.role !== 'admin') throw this.error.forbidden();
+    if (current.role !== 'admin') {
+      throw this.error.forbidden();
+    }
 
-    if (target && !rows.some((row): boolean => row.id === target)) throw this.error.notFound();
+    if (target && !rows.some((row): boolean => row.id === target)) {
+      throw this.error.notFound();
+    }
   }
 
   async change(
@@ -156,7 +172,9 @@ export class AuthAccounts {
   ): Promise<SafeAccount> {
     const current = await this.get(tx, id);
 
-    if (action === 'enable' && current.disabledAt === null) return current;
+    if (action === 'enable' && current.disabledAt === null) {
+      return current;
+    }
 
     await this.sessions.revokeAll(tx, id);
     const [account] = await tx

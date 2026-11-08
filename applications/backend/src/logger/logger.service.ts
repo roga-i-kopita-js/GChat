@@ -57,7 +57,9 @@ export class LoggerService implements NestLoggerService {
       const lastArgument = args.at(-1);
       const suppliedContext = typeof lastArgument === 'string' ? lastArgument : undefined;
 
-      if (suppliedContext !== undefined) args.pop();
+      if (suppliedContext !== undefined) {
+        args.pop();
+      }
 
       const context = this.owner.context ?? suppliedContext;
       const clean = (value: unknown): unknown => sanitizeLogValue(value, this.redaction);

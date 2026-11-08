@@ -1,11 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest';
 
-import { GChatClient } from './client';
+import { GChatClient } from '../../shared/calls/client';
 
 vi.mock('../../shared/runtime/transport', (): object => ({
   browserTransport: { isUpdating: (): boolean => false, changed: (): void => {} },
 }));
-vi.mock('../auth/session', (): object => ({
+vi.mock('../../shared/session/session', (): object => ({
   readSession: (): object => ({}),
   identity: (): object => ({ sub: 'caller', sid: 'session' }),
   logout: vi.fn(),
@@ -91,21 +91,25 @@ it.each([false, true])(
           connecting_deadline: null,
         };
 
-        if (earlyEvent) await client.update(call);
+        if (earlyEvent) {
+          await client.update(call);
+        }
 
         return { call };
       }
 
-      if (type === 'call.ice_config')
+      if (type === 'call.ice_config') {
         return { ice_servers: [], expires_at: new Date(Date.now() + 3600000).toISOString() };
+      }
 
-      if (type === 'call.ping')
+      if (type === 'call.ping') {
         return {
           state: call.state,
           version: call.version,
           recovery_id: null,
           recovery_deadline: null,
         };
+      }
 
       if (type === 'call.end') {
         call = {

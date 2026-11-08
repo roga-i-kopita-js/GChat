@@ -6,9 +6,13 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 
 /** Enable the server build only when an explicit deployment directory is configured. */
 export function setupServerWeb(app: NestExpressApplication, directory: string | undefined): void {
-  if (directory === undefined) return;
+  if (directory === undefined) {
+    return;
+  }
 
-  if (!directory.trim()) throw new Error('GCHAT_WEB_ROOT must be a nonempty directory');
+  if (!directory.trim()) {
+    throw new Error('GCHAT_WEB_ROOT must be a nonempty directory');
+  }
 
   const root = resolve(directory);
   const html = readFileSync(resolve(root, 'index.html'));
@@ -47,10 +51,11 @@ export function setupServerWeb(app: NestExpressApplication, directory: string | 
     index: false,
     dotfiles: 'deny',
     setHeaders: (res, file): void => {
-      if (file.endsWith('/sw.js') || file.endsWith('/site.webmanifest'))
+      if (file.endsWith('/sw.js') || file.endsWith('/site.webmanifest')) {
         res.setHeader('Cache-Control', 'no-cache');
-      else if (file.startsWith(resolve(root, 'static') + '/'))
+      } else if (file.startsWith(resolve(root, 'static') + '/')) {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
 
       res.setHeader('X-Content-Type-Options', 'nosniff');
     },

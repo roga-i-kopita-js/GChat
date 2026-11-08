@@ -12,6 +12,7 @@ public struct DeviceCommand {
     public let name: String
     public let args: [String: Any]
     private static let fields: [String: Set<String>] = [
+        "storage.getRoot": ["area"], "storage.getUsage": ["area"],
         "device.state.read": [], "device.changes.cancel": [], "device.settings.open": [],
         "permission.read": ["resource"], "permission.request": ["resource"],
         "device.changes.wait": ["afterRevision", "timeoutMs"], "audio.test.start": ["kind"], "audio.test.stop": ["testId"],
@@ -49,6 +50,7 @@ public struct DeviceCommand {
         for key in ["multiple", "recursive"] where fields.contains(key) {
             guard let value = args[key] as? NSNumber, CFGetTypeID(value) == CFBooleanGetTypeID() else { throw DeviceCommandError("INVALID_ARGUMENT") }
         }
+        if fields.contains("area"), !["data", "temporary", "cache"].contains(string("area")) { throw DeviceCommandError("INVALID_ARGUMENT") }
         if fields.contains("resource"), !["microphone", "camera", "geolocation"].contains(string("resource")) { throw DeviceCommandError("INVALID_ARGUMENT") }
         if fields.contains("kind"), !["microphone", "sound"].contains(string("kind")) { throw DeviceCommandError("INVALID_ARGUMENT") }
         if fields.contains("mode"), !["replace", "update"].contains(string("mode")) { throw DeviceCommandError("INVALID_ARGUMENT") }

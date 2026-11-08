@@ -78,7 +78,9 @@ export class BrowserTransport {
   private set(patch: Partial<TransportState>): void {
     this.state = { ...this.state, ...patch };
 
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      listener();
+    }
   }
 
   private canRelease(): boolean {
@@ -86,7 +88,9 @@ export class BrowserTransport {
   }
 
   private checkUpdate = (): void => {
-    if (this.updatePending && this.release && this.canRelease()) this.yield();
+    if (this.updatePending && this.release && this.canRelease()) {
+      this.yield();
+    }
   };
 
   changed(): void {
@@ -115,23 +119,32 @@ export class BrowserTransport {
   };
 
   start(): () => void {
-    if (this.running) throw new Error('Browser transport already started');
+    if (this.running) {
+      throw new Error('Browser transport already started');
+    }
 
     this.running = true;
     this.channel = new BroadcastChannel('gchat-transport');
     this.channel.onmessage = (event: MessageEvent<unknown>): void => {
-      if (event.data === 'takeover' && this.state.owner && this.canRelease()) this.yield();
+      if (event.data === 'takeover' && this.state.owner && this.canRelease()) {
+        this.yield();
+      }
     };
     const updates = new BroadcastChannel(updateChannel);
 
     updates.onmessage = (event: MessageEvent<unknown>): void => {
-      if (event.data === 'prepare') this.prepare();
+      if (event.data === 'prepare') {
+        this.prepare();
+      }
     };
     const monitor = setInterval((): void => {
-      if (this.updatePending)
+      if (this.updatePending) {
         void updateRequested().then((pending): void => {
-          if (!pending) this.updatePending = false;
+          if (!pending) {
+            this.updatePending = false;
+          }
         });
+      }
     }, 1000);
 
     window.addEventListener(prepareUpdate, this.prepare);
@@ -161,30 +174,40 @@ export class BrowserTransport {
   private sync = (): void => {
     const sid = this.dependencies?.session()?.sessionId ?? null;
 
-    if (sid === this.sid) return;
+    if (sid === this.sid) {
+      return;
+    }
 
     this.controller?.abort();
     this.yield();
     this.sid = sid;
 
-    if (sid) this.elect(sid);
+    if (sid) {
+      this.elect(sid);
+    }
   };
 
   private elect(sid: string): void {
-    if (!this.running || sid !== this.sid) return;
+    if (!this.running || sid !== this.sid) {
+      return;
+    }
 
     const controller = new AbortController();
 
     this.controller = controller;
     void navigator.locks
       .request('gchat-ws-owner', { signal: controller.signal }, async (): Promise<void> => {
-        if (sid !== this.sid || !this.running) return;
+        if (sid !== this.sid || !this.running) {
+          return;
+        }
 
         await navigator.locks.request(
           updateLock,
           { mode: 'shared', signal: controller.signal },
           async (): Promise<void> => {
-            if (sid !== this.sid || !this.running) return;
+            if (sid !== this.sid || !this.running) {
+              return;
+            }
 
             this.updatePending = false;
             const lifetime = new Promise<void>((resolve): void => {
@@ -202,15 +225,18 @@ export class BrowserTransport {
       })
       .catch((): void => {})
       .finally((): void => {
-        if (this.running && sid === this.sid && !controller.signal.aborted)
+        if (this.running && sid === this.sid && !controller.signal.aborted) {
           this.retry = setTimeout((): void => this.elect(sid), 250);
+        }
       });
   }
 
   reconnect(seconds = 0): void {
     clearTimeout(this.retry);
 
-    if (!this.state.owner || !this.sid || this.updatePending) return;
+    if (!this.state.owner || !this.sid || this.updatePending) {
+      return;
+    }
 
     this.retry = setTimeout(
       (): void => {
@@ -226,14 +252,18 @@ export class BrowserTransport {
     const sid = this.sid;
     const dependencies = this.dependencies;
 
-    if (!dependencies || !sid || !this.state.owner) return;
+    if (!dependencies || !sid || !this.state.owner) {
+      return;
+    }
 
     this.set({ status: 'connecting', error: null });
 
     try {
       const ticket = await dependencies.ticket();
 
-      if (generation !== this.state.generation || sid !== this.sid) return;
+      if (generation !== this.state.generation || sid !== this.sid) {
+        return;
+      }
 
       const url = new URL('/ws', location.href);
 
@@ -242,7 +272,9 @@ export class BrowserTransport {
 
       this.socket = socket;
       socket.onmessage = (event): void => {
-        if (this.socket !== socket) return;
+        if (this.socket !== socket) {
+          return;
+        }
 
         try {
           const message = wire.parse(JSON.parse(String(event.data)));
@@ -250,21 +282,31 @@ export class BrowserTransport {
           if (message.type === 'response' && message.request_id) {
             const pending = this.pending.get(message.request_id);
 
-            if (!pending) return;
+            if (!pending) {
+              return;
+            }
 
             clearTimeout(pending.timer);
             this.pending.delete(message.request_id);
 
-            if (message.error)
+            if (message.error) {
               pending.reject(new ClientError(message.error.code, message.error.message));
-            else pending.resolve(message.payload);
-          } else for (const listener of this.messages) listener(message.type, message.payload);
+            } else {
+              pending.resolve(message.payload);
+            }
+          } else {
+            for (const listener of this.messages) {
+              listener(message.type, message.payload);
+            }
+          }
         } catch {
           socket.close(1008);
         }
       };
       socket.onclose = (): void => {
-        if (this.socket !== socket) return;
+        if (this.socket !== socket) {
+          return;
+        }
 
         this.closeSocket();
         this.reconnect();
@@ -285,7 +327,9 @@ export class BrowserTransport {
         };
       });
 
-      if (generation !== this.state.generation || sid !== this.sid) return;
+      if (generation !== this.state.generation || sid !== this.sid) {
+        return;
+      }
 
       const registered = z.object({ device_id: z.string().uuid() }).parse(
         await this.send('device.register', {
@@ -293,13 +337,17 @@ export class BrowserTransport {
         }),
       );
 
-      if (generation !== this.state.generation || sid !== this.sid) return;
+      if (generation !== this.state.generation || sid !== this.sid) {
+        return;
+      }
 
       dependencies.bind(sid, registered.device_id);
       this.retries = 0;
       this.set({ status: 'online', error: null });
     } catch (error) {
-      if (generation !== this.state.generation || sid !== this.sid) return;
+      if (generation !== this.state.generation || sid !== this.sid) {
+        return;
+      }
 
       this.set({ status: 'offline', error });
       this.reconnect(retryAfter(error));
@@ -309,8 +357,9 @@ export class BrowserTransport {
   send(type: string, payload: object): Promise<unknown> {
     const socket = this.socket;
 
-    if (socket?.readyState !== WebSocket.OPEN)
+    if (socket?.readyState !== WebSocket.OPEN) {
       return Promise.reject(new ClientError('DISCONNECTED', 'Связь с сервером потеряна'));
+    }
 
     const request_id = crypto.randomUUID();
 

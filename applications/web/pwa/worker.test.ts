@@ -146,8 +146,9 @@ describe('PWA worker', (): void => {
         { url: 'https://gchat.example/ws', mode: 'navigate', method: 'GET' },
         { url: 'https://other.example/apps/client/calls', mode: 'navigate', method: 'GET' },
         { url: 'https://gchat.example/apps/client/calls', mode: 'navigate', method: 'POST' },
-      ])
+      ]) {
         f.handlers.fetch({ request, respondWith });
+      }
 
       expect(respondWith).not.toHaveBeenCalled();
       f.handlers.fetch({
@@ -195,8 +196,8 @@ describe('PWA worker', (): void => {
   });
   it('shows message text with a per-message tag and forwards only a validated dialog intent', async (): Promise<void> => {
     const f = fixture();
-    const id = '11111111-1111-4111-8111-111111111111',
-      message = '22222222-2222-4222-8222-222222222222';
+    const id = '11111111-1111-4111-8111-111111111111';
+    const message = '22222222-2222-4222-8222-222222222222';
 
     await f.dispatch('push', {
       data: {
@@ -217,8 +218,8 @@ describe('PWA worker', (): void => {
         data: { dialogId: id },
       }),
     );
-    const postMessage = vi.fn(),
-      focus = vi.fn();
+    const postMessage = vi.fn();
+    const focus = vi.fn();
 
     f.self.clients.matchAll.mockResolvedValue([
       { url: 'https://gchat.example/apps/client/dialogs', postMessage, focus },

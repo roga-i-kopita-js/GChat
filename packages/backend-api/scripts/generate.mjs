@@ -35,17 +35,24 @@ const members = operations.map(
     const prefix = id[0].toUpperCase() + id.slice(1);
 
     for (const suffix of ['Data', 'Response']) {
-      if (!typeSource.includes(`export type ${prefix}${suffix} =`))
+      if (!typeSource.includes(`export type ${prefix}${suffix} =`)) {
         throw new Error(`Missing Hey API type: ${prefix}${suffix}`);
+      }
     }
 
     const sections = [];
 
-    if (operation.requestBody) sections.push('body');
+    if (operation.requestBody) {
+      sections.push('body');
+    }
 
-    if (parameters.some((p) => p.in === 'path')) sections.push('path');
+    if (parameters.some((p) => p.in === 'path')) {
+      sections.push('path');
+    }
 
-    if (parameters.some((p) => p.in === 'query')) sections.push('query');
+    if (parameters.some((p) => p.in === 'query')) {
+      sections.push('query');
+    }
 
     const required = operation.requestBody?.required || parameters.some((p) => p.required);
     const descriptor = {

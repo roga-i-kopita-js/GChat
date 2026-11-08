@@ -32,20 +32,22 @@ export class AuthWsTickets {
         const account = await this.sessions.lockAccount(tx, identity.userId);
         const session = await this.sessions.read(identity.sessionId, tx, true);
 
-        if (!account || account.disabledAt || session?.userId !== account.id)
+        if (!account || account.disabledAt || session?.userId !== account.id) {
           throw this.error.sessionInvalid();
+        }
 
         const now = await this.sessions.now(tx);
         const start = session.wsTicketWindowStartedAt;
         const sameWindow = start && now.getTime() < start.getTime() + 60000;
 
-        if (sameWindow && session.wsTicketCount >= 10)
+        if (sameWindow && session.wsTicketCount >= 10) {
           throw this.error.rateLimited({
             retryAfterSeconds: Math.max(
               1,
               Math.ceil((start.getTime() + 60000 - now.getTime()) / 1000),
             ),
           });
+        }
 
         const expires = new Date(now.getTime() + 30000);
 
@@ -63,7 +65,9 @@ export class AuthWsTickets {
             .onConflictDoNothing()
             .returning({ id: authWsTickets.ticketHash });
 
-          if (!rows.length) continue;
+          if (!rows.length) {
+            continue;
+          }
 
           await tx
             .update(authSessions)
@@ -82,7 +86,9 @@ export class AuthWsTickets {
   }
 
   async redeem(ticket: string, origin: string | undefined): Promise<AuthIdentity> {
-    if (!/^[A-Za-z0-9_-]{43}$/.test(ticket)) throw this.error.accessTokenInvalid();
+    if (!/^[A-Za-z0-9_-]{43}$/.test(ticket)) {
+      throw this.error.accessTokenInvalid();
+    }
 
     // Commit consumption before any Origin/access checks, even when they fail.
     const row = await this.sessions.transaction(
@@ -100,19 +106,27 @@ export class AuthWsTickets {
         )[0],
     );
 
-    if (!row || row.expiresAt <= new Date(row.now)) throw this.error.accessTokenInvalid();
+    if (!row || row.expiresAt <= new Date(row.now)) {
+      throw this.error.accessTokenInvalid();
+    }
 
     const allowed = this.origins.assert(origin);
 
-    if (row.origin !== allowed) throw this.error.forbidden();
+    if (row.origin !== allowed) {
+      throw this.error.forbidden();
+    }
 
     const session = await this.sessions.read(row.sessionId);
 
-    if (!session) throw this.error.sessionInvalid();
+    if (!session) {
+      throw this.error.sessionInvalid();
+    }
 
     const state = await this.sessions.access(session.userId, row.sessionId);
 
-    if (!state || state.account.disabledAt || !state.session) throw this.error.sessionInvalid();
+    if (!state || state.account.disabledAt || !state.session) {
+      throw this.error.sessionInvalid();
+    }
 
     return {
       userId: state.account.id,

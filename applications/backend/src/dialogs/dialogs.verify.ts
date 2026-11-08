@@ -42,7 +42,9 @@ async function verify(): Promise<void> {
             .orderBy(asc(dialogMessages.id))
             .limit(500);
 
-          if (!rows.length) break;
+          if (!rows.length) {
+            break;
+          }
 
           for (const row of rows) {
             crypto.decrypt(row);

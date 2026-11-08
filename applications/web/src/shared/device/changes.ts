@@ -22,7 +22,9 @@ export class DeviceChanges {
   touch(...blocks: Block[]): void {
     this.revision++;
 
-    for (const block of blocks) this.last.set(block, this.revision);
+    for (const block of blocks) {
+      this.last.set(block, this.revision);
+    }
 
     if (this.pending && this.pending.after < this.revision) {
       const pending = this.pending;
@@ -44,11 +46,17 @@ export class DeviceChanges {
   }
 
   wait(after: number, timeout: number): Promise<Change> {
-    if (after > this.revision) return Promise.reject(new DeviceError('INVALID_ARGUMENT'));
+    if (after > this.revision) {
+      return Promise.reject(new DeviceError('INVALID_ARGUMENT'));
+    }
 
-    if (this.pending) return Promise.reject(new DeviceError('BUSY'));
+    if (this.pending) {
+      return Promise.reject(new DeviceError('BUSY'));
+    }
 
-    if (after < this.revision) return Promise.resolve(this.read(after, false));
+    if (after < this.revision) {
+      return Promise.resolve(this.read(after, false));
+    }
 
     return new Promise((resolve, reject): void => {
       const timer = setTimeout((): void => {
@@ -67,7 +75,9 @@ export class DeviceChanges {
   }
 
   cancel(): void {
-    if (!this.pending) return;
+    if (!this.pending) {
+      return;
+    }
 
     clearTimeout(this.pending.timer);
     this.pending.reject(new DeviceError('CANCELLED'));

@@ -21,30 +21,47 @@ export function sanitizeLogValue(
   depth = 0,
   seen = new WeakSet<object>(),
 ): unknown {
-  if (typeof value === 'string') return redaction ? redactText(value) : value.slice(0, 4096);
+  if (typeof value === 'string') {
+    return redaction ? redactText(value) : value.slice(0, 4096);
+  }
 
-  if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
+  if (value === null || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
 
-  if (typeof value === 'bigint') return String(value);
+  if (typeof value === 'bigint') {
+    return String(value);
+  }
 
-  if (value === undefined) return undefined;
+  if (value === undefined) {
+    return undefined;
+  }
 
-  if (typeof value !== 'object') return '[Unsupported]';
+  if (typeof value !== 'object') {
+    return '[Unsupported]';
+  }
 
   // Driver messages, stacks, causes and custom properties can contain secrets.
-  if (value instanceof Error && redaction) return { type: 'Error' };
+  if (value instanceof Error && redaction) {
+    return { type: 'Error' };
+  }
 
-  if (depth >= 5) return '[Truncated]';
+  if (depth >= 5) {
+    return '[Truncated]';
+  }
 
-  if (seen.has(value)) return '[Circular]';
+  if (seen.has(value)) {
+    return '[Circular]';
+  }
 
   seen.add(value);
 
   try {
-    if (Array.isArray(value))
+    if (Array.isArray(value)) {
       return value
         .slice(0, 50)
         .map((entry): unknown => sanitizeLogValue(entry, redaction, depth + 1, seen));
+    }
 
     const result: Record<string, unknown> = Object.create(null);
     const keys =

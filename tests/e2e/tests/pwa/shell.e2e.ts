@@ -73,8 +73,11 @@ for (const server of [false, true]) {
     const keys = await page.evaluate(async (): Promise<string[]> => {
       const result: string[] = [];
 
-      for (const name of await caches.keys())
-        for (const entry of await (await caches.open(name)).keys()) result.push(entry.url);
+      for (const name of await caches.keys()) {
+        for (const entry of await (await caches.open(name)).keys()) {
+          result.push(entry.url);
+        }
+      }
 
       return result;
     });

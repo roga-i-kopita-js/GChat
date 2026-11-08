@@ -5,6 +5,16 @@
 	};
 	"objectVersion" = 56;
 	"objects" = {
+		"CA0000000000000000000001" = {"isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "CallCamera.swift"; "sourceTree" = "<group>"; };
+		"CB0000000000000000000001" = {"isa" = "PBXBuildFile"; "fileRef" = "CA0000000000000000000001"; };
+		"CA0000000000000000000002" = {"isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "../App/App/NativeCameraCapture.swift"; "sourceTree" = "<group>"; };
+		"CB0000000000000000000002" = {"isa" = "PBXBuildFile"; "fileRef" = "CA0000000000000000000002"; };
+		"CA0000000000000000000003" = {"isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "../App/App/NativeMediaController.swift"; "sourceTree" = "<group>"; };
+		"CB0000000000000000000003" = {"isa" = "PBXBuildFile"; "fileRef" = "CA0000000000000000000003"; };
+		"CA0000000000000000000004" = {"isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "../App/App/NativeCallPictureInPicture.swift"; "sourceTree" = "<group>"; };
+		"CB0000000000000000000004" = {"isa" = "PBXBuildFile"; "fileRef" = "CA0000000000000000000004"; };
+		"CA0000000000000000000005" = {"isa" = "PBXFileReference"; "lastKnownFileType" = "sourcecode.swift"; "path" = "../App/App/NativeAudioRoutePicker.swift"; "sourceTree" = "<group>"; };
+		"CB0000000000000000000005" = {"isa" = "PBXBuildFile"; "fileRef" = "CA0000000000000000000005"; };
 		"000000000000000000000014" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -98,6 +108,11 @@
 				"000000000000000000000029",
 				"00000000000000000000002A",
 				"00000000000000000000002B",
+				"CB0000000000000000000001",
+				"CB0000000000000000000002",
+				"CB0000000000000000000003",
+				"CB0000000000000000000004",
+				"CB0000000000000000000005",
 			);
 			"runOnlyForDeploymentPostprocessing" = 0;
 		};
@@ -143,6 +158,11 @@
 				"000000000000000000000015",
 				"000000000000000000000016",
 				"000000000000000000000017",
+				"CA0000000000000000000001",
+				"CA0000000000000000000002",
+				"CA0000000000000000000003",
+				"CA0000000000000000000004",
+				"CA0000000000000000000005",
 				"00000000000000000000001E",
 				"00000000000000000000001F",
 				"000000000000000000000051",

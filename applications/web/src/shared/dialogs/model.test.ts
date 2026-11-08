@@ -10,8 +10,8 @@ import {
   mergeMetadata,
 } from './model';
 
-const actor = '00000000-0000-4000-8000-000000000001',
-  peer = '00000000-0000-4000-8000-000000000002';
+const actor = '00000000-0000-4000-8000-000000000001';
+const peer = '00000000-0000-4000-8000-000000000002';
 
 function message(sequence: number, sender_id = actor): DialogMessage {
   return {

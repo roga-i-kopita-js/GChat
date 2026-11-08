@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { GChatClient } from './client';
+import { GChatClient } from '../../shared/calls/client';
 
 vi.mock('../../shared/runtime/transport', (): object => ({
   browserTransport: {

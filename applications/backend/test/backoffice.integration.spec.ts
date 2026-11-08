@@ -210,11 +210,12 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
         .expect(400);
     }
 
-    for (const query of ['limit=0', 'limit=101', 'offset=-1'])
+    for (const query of ['limit=0', 'limit=101', 'offset=-1']) {
       await api()
         .get('/admin/groups?' + query)
         .auth(actor.token, { type: 'bearer' })
         .expect(400);
+    }
 
     for (const extra of [
       { login: null },
@@ -245,8 +246,9 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
       await pool.query("INSERT INTO gchat_groups(name) VALUES('a'),('b') RETURNING id")
     ).rows;
 
-    for (const group of groups)
+    for (const group of groups) {
       await pool.query('INSERT INTO gchat_group_members VALUES($1,$2)', [group.id, first.id]);
+    }
 
     const page = await api()
       .get('/admin/users?q=андр&limit=1')
@@ -600,7 +602,8 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
       '/admin/users/{user_id}/password',
       '/admin/users/{user_id}/disable',
       '/admin/users/{user_id}/enable',
-    ])
+    ]) {
       expect(document.paths[path]).toBeDefined();
+    }
   });
 });

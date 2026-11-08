@@ -1,8 +1,11 @@
-import { DeviceError } from './contract';
-
 export function deviceErrorMessage(error: unknown): string {
-  const code = error instanceof DeviceError ? error.code : '';
+  const code =
+    typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+      ? error.code
+      : '';
   const messages: Record<string, string> = {
+    INVALID_STATE: 'Действие недоступно в текущем состоянии.',
+    OPERATION_FAILED: 'Не удалось выполнить действие. Попробуйте ещё раз.',
     PERMISSION_DENIED: 'Доступ запрещён. Разрешите его в настройках приложения или сайта.',
     RESTRICTED: 'Доступ ограничен системой. Проверьте настройки устройства.',
     UNSUPPORTED: 'Это действие здесь недоступно. Используйте системные настройки устройства.',

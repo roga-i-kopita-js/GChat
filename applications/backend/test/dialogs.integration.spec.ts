@@ -133,15 +133,18 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     await pool.query('TRUNCATE gchat_users,gchat_groups,gchat_devices,gchat_dialogs CASCADE');
     await pool.query('UPDATE gchat_dialog_encryption_keys SET encryption_attempts=0');
 
-    for await (const keys of redis.scanIterator({ MATCH: prefix + '*' }))
-      if (keys.length) await redis.del(keys);
+    for await (const keys of redis.scanIterator({ MATCH: prefix + '*' })) {
+      if (keys.length) {
+        await redis.del(keys);
+      }
+    }
 
     actors = [];
     notices = [];
 
     for (let i = 0; i < 3; i++) {
-      const userId = randomUUID(),
-        sessionId = randomUUID();
+      const userId = randomUUID();
+      const sessionId = randomUUID();
 
       await pool.query(
         'INSERT INTO gchat_users(id,login,display_name,password_hash) VALUES($1,$2,$2,$3)',
@@ -168,15 +171,19 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     group = (await pool.query("INSERT INTO gchat_groups(name) VALUES('dialogs') RETURNING id"))
       .rows[0].id;
 
-    for (const actor of actors)
+    for (const actor of actors) {
       await pool.query('INSERT INTO gchat_group_members VALUES($1,$2)', [group, actor.userId]);
+    }
   });
   afterAll(async (): Promise<void> => {
     await app?.close();
 
     if (redis?.isOpen) {
-      for await (const keys of redis.scanIterator({ MATCH: prefix + '*' }))
-        if (keys.length) await redis.del(keys);
+      for await (const keys of redis.scanIterator({ MATCH: prefix + '*' })) {
+        if (keys.length) {
+          await redis.del(keys);
+        }
+      }
 
       await redis.close();
     }
@@ -200,8 +207,11 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     return (await service.create(actors[0], actors[1].userId)).dialog.dialog_id;
   }
   async function resetRates(): Promise<void> {
-    for await (const keys of redis.scanIterator({ MATCH: prefix + 'dialogs:rate:*' }))
-      if (keys.length) await redis.del(keys);
+    for await (const keys of redis.scanIterator({ MATCH: prefix + 'dialogs:rate:*' })) {
+      if (keys.length) {
+        await redis.del(keys);
+      }
+    }
   }
   it('returns peer names and incoming-only unread state consistently across create/list/get', async (): Promise<void> => {
     const [a, b, outsider] = actors;
@@ -258,8 +268,8 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     expect(Object.keys(results[0].dialog)).not.toContain('can_send');
   });
   it('serializes sends, deduplicates across devices, preserves original content and emits after commit only once', async (): Promise<void> => {
-    const id = await dialog(),
-      body = input('first');
+    const id = await dialog();
+    const body = input('first');
     const result = await Promise.all([
       service.send(actors[0], id, body),
       service.send(actors[0], id, { ...body, content: { kind: 'text', text: 'changed' } }),
@@ -303,7 +313,9 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
   it('returns both directions with exclusive boundaries and monotone shared read positions', async (): Promise<void> => {
     const id = await dialog();
 
-    for (let i = 1; i <= 4; i++) await service.send(actors[0], id, input('message ' + i));
+    for (let i = 1; i <= 4; i++) {
+      await service.send(actors[0], id, input('message ' + i));
+    }
 
     const page = await service.history(actors[1], id, 2, 0);
 
@@ -412,8 +424,8 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     expect((await service.send(actors[0], id, input())).message.sequence).toBe(1);
   });
   it('does not create new records at exhausted key budget but can still return an authorized retry or read', async (): Promise<void> => {
-    const id = await dialog(),
-      body = input();
+    const id = await dialog();
+    const body = input();
     const first = await service.send(actors[0], id, body);
 
     await pool.query('UPDATE gchat_dialog_encryption_keys SET encryption_attempts=16777216');
@@ -613,7 +625,9 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
           ],
         });
 
-      for (let i = 0; i < capacity; i++) expect(await run(100000)).toBe(0);
+      for (let i = 0; i < capacity; i++) {
+        expect(await run(100000)).toBe(0);
+      }
 
       expect(await run(100000)).toBe(Math.ceil(1000 / rate));
       expect(await run(99000)).toBe(Math.ceil(1000 / rate));
@@ -678,12 +692,13 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       ).status,
     ).toBe(200);
 
-    for (const query of ['limit=01', 'limit=0', 'offset=1e2', 'limit=1&limit=2'])
+    for (const query of ['limit=01', 'limit=0', 'offset=1e2', 'limit=1&limit=2']) {
       expect(
         (await agent.get('/dialogs?' + query).set('Authorization', authorization)).status,
       ).toBe(400);
+    }
 
-    for (const body of [{ sequence: '0' }, { sequence: 0, extra: true }])
+    for (const body of [{ sequence: '0' }, { sequence: 0, extra: true }]) {
       expect(
         (
           await agent
@@ -692,6 +707,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
             .send(body)
         ).status,
       ).toBe(400);
+    }
 
     const invalid = await agent
       .post('/dialogs/' + id + '/messages')

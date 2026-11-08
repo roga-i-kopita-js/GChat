@@ -70,11 +70,15 @@ export class DialogPushWorker implements OnModuleDestroy {
   }
 
   private enqueue(notice: DialogNotice): void {
-    if (!notice.message || this.stopped) return;
+    if (!notice.message || this.stopped) {
+      return;
+    }
 
     const recipient = notice.users.find((id): boolean => id !== notice.message?.sender_id);
 
-    if (!recipient) return;
+    if (!recipient) {
+      return;
+    }
 
     if (this.waiting.length >= 100) {
       this.skip('overload');
@@ -115,7 +119,7 @@ export class DialogPushWorker implements OnModuleDestroy {
     const browser = await this.devices.listWebPushTargets(job.recipient);
     const requests: (() => Promise<void>)[] = [];
 
-    for (const target of native)
+    for (const target of native) {
       requests.push(async (): Promise<void> => {
         if (
           Date.now() >= job.deadline ||
@@ -125,12 +129,15 @@ export class DialogPushWorker implements OnModuleDestroy {
             target.deviceId,
             job.message.dialog_id,
           ))
-        )
+        ) {
           return;
+        }
 
         const current = await this.devices.resolveApnsTarget(target.deviceId, target.sessionId);
 
-        if (!current || current.version !== target.version || Date.now() >= job.deadline) return;
+        if (!current || current.version !== target.version || Date.now() >= job.deadline) {
+          return;
+        }
 
         const result = await this.apns.send(
           job.message.message_id,
@@ -142,15 +149,17 @@ export class DialogPushWorker implements OnModuleDestroy {
 
         if (
           ['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic'].includes(result.reason ?? '')
-        )
+        ) {
           await this.devices.invalidateApnsTarget(
             current.deviceId,
             current.version,
             result.timestamp,
           );
+        }
       });
+    }
 
-    for (const target of browser)
+    for (const target of browser) {
       requests.push(async (): Promise<void> => {
         if (
           Date.now() >= job.deadline ||
@@ -160,12 +169,15 @@ export class DialogPushWorker implements OnModuleDestroy {
             target.deviceId,
             job.message.dialog_id,
           ))
-        )
+        ) {
           return;
+        }
 
         const current = await this.devices.resolveWebPushTarget(target.deviceId, target.sessionId);
 
-        if (!current || current.version !== target.version || Date.now() >= job.deadline) return;
+        if (!current || current.version !== target.version || Date.now() >= job.deadline) {
+          return;
+        }
 
         const result = await this.web.sendPayload(
           current,
@@ -173,9 +185,11 @@ export class DialogPushWorker implements OnModuleDestroy {
           new Date(job.deadline).toISOString(),
         );
 
-        if (result.status === 404 || result.status === 410)
+        if (result.status === 404 || result.status === 410) {
           await this.devices.invalidateWebPushTarget(current.sessionId, current.version);
+        }
       });
+    }
 
     let next = 0;
 

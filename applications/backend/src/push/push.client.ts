@@ -22,7 +22,9 @@ export class PushClient implements OnModuleDestroy {
   private readonly key?: KeyObject;
 
   constructor(private readonly config: ConfigService) {
-    if (!this.config.get<boolean>('APNS_ENABLED', true)) return;
+    if (!this.config.get<boolean>('APNS_ENABLED', true)) {
+      return;
+    }
 
     this.key = createPrivateKey(
       readFileSync(this.config.getOrThrow<string>('APNS_PRIVATE_KEY_FILE')),
@@ -31,14 +33,19 @@ export class PushClient implements OnModuleDestroy {
     if (
       this.key.asymmetricKeyType !== 'ec' ||
       this.key.asymmetricKeyDetails?.namedCurve !== 'prime256v1'
-    )
+    ) {
       throw new Error('APNS_PRIVATE_KEY_FILE must contain an ES256 private key');
+    }
   }
 
   private async token(): Promise<string> {
-    if (!this.key) throw new Error('APNs is disabled');
+    if (!this.key) {
+      throw new Error('APNs is disabled');
+    }
 
-    if (this.signing && this.signing.expires > Date.now()) return this.signing.token;
+    if (this.signing && this.signing.expires > Date.now()) {
+      return this.signing.token;
+    }
 
     const token = await new SignJWT({})
       .setProtectedHeader({ alg: 'ES256', kid: this.config.getOrThrow<string>('APNS_KEY_ID') })
@@ -61,7 +68,9 @@ export class PushClient implements OnModuleDestroy {
     const authorization = await this.token();
     const timeout = Math.min(5000, deadline.getTime() - Date.now());
 
-    if (timeout <= 0) return { status: 410, reason: 'ExpiredCall', retryAfterSeconds: 0 };
+    if (timeout <= 0) {
+      return { status: 410, reason: 'ExpiredCall', retryAfterSeconds: 0 };
+    }
 
     if (!this.session || this.session.closed || this.session.destroyed) {
       this.session = connect(
@@ -107,7 +116,9 @@ export class PushClient implements OnModuleDestroy {
       request.on('data', (chunk: string): void => {
         body += chunk;
 
-        if (body.length > 16384) request.destroy(new Error('APNs response exceeded limit'));
+        if (body.length > 16384) {
+          request.destroy(new Error('APNs response exceeded limit'));
+        }
       });
       request.on('error', (cause: Error): void => {
         clearTimeout(timer);
@@ -116,7 +127,9 @@ export class PushClient implements OnModuleDestroy {
       request.on('close', (): void => {
         clearTimeout(timer);
 
-        if (!completed) reject(new Error('APNs stream closed before response completed'));
+        if (!completed) {
+          reject(new Error('APNs stream closed before response completed'));
+        }
       });
       request.on('end', (): void => {
         completed = true;
@@ -146,7 +159,9 @@ export class PushClient implements OnModuleDestroy {
             ? parsed.timestamp
             : undefined;
 
-        if (reason === 'ExpiredProviderToken') this.signing = undefined;
+        if (reason === 'ExpiredProviderToken') {
+          this.signing = undefined;
+        }
 
         resolve({ status, reason, timestamp, retryAfterSeconds });
       });

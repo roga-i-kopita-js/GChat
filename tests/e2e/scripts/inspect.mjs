@@ -19,14 +19,17 @@ try {
   await redis.connect();
   const busy = [];
 
-  for await (const keys of redis.scanIterator({ MATCH: 'gchat:web-test:direct-calls:busy:*' }))
+  for await (const keys of redis.scanIterator({ MATCH: 'gchat:web-test:direct-calls:busy:*' })) {
     busy.push(...keys);
+  }
 
   console.log(
     JSON.stringify({ calls: calls.rows, participants: participants.rows, busy: busy.length }),
   );
 } finally {
-  if (redis.isOpen) await redis.close();
+  if (redis.isOpen) {
+    await redis.close();
+  }
 
   await database.end();
 }

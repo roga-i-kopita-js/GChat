@@ -24,7 +24,9 @@ export class DirectCallsRepository {
     try {
       return await this.database.db.transaction(action);
     } catch (cause) {
-      if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
+      if (isDatabaseUnavailable(cause)) {
+        throw this.error.serviceUnavailable({ cause });
+      }
 
       throw cause;
     }
@@ -43,7 +45,7 @@ export class DirectCallsRepository {
         .values({ callId: call.id, kind: 'state', version: call.version, snapshot: callDto(call) });
     }
 
-    if (call.state !== 'ringing')
+    if (call.state !== 'ringing') {
       await tx
         .update(callDeliveries)
         .set({ status: 'cancelled', completedAt: new Date() })
@@ -54,11 +56,13 @@ export class DirectCallsRepository {
             or(eq(callDeliveries.status, 'pending'), eq(callDeliveries.status, 'processing')),
           ),
         );
+    }
 
-    if (call.state === 'ended')
+    if (call.state === 'ended') {
       await tx
         .update(callParticipants)
         .set({ releasedAt: call.endedAt })
         .where(and(eq(callParticipants.callId, call.id), isNull(callParticipants.releasedAt)));
+    }
   }
 }

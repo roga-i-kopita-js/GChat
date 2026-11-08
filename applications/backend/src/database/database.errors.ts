@@ -1,6 +1,8 @@
 /** Expected dependency failures, including transaction lock/deadlock budgets. */
 export function isDatabaseUnavailable(cause: unknown): boolean {
-  if (!(cause instanceof Error)) return false;
+  if (!(cause instanceof Error)) {
+    return false;
+  }
 
   const failure = cause.cause instanceof Error ? cause.cause : cause;
   const code = 'code' in failure && typeof failure.code === 'string' ? failure.code : '';

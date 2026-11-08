@@ -18,7 +18,9 @@ export class GroupsRepository {
   ) {}
 
   normalizeName(value: string): string {
-    if (typeof value !== 'string' || !value.trim()) throw this.error.validation();
+    if (typeof value !== 'string' || !value.trim()) {
+      throw this.error.validation();
+    }
 
     return value.trim().toLowerCase();
   }
@@ -33,7 +35,9 @@ export class GroupsRepository {
     const group =
       inserted ?? (await tx.select({ id: groups.id }).from(groups).where(eq(groups.name, name)))[0];
 
-    if (!group) throw this.error.serviceUnavailable();
+    if (!group) {
+      throw this.error.serviceUnavailable();
+    }
 
     await tx.insert(groupMembers).values({ groupId: group.id, userId }).onConflictDoNothing();
   }
@@ -60,7 +64,9 @@ export class GroupsRepository {
     tx: DatabaseTransaction,
     ids: string[],
   ): Promise<{ userId: string; id: string; name: string }[]> {
-    if (!ids.length) return [];
+    if (!ids.length) {
+      return [];
+    }
 
     return tx
       .select({ userId: groupMembers.userId, id: groups.id, name: groups.name })
@@ -97,7 +103,9 @@ export class GroupsRepository {
         )
         .orderBy(asc(groups.name), asc(groups.id));
     } catch (cause) {
-      if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
+      if (isDatabaseUnavailable(cause)) {
+        throw this.error.serviceUnavailable({ cause });
+      }
 
       throw cause;
     }
@@ -128,7 +136,9 @@ export class GroupsRepository {
             )
             .for('share');
 
-          if (!accessible) throw this.error.notFound();
+          if (!accessible) {
+            throw this.error.notFound();
+          }
 
           return tx
             .select({ id: users.id, display_name: users.displayName })
@@ -140,7 +150,9 @@ export class GroupsRepository {
         { isolationLevel: 'repeatable read' },
       );
     } catch (cause) {
-      if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
+      if (isDatabaseUnavailable(cause)) {
+        throw this.error.serviceUnavailable({ cause });
+      }
 
       throw cause;
     }
@@ -166,7 +178,9 @@ export class GroupsRepository {
 
       return rows.length > 0;
     } catch (cause) {
-      if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
+      if (isDatabaseUnavailable(cause)) {
+        throw this.error.serviceUnavailable({ cause });
+      }
 
       throw cause;
     }
@@ -184,7 +198,9 @@ export class GroupsRepository {
 
       return matches.length > 0;
     } catch (cause) {
-      if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
+      if (isDatabaseUnavailable(cause)) {
+        throw this.error.serviceUnavailable({ cause });
+      }
 
       throw cause;
     }

@@ -11,7 +11,9 @@ export async function runMigrations(databaseUrl: unknown, migrationsFolder: stri
   // Check artifacts before connecting. Missing or corrupt files are an error, not an empty history.
   const migrations = readMigrationFiles({ migrationsFolder });
 
-  if (migrations.length === 0) return;
+  if (migrations.length === 0) {
+    return;
+  }
 
   const pool = new pg.Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 5000 });
 

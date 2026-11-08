@@ -11,7 +11,9 @@ const server = spawn(process.execPath, ['dist/main.js'], {
   stdio: 'inherit',
 });
 
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.kill(signal));
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => server.kill(signal));
+}
 
 server.on('exit', (code) => {
   process.exitCode = code ?? 1;

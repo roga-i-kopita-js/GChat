@@ -65,7 +65,9 @@ integration('Standard Drizzle PostgreSQL migrations', (): void => {
       }
     }
 
-    if (folder) await rm(folder, { recursive: true, force: true });
+    if (folder) {
+      await rm(folder, { recursive: true, force: true });
+    }
   });
 
   it('applies new SQL, skips previously applied migrations, and rolls back a failed batch', async (): Promise<void> => {

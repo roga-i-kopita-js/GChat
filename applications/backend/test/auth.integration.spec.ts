@@ -101,7 +101,9 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     if (redis?.isOpen) {
       try {
         for await (const keys of redis.scanIterator({ MATCH: `${prefix}*`, COUNT: 100 })) {
-          if (keys.length) await redis.del(keys);
+          if (keys.length) {
+            await redis.del(keys);
+          }
         }
       } finally {
         await redis.close();
@@ -197,13 +199,14 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     });
     const another = await signIn();
 
-    for (let i = 0; i < 10; i++)
+    for (let i = 0; i < 10; i++) {
       await request(app.getHttpServer())
         .post('/auth/ws-ticket')
         .auth(another.access_token, { type: 'bearer' })
         .set('Origin', 'http://localhost:5173')
         .send({})
         .expect(200);
+    }
 
     const limited = await request(app.getHttpServer())
       .post('/auth/ws-ticket')
@@ -270,7 +273,9 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       ),
     );
 
-    for (const reply of replies) expect(reply.body).toEqual(replies[0]!.body);
+    for (const reply of replies) {
+      expect(reply.body).toEqual(replies[0]!.body);
+    }
 
     const sid = sessionId(first.refresh_token)!;
 
@@ -379,11 +384,12 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       .send({ refresh_token: 'unknown', request_id: 'bad' })
       .expect(400);
 
-    for (let i = 0; i < 5; i++)
+    for (let i = 0; i < 5; i++) {
       await request(app.getHttpServer())
         .post('/auth/login')
         .send({ login, password: 'incorrect password' })
         .expect(401);
+    }
 
     await request(app.getHttpServer())
       .post('/auth/login')

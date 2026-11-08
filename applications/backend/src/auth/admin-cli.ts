@@ -53,7 +53,9 @@ async function main(): Promise<void> {
       .db.transaction(async (tx): Promise<SafeAccount> => {
         const account = await accounts.create(tx, prepared, 'admin');
 
-        if (group !== undefined) await groups.assign(tx, account.id, group);
+        if (group !== undefined) {
+          await groups.assign(tx, account.id, group);
+        }
 
         return account;
       });

@@ -20,7 +20,9 @@ createServer(async (req, res) => {
 
   res.setHeader('Cache-Control', 'no-cache');
 
-  if (url.pathname === '/__ready') return res.end('ready');
+  if (url.pathname === '/__ready') {
+    return res.end('ready');
+  }
 
   if (url.pathname === '/__revision') {
     revision = url.searchParams.get('value') ?? 'one';
@@ -46,10 +48,11 @@ createServer(async (req, res) => {
   try {
     let content = await readFile(resolve(root, server ? 'server' : 'root', file));
 
-    if (file === 'sw.js')
+    if (file === 'sw.js') {
       content = Buffer.from(
         content.toString().replace(/(gchat-shell-(?:server|root)-[a-f0-9]+)/g, '$1-' + revision),
       );
+    }
 
     if (incomplete && file.endsWith('.js') && file !== 'sw.js') {
       res.writeHead(404);

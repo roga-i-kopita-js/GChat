@@ -132,8 +132,9 @@ describe('LoggerService', (): void => {
     expect(parseLogRedaction('true')).toBe(true);
     expect(parseLogRedaction('false')).toBe(false);
 
-    for (const value of ['', '1', 'TRUE', 'no', 0])
+    for (const value of ['', '1', 'TRUE', 'no', 0]) {
       expect((): boolean => parseLogRedaction(value)).toThrow();
+    }
   });
 
   it('does not propagate output failures into business code', (): void => {

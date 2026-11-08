@@ -18,7 +18,9 @@ export class SignalingWorker implements OnApplicationBootstrap, OnModuleDestroy 
 
   onApplicationBootstrap(): void {
     this.timer = setInterval((): void => {
-      if (this.running) return;
+      if (this.running) {
+        return;
+      }
 
       this.running = this.tick()
         .catch((): void => {
@@ -33,7 +35,9 @@ export class SignalingWorker implements OnApplicationBootstrap, OnModuleDestroy 
 
   private async tick(): Promise<void> {
     for (const job of await this.store.claim('state')) {
-      if (!job.leaseToken || !job.snapshot) continue;
+      if (!job.leaseToken || !job.snapshot) {
+        continue;
+      }
 
       try {
         await this.gateway.broadcast(job.snapshot);

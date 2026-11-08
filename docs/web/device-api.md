@@ -1,17 +1,37 @@
 ---
 doc_type: client
 decision_status: accepted
-implementation_status: absent
-source: null
-planned_source: applications/web/src/shared/device/
-tests: []
+implementation_status: partial
+source: applications/web/src/shared/device/
+tests:
+  - applications/ios/NativeCore/Tests/GChatCoreTests/NativeHTTPTests.swift
+  - applications/ios/NativeCore/Tests/GChatCoreTests/DeviceStorageTests.swift
+  - applications/ios/NativeCore/Tests/GChatCoreTests/NativeNavigationTests.swift
+  - applications/web/src/shared/device/navigation.test.ts
+  - applications/web/src/shared/device/navigation-native.test.ts
+  - applications/web/src/app/native-location.test.ts
+  - applications/web/src/app/router-context.test.ts
+  - applications/web/src/shared/device/http.test.ts
+  - applications/web/src/shared/device/storage.test.ts
+  - applications/web/src/shared/device/state-cache.test.ts
+  - applications/web/src/shared/device/session.test.ts
+  - applications/web/src/shared/device/files.test.ts
+  - applications/ios/NativeCore/Tests/GChatCoreTests/CameraOwnershipTests.swift
+  - applications/ios/MediaTests/NativeMediaTests.swift
+  - applications/web/src/shared/device/camera-native.test.ts
+  - applications/web/src/shared/device/notifications.test.ts
+  - applications/web/src/shared/device/api.types.test.ts
+  - tests/e2e/tests/device/core.e2e.ts
+  - tests/e2e/tests/device/storage.e2e.ts
 ---
 
 # Спецификация API device для Web
 
-Единый публичный интерфейс GChat Web к браузеру и нативной оболочке. Документ задаёт целевое поведение и TypeScript API. Реализации общего API пока нет; существующие адаптеры покрывают только части этого объёма.
+Единый публичный интерфейс GChat Web к браузеру и нативной оболочке. Документ задаёт требуемое поведение и TypeScript API. [Публичная фабрика](../../applications/web/src/shared/device/create.ts) подключена в основном Web: она владеет сессией, транспортом, звонками и одним Data router; разделы вызывают типизированные сервисы. HTTP, файлы, StorageService, permissions, notifications, updates и React-подписки собраны в общий объект device. Браузерная камера использует один video-only источник и сохраняет фото/потоковую запись в OPFS Data. Нативная камера реализует View/Call lifetime, preview под WKWebView, JPEG и H.264/MP4 в Data. Общие camera/PiP-компоненты подключены к настоящему владельцу DirectCalls в CallHarness. Native audio публикует системную громкость/выход, открывает системный выбор и MPVolumeView только при активном native VoIP owner.
 
-**Статус — accepted.** Пользователь поручил самостоятельно закрыть оставшиеся решения, выбирая простую и качественную реализацию. Зафиксированные ниже решения готовы к реализации; [реестр решений](#реестр-решений) объясняет выбранные границы. Статус не подтверждает наличие кода или прохождение платформенной приёмки. Этот этап меняет документацию, а не реализацию приложений.
+Реализация остаётся partial: основная iOS-оболочка сообщает nativeCalls=false. Call lifetime, PiP и управление системной громкостью подключены к владельцу звонка в техническом CallHarness; включение этого владельца в основной оболочке остаётся за Gate 1 по [native calls](../ios/native-calls.md). Общий blocker реализован по [потоку данных](data-flow.md). Физическая приёмка камеры/PiP/аудиовыходов и полная матрица Gate 1 остаются отдельными проверками. Simulator-сборка и тестовый источник Chromium не заменяют эту приёмку.
+
+**Статус — accepted.** Пользователь поручил самостоятельно закрыть оставшиеся решения, выбирая простую и качественную реализацию. Зафиксированные ниже решения готовы к реализации; [реестр решений](#реестр-решений) объясняет выбранные границы. Статус не подтверждает наличие кода или прохождение платформенной приёмки.
 
 ## Согласованные решения
 
@@ -122,10 +142,10 @@ export interface EventSource<Events extends object> {
 }
 
 // Экспорт React-входа; event всегда указан явно.
-export declare function useDeviceState<TState extends Versioned, TEvent extends string>(
+export declare function useDeviceState<TState extends Versioned, const TEvent extends string>(
   service: {
     getState(options?: CallOptions): Promise<TState>;
-    on(event: TEvent, handler: (state: NoInfer<TState>) => void): Unsubscribe;
+    on(event: NoInfer<TEvent>, handler: (state: NoInfer<TState>) => void): Unsubscribe;
   },
   event: TEvent,
 ): TState;
@@ -151,6 +171,8 @@ export interface Page<T> {
 - Отмена пользователем системного выбора представляется `Selection` с outcome cancelled. Отказ в разрешении — состояние denied/restricted; отмена жизненным циклом собственных сервисов — DeviceError с CANCELLED. HTTP сохраняет правила Fetch/SDK.
 - Запросы разрешений, системный выбор файлов/аудиовыхода и разблокировка звука доходят до платформенного API непосредственно из пользовательского обработчика, без потери user activation.
 - Аргументы, ответы и события bridge проходят runtime-валидацию. Сырые пути, bookmarks, токены и произвольные сообщения native не становятся данными UI. Проверка HTTP DTO определяется контрактом переданного SDK; общий фасад не добавляет её автоматически.
+
+Внутренний native media v1 объявляется capability mediaVersion=1. Команды mediaCommand коррелируются по cycleId/requestId, требуют локальной native-сессии и проверяют auth revision до и после выполнения. Cancel останавливает ожидание и отменяемую подготовку; сохранённое изменение не объявляется отменённым. mediaEvent содержит безопасное состояние/непрозрачные ссылки, без кадров и путей. При смене цикла/сессии освобождаются View holds и UI выбора маршрута; публичная revision Web-адаптера сохраняется. Private camera.current читает текущий source/state/Call hold без захвата и prompt; revision native-снимка защищает от позднего ответа в том же cycle. State Web адаптера не откатывается, а подтверждённый RecordingSaved не теряется из-за более нового снимка. Компактный host принадлежит app-root, страничный preview имеет приоритет, native CGRect updates сериализуются и вытесняют устаревшие bounds того же preview. Старые оболочки без capability возвращают UNSUPPORTED_VERSION для нового медиаадаптера. Реализация — [NativeMediaController](../../applications/ios/App/App/NativeMediaController.swift) и [NativeCameraCapture](../../applications/ios/App/App/NativeCameraCapture.swift).
 
 ## Ошибки и системные проверки
 
@@ -265,7 +287,7 @@ export interface SystemService {
 
 ### Конфигурация API-класса и маршрутов
 
-Принимается конструктор с объектом настроек и параметром fetch. Routing получает device при построении маршрутов, поэтому loaders замыкаются на готовых зависимостях без глобального singleton. App нормализует разрешённые native-цели через resolveNativeLocation; маршруты не импортируются из shared.
+Принимается конструктор с объектом настроек и параметром fetch. Routing получает device через типизированный контекст React Router: getContext помещает один экземпляр документа в новый RouterContextProvider для каждой навигации/fetcher. Loaders/actions читают context.get(deviceContext); при необходимости loader возвращает device компоненту в loaderData. Device не передаётся замыканием в фабрику маршрутов и не создаётся повторно для запросов. App нормализует разрешённые native-цели через resolveNativeLocation; маршруты не импортируются из shared.
 
 ```ts
 export type HttpRequest = typeof globalThis.fetch;
@@ -282,7 +304,7 @@ export declare function createDevice<TOptions extends { fetch?: HttpRequest }, T
   http: HttpClientRegistration<TOptions, TClient>;
   routing: {
     basename: string;
-    createRoutes(device: DeviceCore<TClient>): RouteObject[];
+    createRoutes(): RouteObject[];
     resolveNativeLocation(to: string): string | null;
   };
 }): DeviceCore<TClient>;
@@ -344,7 +366,7 @@ const groups = await configuredDevice.session.run((http, signal) => http.groupsL
 
 Для HTTP плагин добавляет внутренние `httpRequest(envelope)` и `httpCancel({httpVersion, cycleId, requestId})`; обозначение http.cancel выше — эта отмена. Они доступны доверенному основному документу текущего cycle; отсутствие Auth допустимо только для публичного API. Native проверяет origin, цикл и размер до создания задачи. Эти методы не экспортируются фичам.
 
-Текущий SDK уже допускает подмену Fetch; общий native HTTP bridge и новая композиция device ещё не реализованы.
+Текущий SDK уже допускает подмену Fetch. Нативные httpRequest/httpCancel и httpVersion: 1 реализованы в iOS; тестовый harness вызывает их напрямую. Fetch-совместимый [Web-адаптер](../../applications/web/src/shared/device/http.ts) с Response/clone подключён к SDK через createApi. NativeRuntime готовит и инвалидирует его контекст; Fetch WebView в native не вызывается. Общая композиция подключена через createDevice; фабрика создаёт SDK с внутренним Fetch-адаптером. iOS объявляет navigationVersion: 1, device.lifecycle.start готовит native-контекст и один router.
 
 ## Жизненный цикл
 
@@ -512,6 +534,8 @@ Data не очищается автоматически или при logout. Te
 
 Дополнительные квоты приложения не вводятся: действует квота платформы, отказ — STORAGE_FULL. GetUsage возвращает известную занятость области; неизвестное — null, quotaBytes — null, если ОС не даёт отдельной квоты области. Browser origin estimate не выдаётся за квоту одного каталога. Даже постоянные данные могут исчезнуть при удалении данных приложения/сайта; успех съёмки подтверждает запись, а не невозможность такой очистки. Предпочтения, SQL и модель принадлежности аккаунту сюда не входят.
 
+На стороне iOS методы getRoot/getUsage реализованы внутренними командами `storage.getRoot` и `storage.getUsage` с `{area}` через существующий `executeDeviceCommand` и его version/cycle/request envelope. Возвращаются соответственно FileRef и `{usedBytes, quotaBytes}`. Доступ требует текущей native-сессии; пути не принимаются и не выдаются. Data/Cache сохраняют непрозрачные ссылки в отдельном реестре внутренних файлов, внешние bookmarks не переиспользуются. При смене Web-цикла/сессии Temporary очищается, Data/Cache и предоставленные внешние доступы сохраняются. Очистка остатков Temporary проверяет системную блокировку владельца и не затрагивает живые области. Типизированный [Web-фасад](../../applications/web/src/shared/device/storage.ts) вызывает эти команды; React-потребитель получает его как device.storage через DeviceProvider. BrowserFiles использует [OPFS-владельца](../../applications/web/src/shared/device/browser-storage.ts) и восстанавливает внутренние ссылки отдельно от внешних grants. Наличие этих сервисов не подтверждает оставшиеся критерии платформенной приёмки.
+
 ## Камера
 
 Камера поддерживает фото, видеозапись и живой источник с фронтальной/основной камеры. Первая версия использует один физический источник, без одновременного захвата двух камер. Выбор из медиатеки не входит в съёмку. Camera не открывает микрофон и не перенастраивает аудиосессию звонка; видеозапись этой версии не содержит звука. Это позволяет использовать камеру во время аудиозвонка без второго владельца микрофона.
@@ -601,7 +625,7 @@ Lifetime по умолчанию View: ресурс принадлежит вы�
 
 CameraStreamRef — непрозрачный идентификатор источника, разрешаемый только внутри адаптера. Потребитель отображает его через DeviceCameraPreview; публичный MediaStream/OS handle и поток кадров через JSON не выдаются. В browser адаптер держит MediaStream вне React, подключает его к muted/playsInline video. В iOS AVCaptureSession с AVCaptureVideoDataOutput принадлежит native capture-owner; буферы идут в native preview/PiP, а при интеграции передачи — напрямую владельцу native-медиа. Web-код не является владельцем нативного захвата или фоновой передачи.
 
-Native preview — прямоугольный UIView под прозрачной областью WKWebView, позиционируемый React-компонентом по DOM bounds. Страница рисует непрозрачный фон вне preview; Web-кнопки и диалоги остаются над ним. Компонент отслеживает размер/scroll/попадание в viewport; app задаёт visible=false при перекрывающем диалоге. Снятие/скрытие поверхности не останавливает источник. Первая версия поддерживает один видимый preview, без CSS transforms и непрямоугольных масок; второй даёт BUSY. PiP использует этот же native источник независимо от поверхности. Это выбранная архитектура, требующая реализации и физической проверки, а не утверждение о готовом bridge.
+Native preview — прямоугольный UIView под прозрачной областью WKWebView, позиционируемый React-компонентом по DOM bounds. Страница рисует непрозрачный фон вне preview; Web-кнопки и диалоги остаются над ним. Компонент отслеживает размер/scroll/попадание в viewport; app задаёт visible=false при перекрывающем диалоге. Снятие/скрытие поверхности не останавливает источник. Первая версия поддерживает один видимый preview, без CSS transforms и непрямоугольных масок; второй даёт BUSY. PiP использует этот же native источник независимо от поверхности. Нативная поверхность реализована как UIView под WKWebView; общий Web host рисует фон вне прямоугольного cutout и скрывает preview при открытом dialog. Физическая проверка не заменяется сборкой Simulator.
 
 Фото/видеозапись возвращают FileRef после постоянной записи в Data. Имя генерирует адаптер, публикация ссылки и RecordingSaved происходит после commit. До commit файл скрыт в staged storage. Ошибка/сбой удаляет незавершённый файл при ближайшем запуске; повреждённый результат не объявляется сохранённым. При финализируемом прерывании сохраняется корректная укороченная запись, которую возвращает stop; иначе stop отклоняется. Stop записи идемпотентен и возвращает тот же FileRef/отказ; запись принадлежит capture-owner, а не объекту preview.
 
@@ -771,7 +795,7 @@ Wire-envelope: `{navigationVersion: 1, cycleId, requestId, command: 'navigate', 
 
 App держит один общий useBlocker для грязных форм/несохранённого постоянного черновика. Link, POP истории, device.navigate и native проходят через него. Pending-команда ждёт выбора пользователя; отказ даёт Blocked, подтверждение продолжает тот же переход. Для unload применяется beforeunload без обещания гарантированного сохранения. Обязательная смена/инвалидация сессии обходит blocker, отменяет старые операции и скрывает их данные; правила сохранения диалогов — по Bootstrap. Публикация LocationChanged не трактуется как входная команда.
 
-Базовый сценарий частично существует в [NativeRuntime](../../applications/web/src/shared/native/runtime.ts), [NativeBoundary](../../applications/web/src/app/NativeBoundary.tsx) и [GChatPlugin](../../applications/ios/App/App/GChatPlugin.swift); новый протокол требует реализации.
+Нативный контур реализован в [NativeNavigation](../../applications/ios/NativeCore/Sources/GChatCore/NativeNavigation.swift) и [GChatPlugin](../../applications/ios/App/App/GChatPlugin.swift); Web-адаптеры — [DeviceNavigation](../../applications/web/src/shared/device/navigation.ts) и [NativeNavigationBinding](../../applications/web/src/shared/device/navigation-native.ts). Внутренний navigationReady принимает `{navigationVersion: 1, cycleId, phase: 'ready', location}` либо `{navigationVersion: 1, cycleId, phase: 'failed'}`. Router и revision сохраняются при пересинхронизации цикла. В тестовом приложении адаптер подключён к настоящему Data router с basename; основной Web также подключён к одному Data router через NavigationHost и использует navigationReady/completeNavigation. NativeRuntime получает auth-контекст через прежний route, а прежний NativeBoundary удалён. Данные контактов/admin перенесены в loaders/actions, Query удалён; публичная композиция device подключена; прочие критерии потока данных проверяются отдельно. Legacy auth-route сохранён для установки контекста сессии и совместимости.
 
 ## Сессия, соединение и связанные сервисы
 
@@ -923,12 +947,12 @@ offVolume();
 
 | Владелец                                                                                             | Текущее правило / необходимое изменение                                                                                                                                                                |
 | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [Web](README.md#встроенный-web-и-capacitor-bridge)                                                   | Сейчас адаптеры выбираются в session.ts и CallsProvider. Целевая граница переносит выбор внутрь device без изменения продуктовых доступов                                                              |
+| [Web](README.md#встроенный-web-и-capacitor-bridge)                                                   | Платформенные адаптеры выбираются в createDevice; разделы используют типизированные сервисы без изменения продуктовых доступов                                                              |
 | [Device bridge](device-bridge.md)                                                                    | Публичный execute и wait/cancel заменяются методами/enum-событиями нового фасада; внутренний диспетчер может сохраниться. Нынешняя громкость средствами ОС и ограничение выбора выхода iOS расширяются |
 | [D011](../architecture/decisions/D011-native-device-settings.md)                                     | Сохраняет мотивацию командного bridge; публичную форму и добавленный объём определяет этот контракт                                                                                                    |
 | [Bootstrap](bootstrap.md)                                                                            | Сохраняются DialogStorage, scope/CAS/epoch, outbox и fallback. Общая интеграция не создаёт второй WSS; требуемый единый фасад транспорта доводится до потребителей                                     |
 | [Backend API](../packages/backend-api.md)                                                            | Сохраняются сгенерированный класс, DTO, ApiResult и ошибки. Его существующая настройка fetch подключается к выбранному транспорту device; общий native HTTP bridge требуется реализовать               |
-| [D007](../architecture/decisions/D007-web-routing.md) и [поток данных](data-flow.md)                 | Цель — Data mode, loaders/actions и удаление Query; текущий BrowserRouter/Query сохраняется до миграции                                                                                                |
+| [D007](../architecture/decisions/D007-web-routing.md) и [поток данных](data-flow.md)                 | Основной Web использует Data mode и loaders/actions, Query удалён; остальные критерии data-flow принимаются отдельно                                                                                                |
 | [D008](../architecture/decisions/D008-capacitor-bridge.md) и [iOS](../../applications/ios/README.md) | Камера/PiP требуют нативной реализации и физической проверки; наличие TypeScript API не закрывает native call engine и Gate 1/2                                                                        |
 
 CommandBridge остаётся текущей реализацией и внутренним механизмом на время миграции. При расхождении публичной формы/потока данных целевые требования определяют этот документ и data-flow; остальные доменные правила владельцев сохраняются. Новые декларации не выдаются за существующий код.

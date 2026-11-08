@@ -19,10 +19,11 @@ describe('Dialog request validation', (): void => {
     expect((): unknown => contentValue({ kind: 'text', text }, error)).toThrow();
   });
   it('accepts only the five fixed IDs and rejects extra content fields', (): void => {
-    for (const animal of ['cat', 'dog', 'fox', 'bear', 'bunny'])
+    for (const animal of ['cat', 'dog', 'fox', 'bear', 'bunny']) {
       expect(
         contentValue({ kind: 'sticker', sticker_id: 'animal-pals-v1-' + animal }, error).kind,
       ).toBe('sticker');
+    }
 
     for (const value of [
       { kind: 'sticker', sticker_id: 'arbitrary-url' },
@@ -30,8 +31,9 @@ describe('Dialog request validation', (): void => {
       { kind: 'sticker', sticker_id: 'animal-pals-v1-cat', text: 'x' },
       null,
       [],
-    ])
+    ]) {
       expect((): unknown => contentValue(value, error)).toThrow();
+    }
   });
   it.each([
     '',
@@ -53,7 +55,8 @@ describe('Dialog request validation', (): void => {
     expect(queryInteger('9007199254740991', 'sequence', 0, error)).toBe(Number.MAX_SAFE_INTEGER);
     expect(queryInteger(undefined, 'limit', 30, error, 1, 100)).toBe(30);
 
-    for (const value of ['0', '101'])
+    for (const value of ['0', '101']) {
       expect((): unknown => queryInteger(value, 'limit', 30, error, 1, 100)).toThrow();
+    }
   });
 });

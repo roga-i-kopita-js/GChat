@@ -22,7 +22,17 @@ export class CommandBridge implements DeviceBridge {
   private nativeWait?: string;
 
   constructor(host: BrowserDeviceHost) {
-    if (!embedded) this.browser = new BrowserDevice(host);
+    if (!embedded) {
+      this.browser = new BrowserDevice(host);
+    }
+  }
+
+  setCaptureMime(id: string, mime: string): Promise<void> {
+    if (!this.browser) {
+      return Promise.reject(new DeviceError('UNSUPPORTED'));
+    }
+
+    return this.browser.setCaptureMime(id, mime);
   }
 
   reset(): void {
@@ -31,18 +41,26 @@ export class CommandBridge implements DeviceBridge {
     this.browser?.reset();
   }
 
+  async dispose(): Promise<void> {
+    this.epoch++;
+    await this.browser?.dispose();
+  }
+
   stopAudio(): void {
     this.browser?.stop();
   }
 
   execute<C extends Command>(request: { command: C; args: Args<C> }): Promise<Result<C>>;
   async execute(request: { command: Command; args: unknown }): Promise<unknown> {
-    if (!commandExists(request.command))
+    if (!commandExists(request.command)) {
       throw new DeviceError('INVALID_ARGUMENT', { command: request.command });
+    }
 
     const parsed = argsSchemas[request.command].safeParse(request.args);
 
-    if (!parsed?.success) throw new DeviceError('INVALID_ARGUMENT', { command: request.command });
+    if (!parsed?.success) {
+      throw new DeviceError('INVALID_ARGUMENT', { command: request.command });
+    }
 
     const epoch = this.epoch;
 
@@ -52,25 +70,31 @@ export class CommandBridge implements DeviceBridge {
       const operation = (async (): Promise<unknown> => {
         let result: unknown;
 
-        if (this.browser) result = await this.browser.execute(request.command, parsed.data);
-        else {
+        if (this.browser) {
+          result = await this.browser.execute(request.command, parsed.data);
+        } else {
           const state = nativeRuntime.getSnapshot();
 
-          if (state.phase !== 'ready' || !nativeRuntime.getToken())
+          if (state.phase !== 'ready' || !nativeRuntime.getToken()) {
             throw new DeviceError('UNAUTHENTICATED');
+          }
 
-          if (request.command === 'device.changes.cancel' && !this.nativeWait)
+          if (request.command === 'device.changes.cancel' && !this.nativeWait) {
             return { outcome: 'completed' };
+          }
 
-          if (request.command === 'device.changes.wait' && this.nativeWait)
+          if (request.command === 'device.changes.wait' && this.nativeWait) {
             throw new DeviceError('BUSY');
+          }
 
           const requestId =
             request.command === 'device.changes.cancel'
               ? (this.nativeWait ?? crypto.randomUUID())
               : crypto.randomUUID();
 
-          if (request.command === 'device.changes.wait') this.nativeWait = requestId;
+          if (request.command === 'device.changes.wait') {
+            this.nativeWait = requestId;
+          }
 
           const pending = nativePlugin.executeDeviceCommand({
             deviceBridgeVersion: 1,
@@ -84,8 +108,9 @@ export class CommandBridge implements DeviceBridge {
           try {
             raw = await pending;
           } finally {
-            if (request.command === 'device.changes.wait' && this.nativeWait === requestId)
+            if (request.command === 'device.changes.wait' && this.nativeWait === requestId) {
               this.nativeWait = undefined;
+            }
           }
 
           const response = z
@@ -106,15 +131,20 @@ export class CommandBridge implements DeviceBridge {
             })
             .parse(raw);
 
-          if (state.cycleId !== nativeRuntime.getSnapshot().cycleId)
+          if (state.cycleId !== nativeRuntime.getSnapshot().cycleId) {
             throw new DeviceError('CANCELLED');
+          }
 
-          if (response.error) throw new DeviceError(response.error.code, response.error);
+          if (response.error) {
+            throw new DeviceError(response.error.code, response.error);
+          }
 
           result = response.result;
         }
 
-        if (epoch !== this.epoch) throw new DeviceError('CANCELLED');
+        if (epoch !== this.epoch) {
+          throw new DeviceError('CANCELLED');
+        }
 
         return resultsSchemas[request.command].parse(result);
       })();
@@ -131,7 +161,9 @@ export class CommandBridge implements DeviceBridge {
         'device.changes.wait',
       ].includes(request.command);
 
-      if (interactive) return await operation;
+      if (interactive) {
+        return await operation;
+      }
 
       return await Promise.race([
         operation,
@@ -152,8 +184,9 @@ export class CommandBridge implements DeviceBridge {
         }),
       ]);
     } catch (error) {
-      if (error instanceof z.ZodError)
+      if (error instanceof z.ZodError) {
         throw new DeviceError('INTEGRATION_ERROR', { command: request.command });
+      }
 
       if (error instanceof DeviceError || error instanceof DOMException) {
         const cause = failure(error);

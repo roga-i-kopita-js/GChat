@@ -1,11 +1,14 @@
 import { z } from 'zod';
 
 import { callSchema } from '../api/call';
+import type { DeviceNavigation } from '../device/navigation';
+import { NativeNavigationBinding } from '../device/navigation-native';
 import { identity } from '../identity';
 import {
   bridgeError,
   bridgeVersion,
   invoke,
+  nativeHttp,
   nativePlugin,
   serverUrl,
   type WsRequest,
@@ -32,13 +35,17 @@ const capabilitiesSchema = z.strictObject({
   bridgeVersion: z.literal(bridgeVersion),
   platform: z.literal('ios'),
   nativeAuth: z.literal(true),
+  httpVersion: z.literal(1),
+  navigationVersion: z.literal(1),
   nativeCalls: z.boolean(),
   nativeWebSocket: z.boolean().optional(),
+  mediaVersion: z.literal(1).optional(),
   dialogStorageVersion: z.literal(1).optional(),
   dialogNotificationsVersion: z.literal(1).optional(),
 });
 
 export interface NativeState {
+  mediaVersion?: 1;
   dialogStorageVersion?: 1;
   dialogNotificationsVersion?: 1;
   dialogIntent?: { intentId: string; dialogId: string };
@@ -54,7 +61,7 @@ export interface NativeState {
   runtime: z.infer<typeof runtimeSchema>;
 }
 
-/** Only the HTTP transport reads the token. React and Query snapshots never contain it. */
+/** Only the HTTP transport reads the token. React snapshots never contain it. */
 export class NativeRuntime {
   private state: NativeState = {
     nativeCalls: null,
@@ -68,6 +75,36 @@ export class NativeRuntime {
     call: null,
     runtime: { status: 'offline', muted: false },
   };
+  private navigationBinding?: NativeNavigationBinding;
+  private navigationCycle?: string;
+
+  attachNavigation(navigation: DeviceNavigation): void {
+    if (this.navigationBinding) {
+      throw bridgeError({ code: 'VALIDATION_ERROR' });
+    }
+
+    this.navigationBinding = new NativeNavigationBinding(nativePlugin, navigation);
+  }
+
+  private navigationReady(): void {
+    if (
+      !this.navigationBinding ||
+      this.navigationCycle === this.state.cycleId ||
+      this.state.phase !== 'ready'
+    ) {
+      return;
+    }
+
+    const cycle = this.state.cycleId;
+
+    this.navigationCycle = cycle;
+    void this.navigationBinding.start(cycle).catch((cause): void => {
+      if (this.state.cycleId === cycle) {
+        this.fail(cause);
+      }
+    });
+  }
+
   private token: string | null = null;
   private listeners = new Set<() => void>();
   private wsListeners = new Set<(message: Record<string, unknown>) => void>();
@@ -101,10 +138,13 @@ export class NativeRuntime {
     const { cycleId, phase, nativeWebSocket, wsStatus } = this.state;
     const signal = this.controller.signal;
 
-    if (phase !== 'ready' || !this.token) throw bridgeError({ code: 'UNAUTHENTICATED' });
+    if (phase !== 'ready' || !this.token) {
+      throw bridgeError({ code: 'UNAUTHENTICATED' });
+    }
 
-    if (!nativeWebSocket || wsStatus !== 'online')
+    if (!nativeWebSocket || wsStatus !== 'online') {
       throw bridgeError({ code: 'BRIDGE_UNAVAILABLE' });
+    }
 
     const parsed = z
       .strictObject({
@@ -117,27 +157,32 @@ export class NativeRuntime {
     if (
       !parsed.success ||
       new TextEncoder().encode(JSON.stringify(parsed.data)).byteLength > 131072
-    )
+    ) {
       throw bridgeError({ code: 'VALIDATION_ERROR' });
+    }
 
     await invoke((): Promise<void> =>
       nativePlugin.sendWsMessage({ cycleId, message: parsed.data }),
     );
 
-    if (signal.aborted || cycleId !== this.state.cycleId)
+    if (signal.aborted || cycleId !== this.state.cycleId) {
       throw new DOMException('Aborted', 'AbortError');
+    }
   }
 
   private set(patch: Partial<NativeState>): void {
     this.state = { ...this.state, ...patch };
 
-    for (const listener of this.listeners) listener();
+    for (const listener of this.listeners) {
+      listener();
+    }
 
     window.dispatchEvent(new Event('gchat-session'));
   }
 
   clear(): void {
     clearTimeout(this.deadline);
+    nativeHttp.clear();
     this.token = null;
     this.controller.abort();
     this.controller = new AbortController();
@@ -163,26 +208,35 @@ export class NativeRuntime {
   private acceptCall(call: NativeState['call']): void {
     const previous = this.state.call;
 
-    if (call && this.retiredCalls.has(call.call_id)) return;
+    if (call && this.retiredCalls.has(call.call_id)) {
+      return;
+    }
 
     if (
       previous &&
       call?.call_id === previous.call_id &&
       (call.version < previous.version || (previous.state === 'ended' && call.state !== 'ended'))
-    )
+    ) {
       return;
+    }
 
-    if (previous && previous.call_id !== call?.call_id) this.retiredCalls.add(previous.call_id);
+    if (previous && previous.call_id !== call?.call_id) {
+      this.retiredCalls.add(previous.call_id);
+    }
 
     this.set({ call });
   }
 
   private receive(name: string, value: unknown, generation: number): void {
-    if (generation !== this.generation) return;
+    if (generation !== this.generation) {
+      return;
+    }
 
     const envelope = z.object({ cycleId: z.string() }).safeParse(value);
 
-    if (!envelope.success || envelope.data.cycleId !== this.state.cycleId) return;
+    if (!envelope.success || envelope.data.cycleId !== this.state.cycleId) {
+      return;
+    }
 
     if (name === 'dialogNotificationIntent') {
       const intent = z
@@ -193,25 +247,32 @@ export class NativeRuntime {
         })
         .safeParse(value);
 
-      if (intent.success)
+      if (intent.success) {
         this.set({
           dialogIntent: { intentId: intent.data.intentId, dialogId: intent.data.dialogId },
         });
+      }
 
       return;
     }
 
     if (name === 'wsMessage') {
-      if (this.state.phase !== 'ready' || !this.token) return;
+      if (this.state.phase !== 'ready' || !this.token) {
+        return;
+      }
 
       const parsed = z
         .strictObject({ cycleId: z.string(), message: z.record(z.string(), z.json()) })
         .safeParse(value);
 
-      if (!parsed.success || typeof parsed.data.message.type !== 'string') return;
+      if (!parsed.success || typeof parsed.data.message.type !== 'string') {
+        return;
+      }
 
-      // Raw messages never enter React/Query snapshots or call UI state.
-      for (const listener of this.wsListeners) listener(parsed.data.message);
+      // Raw messages never enter React snapshots or call UI state.
+      for (const listener of this.wsListeners) {
+        listener(parsed.data.message);
+      }
 
       return;
     }
@@ -236,24 +297,30 @@ export class NativeRuntime {
             path,
           ) ||
           /[\\\s\u0000-\u001f]/.test(path)
-        )
+        ) {
           throw bridgeError({ code: 'VALIDATION_ERROR' });
+        }
 
         const url = new URL(route.path, window.location.origin);
         const selectedServer = url.searchParams.get('serverUrl');
 
-        if (selectedServer !== null) serverUrl(selectedServer);
+        if (selectedServer !== null) {
+          serverUrl(selectedServer);
+        }
 
         if (
           [...url.searchParams.keys()].some((key): boolean => key !== 'serverUrl') ||
           (url.search && url.pathname !== '/login')
-        )
+        ) {
           throw bridgeError({ code: 'VALIDATION_ERROR' });
+        }
 
         if (route.accessToken) {
           const next = identity({ access_token: route.accessToken });
 
-          if (this.token && identity({ access_token: this.token }).sid !== next.sid) this.clear();
+          if (this.token && identity({ access_token: this.token }).sid !== next.sid) {
+            this.clear();
+          }
 
           this.token = route.accessToken;
         }
@@ -263,8 +330,9 @@ export class NativeRuntime {
           this.snapshotReceived = true;
         }
 
-        if (url.pathname !== '/login' && !this.token)
+        if (url.pathname !== '/login' && !this.token) {
           throw bridgeError({ code: 'UNAUTHENTICATED' });
+        }
 
         this.set({ route: { path: route.path, replace: route.replace ?? true } });
       } else if (name === 'loggedOut') {
@@ -272,7 +340,9 @@ export class NativeRuntime {
         this.clear();
         this.snapshotReceived = true;
       } else if (name === 'callSnapshot') {
-        if (this.snapshotReceived) return;
+        if (this.snapshotReceived) {
+          return;
+        }
 
         const snapshot = snapshotSchema.parse(value);
 
@@ -292,7 +362,9 @@ export class NativeRuntime {
 
       if (this.state.route && this.snapshotReceived) {
         clearTimeout(this.deadline);
+        nativeHttp.activate(this.state.cycleId, window.location.origin, this.controller.signal);
         this.set({ phase: 'ready', error: null });
+        this.navigationReady();
       }
     } catch {
       this.fail({ code: 'VALIDATION_ERROR' });
@@ -324,14 +396,19 @@ export class NativeRuntime {
     try {
       const capabilities = await invoke((): Promise<unknown> => nativePlugin.getCapabilities());
 
-      if (generation !== this.generation) return;
+      if (generation !== this.generation) {
+        return;
+      }
 
       const parsedCapabilities = capabilitiesSchema.safeParse(capabilities);
 
-      if (!parsedCapabilities.success) throw bridgeError({ code: 'UNSUPPORTED_VERSION' });
+      if (!parsedCapabilities.success) {
+        throw bridgeError({ code: 'UNSUPPORTED_VERSION' });
+      }
 
       this.set({
         nativeCalls: parsedCapabilities.data.nativeCalls,
+        mediaVersion: parsedCapabilities.data.mediaVersion,
         dialogStorageVersion: parsedCapabilities.data.dialogStorageVersion,
         dialogNotificationsVersion: parsedCapabilities.data.dialogNotificationsVersion,
         nativeWebSocket: parsedCapabilities.data.nativeWebSocket ?? false,
@@ -359,18 +436,24 @@ export class NativeRuntime {
         this.handles.push(handle);
       }
 
+      nativeHttp.activate(this.state.cycleId, window.location.origin, this.controller.signal);
+
       await invoke((): Promise<void> =>
         nativePlugin.webReady({ bridgeVersion, cycleId: this.state.cycleId }),
       );
     } catch (cause) {
-      if (generation === this.generation) this.fail(cause);
+      if (generation === this.generation) {
+        this.fail(cause);
+      }
     }
   }
 
   stop(): void {
     this.generation++;
 
-    for (const handle of this.handles) void handle.remove().catch((): void => {});
+    for (const handle of this.handles) {
+      void handle.remove().catch((): void => {});
+    }
 
     this.handles = [];
     this.clear();
@@ -380,23 +463,29 @@ export class NativeRuntime {
     const cycle = this.state.cycleId;
     const signal = this.controller.signal;
 
-    if (this.state.phase !== 'ready' || !this.token) throw bridgeError({ code: 'UNAUTHENTICATED' });
+    if (this.state.phase !== 'ready' || !this.token) {
+      throw bridgeError({ code: 'UNAUTHENTICATED' });
+    }
 
-    if (!forceRefresh) return this.token;
+    if (!forceRefresh) {
+      return this.token;
+    }
 
     try {
       const result = z
         .strictObject({ accessToken: z.string().min(1) })
         .parse(await invoke((): Promise<unknown> => nativePlugin.getAccessToken({ forceRefresh })));
 
-      if (cycle !== this.state.cycleId || signal.aborted)
+      if (cycle !== this.state.cycleId || signal.aborted) {
         throw new DOMException('Aborted', 'AbortError');
+      }
 
       if (
         identity({ access_token: result.accessToken }).sid !==
         identity({ access_token: this.token ?? '' }).sid
-      )
+      ) {
         throw bridgeError({ code: 'SESSION_INVALID' });
+      }
 
       this.token = result.accessToken;
 
@@ -406,10 +495,13 @@ export class NativeRuntime {
         cycle === this.state.cycleId &&
         !signal.aborted &&
         bridgeError(cause).code === 'SESSION_INVALID'
-      )
+      ) {
         this.clear();
+      }
 
-      if (cause instanceof DOMException) throw cause;
+      if (cause instanceof DOMException) {
+        throw cause;
+      }
 
       throw bridgeError(cause);
     }

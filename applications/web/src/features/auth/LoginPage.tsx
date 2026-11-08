@@ -1,18 +1,22 @@
 import { ArrowRight, CircleHelp, Headphones, Phone, ShieldCheck } from 'lucide-react';
 import type { FormEvent, JSX } from 'react';
 import { useState } from 'react';
-import { Link, Navigate, useLocation } from 'react-router';
+import { Link, Navigate, useLoaderData, useLocation } from 'react-router';
 
+import type { loginLoader } from '../../app/loaders';
 import { errorMessage } from '../../shared/api/client';
-import { embedded } from '../../shared/native/bridge';
+import { useDevice, useDevicePresentation } from '../../shared/device/react';
+import { readFields } from '../../shared/validation/request';
 import { useCalls } from '../calls/CallsProvider';
 import { useAuth } from './AuthProvider';
 import { loginDestination } from './navigation';
-import { login } from './session';
+import { loginFormSchema } from './request-schemas';
 
 export function LoginPage(): JSX.Element {
+  const core = useDevice();
+  const presentation = useDevicePresentation();
+  const { device } = useLoaderData<ReturnType<typeof loginLoader>>();
   const { session } = useAuth();
-  const { client } = useCalls();
   const location = useLocation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -24,7 +28,17 @@ export function LoginPage(): JSX.Element {
     const form = new FormData(event.currentTarget);
 
     try {
-      await login(String(form.get('login')), String(form.get('password')));
+      let credentials: ReturnType<typeof loginFormSchema.parse>;
+
+      try {
+        credentials = readFields(loginFormSchema, form);
+      } catch {
+        setError('Проверьте логин и пароль (15–128 символов).');
+
+        return;
+      }
+
+      await device.session.login(credentials);
     } catch (cause) {
       setError(errorMessage(cause, 'Не удалось войти'));
     } finally {
@@ -32,7 +46,18 @@ export function LoginPage(): JSX.Element {
     }
   }
 
-  if (session && !embedded) return <Navigate to={loginDestination(location.state)} replace />;
+  if (session && presentation.loginNavigation === 'router') {
+    return (
+      <Navigate
+        to={loginDestination(
+          new URLSearchParams(location.search).has('returnTo')
+            ? { from: new URLSearchParams(location.search).get('returnTo') }
+            : location.state,
+        )}
+        replace
+      />
+    );
+  }
 
   return (
     <main className="login-page">
@@ -79,7 +104,7 @@ export function LoginPage(): JSX.Element {
           <p>Рады вас видеть. Войдите в свой аккаунт.</p>
           <form
             onSubmit={(event): void => {
-              void client.enableRingtone();
+              void core.calls.activateAudio().catch((): void => {});
               void submit(event);
             }}
           >

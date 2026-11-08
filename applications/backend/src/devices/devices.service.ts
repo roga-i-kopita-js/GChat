@@ -36,7 +36,9 @@ export class DevicesService {
       .where(eq(deviceSessions.sessionId, sessionId))
       .for('share');
 
-    if (!binding || binding.userId !== userId) throw this.error.forbidden();
+    if (!binding || binding.userId !== userId) {
+      throw this.error.forbidden();
+    }
 
     const [device] = await tx
       .select()
@@ -44,7 +46,9 @@ export class DevicesService {
       .where(eq(devices.id, binding.deviceId))
       .for('share');
 
-    if (!device || device.userId !== userId) throw this.error.forbidden();
+    if (!device || device.userId !== userId) {
+      throw this.error.forbidden();
+    }
 
     return { deviceId: device.id };
   }
@@ -65,8 +69,9 @@ export class DevicesService {
   ): Promise<void> {
     await this.assertBinding(userId, sessionId, deviceId);
 
-    if (subscription && (!this.webPushConfig().public_key || !validWebPushAddress(subscription)))
+    if (subscription && (!this.webPushConfig().public_key || !validWebPushAddress(subscription))) {
       throw this.error.validation();
+    }
 
     await this.database.db.transaction(async (tx): Promise<void> => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${sessionId}, 1))`);
@@ -82,15 +87,18 @@ export class DevicesService {
 
       await tx.delete(webPushSubscriptions).where(eq(webPushSubscriptions.sessionId, sessionId));
 
-      if (subscription)
+      if (subscription) {
         await tx.insert(webPushSubscriptions).values({ sessionId, deviceId, ...subscription });
+      }
     });
   }
 
   async listWebPushTargets(
     userId: string,
   ): Promise<(typeof webPushSubscriptions.$inferSelect & { userId: string })[]> {
-    if (!this.webPushConfig().public_key) return [];
+    if (!this.webPushConfig().public_key) {
+      return [];
+    }
 
     const rows = await this.database.db
       .select({ address: webPushSubscriptions })
@@ -102,7 +110,9 @@ export class DevicesService {
     for (const { address } of rows) {
       const access = await this.auth.checkSession(userId, address.sessionId);
 
-      if (access.accountActive && access.sessionActive) result.push({ ...address, userId });
+      if (access.accountActive && access.sessionActive) {
+        result.push({ ...address, userId });
+      }
     }
 
     return result;
@@ -123,7 +133,9 @@ export class DevicesService {
         ),
       );
 
-    if (!row) return undefined;
+    if (!row) {
+      return undefined;
+    }
 
     const access = await this.auth.checkSession(row.userId, sessionId);
 
@@ -155,8 +167,9 @@ export class DevicesService {
         .where(eq(deviceSessions.sessionId, sessionId));
 
       if (binding) {
-        if (binding.userId !== userId || (deviceId !== null && deviceId !== binding.deviceId))
+        if (binding.userId !== userId || (deviceId !== null && deviceId !== binding.deviceId)) {
           throw this.error.forbidden();
+        }
 
         return binding.deviceId;
       }
@@ -170,7 +183,9 @@ export class DevicesService {
           .where(and(eq(devices.id, id), eq(devices.userId, userId)))
           .for('share');
 
-        if (!device) throw this.error.notFound();
+        if (!device) {
+          throw this.error.notFound();
+        }
       } else {
         await tx.insert(devices).values({ id, userId });
       }
@@ -184,7 +199,9 @@ export class DevicesService {
   async assertAccess(userId: string, sessionId: string): Promise<void> {
     const access = await this.auth.checkSession(userId, sessionId);
 
-    if (!access.accountActive || !access.sessionActive) throw this.error.sessionInvalid();
+    if (!access.accountActive || !access.sessionActive) {
+      throw this.error.sessionInvalid();
+    }
   }
 
   async assertBinding(userId: string, sessionId: string, deviceId: string): Promise<void> {
@@ -200,7 +217,9 @@ export class DevicesService {
         ),
       );
 
-    if (!row) throw this.error.forbidden();
+    if (!row) {
+      throw this.error.forbidden();
+    }
   }
 
   async setPushToken(
@@ -210,8 +229,9 @@ export class DevicesService {
     token: string | null,
     environment: string,
   ): Promise<void> {
-    if (environment !== this.config.getOrThrow<string>('APNS_ENVIRONMENT'))
+    if (environment !== this.config.getOrThrow<string>('APNS_ENVIRONMENT')) {
       throw this.error.validation();
+    }
 
     await this.assertBinding(userId, sessionId, deviceId);
     await this.database.db.transaction(async (tx): Promise<void> => {
@@ -260,7 +280,9 @@ export class DevicesService {
     for (const row of rows) {
       const access = await this.auth.checkSession(userId, row.address.sessionId);
 
-      if (access.accountActive && access.sessionActive) result.push({ ...row.address, userId });
+      if (access.accountActive && access.sessionActive) {
+        result.push({ ...row.address, userId });
+      }
     }
 
     return result;
@@ -273,7 +295,9 @@ export class DevicesService {
       .innerJoin(deviceSessions, eq(deviceSessions.sessionId, voipTokens.sessionId))
       .where(and(eq(voipTokens.deviceId, deviceId), eq(voipTokens.sessionId, sessionId)));
 
-    if (!row) return undefined;
+    if (!row) {
+      return undefined;
+    }
 
     const access = await this.auth.checkSession(row.userId, sessionId);
 
@@ -290,11 +314,12 @@ export class DevicesService {
       const access = await this.auth.checkSession(row.userId, row.sessionId);
 
       if (access.sessionActive) {
-        if (row.inactiveSince)
+        if (row.inactiveSince) {
           await this.database.db
             .update(deviceSessions)
             .set({ inactiveSince: null })
             .where(eq(deviceSessions.sessionId, row.sessionId));
+        }
       } else if (!row.inactiveSince) {
         await this.database.db
           .update(deviceSessions)
@@ -347,8 +372,9 @@ export class DevicesService {
     token: string | null,
     environment: string,
   ): Promise<void> {
-    if (environment !== this.config.getOrThrow<string>('APNS_ENVIRONMENT'))
+    if (environment !== this.config.getOrThrow<string>('APNS_ENVIRONMENT')) {
       throw this.error.validation();
+    }
 
     await this.assertBinding(userId, sessionId, deviceId);
     await this.database.db.transaction(async (tx): Promise<void> => {
@@ -368,7 +394,9 @@ export class DevicesService {
         .from(apnsTokens)
         .where(and(eq(apnsTokens.deviceId, deviceId), eq(apnsTokens.sessionId, sessionId)));
 
-      if (existing?.token === normalized && existing.environment === environment) return;
+      if (existing?.token === normalized && existing.environment === environment) {
+        return;
+      }
 
       await tx.execute(
         sql`select pg_advisory_xact_lock(hashtextextended(${environment + ':' + normalized}, 2))`,
@@ -403,7 +431,9 @@ export class DevicesService {
     for (const row of rows) {
       const access = await this.auth.checkSession(userId, row.address.sessionId);
 
-      if (access.accountActive && access.sessionActive) result.push({ ...row.address, userId });
+      if (access.accountActive && access.sessionActive) {
+        result.push({ ...row.address, userId });
+      }
     }
 
     return result;
@@ -416,7 +446,9 @@ export class DevicesService {
       .innerJoin(deviceSessions, eq(deviceSessions.sessionId, apnsTokens.sessionId))
       .where(and(eq(apnsTokens.deviceId, deviceId), eq(apnsTokens.sessionId, sessionId)));
 
-    if (!row) return undefined;
+    if (!row) {
+      return undefined;
+    }
 
     const access = await this.auth.checkSession(row.userId, sessionId);
 

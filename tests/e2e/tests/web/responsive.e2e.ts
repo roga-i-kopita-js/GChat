@@ -77,10 +77,11 @@ async function setup(
       const path = new URL(route.request().url()).pathname;
       let body: unknown;
 
-      if (path === '/api/auth/ws-ticket')
+      if (path === '/api/auth/ws-ticket') {
         body = { ticket: 'test-ticket', expires_at: new Date(Date.now() + 60000).toISOString() };
-      else if (path === '/api/groups') body = { groups: [{ id: 'family', name: 'близкие' }] };
-      else if (path === '/api/groups/family/members')
+      } else if (path === '/api/groups') {
+        body = { groups: [{ id: 'family', name: 'близкие' }] };
+      } else if (path === '/api/groups/family/members') {
         body = {
           members: [
             { id: adminId, display_name: 'Admin' },
@@ -88,15 +89,16 @@ async function setup(
             { id: 'maxim', display_name: 'Максим Волков' },
           ],
         };
-      else if (path === '/api/admin/users')
+      } else if (path === '/api/admin/users') {
         body = {
           users: [anna, { ...anna, id: 'maxim', display_name: 'Максим Волков', login: 'maxim' }],
           total: 2,
         };
-      else if (path.startsWith('/api/admin/users/')) body = { user: anna };
-      else if (path === '/api/admin/groups')
+      } else if (path.startsWith('/api/admin/users/')) {
+        body = { user: anna };
+      } else if (path === '/api/admin/groups') {
         body = { groups: [{ id: 'family', name: 'близкие' }], total: 1 };
-      else {
+      } else {
         await route.fulfill({ status: 404, json: {} });
 
         return;

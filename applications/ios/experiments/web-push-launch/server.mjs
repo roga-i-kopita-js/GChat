@@ -11,14 +11,17 @@ const requireBackend = createRequire(new URL('../../../backend/package.json', im
 const webPush = requireBackend('web-push');
 const host = process.env.GCHAT_SPIKE_HOST;
 
-if (!isIPv4(host ?? '')) throw new Error('Set GCHAT_SPIKE_HOST to the Mac LAN IPv4 address');
+if (!isIPv4(host ?? '')) {
+  throw new Error('Set GCHAT_SPIKE_HOST to the Mac LAN IPv4 address');
+}
 
 const origin = `https://${host}:8444`;
 const root = new URL('../../../web/dist/', import.meta.url);
 const worker = await readFile(new URL('sw.js', root), 'utf8');
 
-if (!worker.includes('"nativeLaunchSpike":true'))
+if (!worker.includes('"nativeLaunchSpike":true')) {
   throw new Error('Build Web with VITE_GCHAT_IOS_LAUNCH_SPIKE=true first');
+}
 
 const vapid = webPush.generateVAPIDKeys();
 const certificate = await readFile(process.env.GCHAT_SPIKE_CERT_FILE);
@@ -36,10 +39,11 @@ if (
   [leaf, ca].some(
     (cert) => Date.parse(cert.validFrom) > currentTime || Date.parse(cert.validTo) <= currentTime,
   )
-)
+) {
   throw new Error(
     'Use a valid CA-signed server certificate with serverAuth EKU and matching IP SAN',
   );
+}
 
 let subscription;
 let pending;
@@ -140,30 +144,39 @@ const server = createServer(
     };
 
     try {
-      if (req.headers.host !== new URL(origin).host) return json(403, { error: 'host' });
+      if (req.headers.host !== new URL(origin).host) {
+        return json(403, { error: 'host' });
+      }
 
       const { pathname } = new URL(req.url, origin);
 
       if (req.method === 'POST') {
-        if (req.headers.origin !== origin || req.headers['content-type'] !== 'application/json')
+        if (req.headers.origin !== origin || req.headers['content-type'] !== 'application/json') {
           return json(403, { error: 'origin' });
+        }
 
         let data = '';
 
         for await (const part of req) {
           data += part;
 
-          if (Buffer.byteLength(data) > 8192) return json(413, { error: 'size' });
+          if (Buffer.byteLength(data) > 8192) {
+            return json(413, { error: 'size' });
+          }
         }
 
         if (pathname === '/spike/trace') {
           const value = JSON.parse(data);
 
-          if (!eventNames.has(value.event)) return json(400, { error: 'event' });
+          if (!eventNames.has(value.event)) {
+            return json(400, { error: 'event' });
+          }
 
           events.push({ event: value.event, at: new Date().toISOString() });
 
-          if (events.length > 50) events.shift();
+          if (events.length > 50) {
+            events.shift();
+          }
 
           return json(200, { state: 'recorded' });
         }
@@ -171,9 +184,13 @@ const server = createServer(
         if (pathname === '/spike/subscribe') {
           const value = JSON.parse(data);
 
-          if (!validSubscription(value)) return json(400, { error: 'subscription' });
+          if (!validSubscription(value)) {
+            return json(400, { error: 'subscription' });
+          }
 
-          if (pending || status.state === 'sending') return json(409, { error: 'busy' });
+          if (pending || status.state === 'sending') {
+            return json(409, { error: 'busy' });
+          }
 
           subscription = { endpoint: value.endpoint, keys: value.keys };
 
@@ -181,7 +198,9 @@ const server = createServer(
         }
 
         if (pathname === '/spike/send' && subscription) {
-          if (pending || status.state === 'sending') return json(409, { error: 'busy' });
+          if (pending || status.state === 'sending') {
+            return json(409, { error: 'busy' });
+          }
 
           status = { state: 'scheduled' };
           pending = setTimeout(() => void send(), 10000);
@@ -192,11 +211,17 @@ const server = createServer(
         return json(404, { error: 'route' });
       }
 
-      if (req.method !== 'GET') return json(405, { error: 'method' });
+      if (req.method !== 'GET') {
+        return json(405, { error: 'method' });
+      }
 
-      if (pathname === '/spike/key') return json(200, { publicKey: vapid.publicKey });
+      if (pathname === '/spike/key') {
+        return json(200, { publicKey: vapid.publicKey });
+      }
 
-      if (pathname === '/spike/status') return json(200, { ...status, events });
+      if (pathname === '/spike/status') {
+        return json(200, { ...status, events });
+      }
 
       const fixtures = {
         '/apps/launch-test': 'index.html',
@@ -205,28 +230,36 @@ const server = createServer(
       };
       let file;
 
-      if (fixtures[pathname]) file = new URL(fixtures[pathname], import.meta.url);
-      else if (pathname === '/apps/client' || pathname.startsWith('/apps/client/'))
+      if (fixtures[pathname]) {
+        file = new URL(fixtures[pathname], import.meta.url);
+      } else if (pathname === '/apps/client' || pathname.startsWith('/apps/client/')) {
         file = new URL('index.html', root);
-      else if (
+      } else if (
         /^\/apps\/(?:sw\.js|site\.webmanifest|favicon\.ico|apple-touch-icon\.png|(?:static|icons)\/[A-Za-z0-9_.-]+)$/.test(
           pathname,
         )
-      )
+      ) {
         file = new URL(pathname.slice('/apps/'.length), root);
-      else return json(404, { error: 'route' });
+      } else {
+        return json(404, { error: 'route' });
+      }
 
       let content = await readFile(file);
 
-      if (pathname === '/apps/sw.js') content = Buffer.from(content.toString() + diagnosticsWorker);
+      if (pathname === '/apps/sw.js') {
+        content = Buffer.from(content.toString() + diagnosticsWorker);
+      }
 
       res.writeHead(200, {
         'Content-Type': types[extname(file.pathname)] ?? 'application/octet-stream',
       });
       res.end(content);
     } catch {
-      if (!res.headersSent) json(400, { error: 'request' });
-      else res.end();
+      if (!res.headersSent) {
+        json(400, { error: 'request' });
+      } else {
+        res.end();
+      }
     }
   },
 );

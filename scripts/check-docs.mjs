@@ -28,13 +28,17 @@ const sections = [
 
 async function collect(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (ignored.has(entry.name)) continue;
+    if (ignored.has(entry.name)) {
+      continue;
+    }
 
     const path = join(directory, entry.name);
 
-    if (entry.isDirectory()) await collect(path);
-    else if (entry.isFile() && entry.name.endsWith('.md'))
+    if (entry.isDirectory()) {
+      await collect(path);
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
       documents.set(path, await readFile(path, 'utf8'));
+    }
   }
 }
 
@@ -89,7 +93,9 @@ for (const [path, content] of documents) {
   for (const match of text.matchAll(/\]\((<[^>]+>|[^\s)]+)(?:\s+"[^"]*")?\)/g)) {
     const target = match[1].replace(/^<|>$/g, '');
 
-    if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(target)) continue;
+    if (/^[a-z][a-z0-9+.-]*:|^\/\//i.test(target)) {
+      continue;
+    }
 
     const [file, fragment] = target.split('#', 2);
     const destination = file ? resolve(dirname(path), decodeURIComponent(file)) : path;
@@ -102,13 +108,17 @@ for (const [path, content] of documents) {
     if (fragment && extname(destination) === '.md') {
       const body = documents.get(destination) ?? (await readFile(destination, 'utf8'));
 
-      if (!anchors(body).has(decodeURIComponent(fragment))) fail(path, `missing anchor: ${target}`);
+      if (!anchors(body).has(decodeURIComponent(fragment))) {
+        fail(path, `missing anchor: ${target}`);
+      }
     }
   }
 
   const moduleFolder = join(root, 'docs/backend/modules') + '/';
 
-  if (!path.startsWith(moduleFolder)) continue;
+  if (!path.startsWith(moduleFolder)) {
+    continue;
+  }
 
   const metadata = content.match(/^---\n([\s\S]*?)\n---\n/);
 
@@ -122,28 +132,36 @@ for (const [path, content] of documents) {
   );
 
   if (fields.doc_type === 'decision') {
-    if (!['draft', 'accepted', 'deprecated'].includes(fields.decision_status))
+    if (!['draft', 'accepted', 'deprecated'].includes(fields.decision_status)) {
       fail(path, 'invalid decision_status');
+    }
 
     continue;
   }
 
   modules++;
 
-  if (fields.doc_type !== 'module') fail(path, 'doc_type must be module or decision');
+  if (fields.doc_type !== 'module') {
+    fail(path, 'doc_type must be module or decision');
+  }
 
-  if (!['draft', 'accepted', 'deprecated'].includes(fields.decision_status))
+  if (!['draft', 'accepted', 'deprecated'].includes(fields.decision_status)) {
     fail(path, 'invalid decision_status');
+  }
 
-  if (!['absent', 'partial', 'implemented'].includes(fields.implementation_status))
+  if (!['absent', 'partial', 'implemented'].includes(fields.implementation_status)) {
     fail(path, 'invalid implementation_status');
+  }
 
-  if (!fields.source) fail(path, 'missing source');
-  else if (fields.source !== 'null' && !(await exists(resolve(root, fields.source))))
+  if (!fields.source) {
+    fail(path, 'missing source');
+  } else if (fields.source !== 'null' && !(await exists(resolve(root, fields.source)))) {
     fail(path, `missing source path: ${fields.source}`);
+  }
 
-  if (fields.implementation_status === 'implemented' && fields.source === 'null')
+  if (fields.implementation_status === 'implemented' && fields.source === 'null') {
     fail(path, 'implemented module needs a source path');
+  }
 
   let tests;
 
@@ -154,17 +172,22 @@ for (const [path, content] of documents) {
   }
 
   if (tests !== undefined) {
-    if (!Array.isArray(tests) || tests.some((test) => typeof test !== 'string'))
+    if (!Array.isArray(tests) || tests.some((test) => typeof test !== 'string')) {
       fail(path, 'tests must contain only path strings');
-    else
-      for (const test of tests)
-        if (!(await exists(resolve(root, test)))) fail(path, `missing test path: ${test}`);
+    } else {
+      for (const test of tests) {
+        if (!(await exists(resolve(root, test)))) {
+          fail(path, `missing test path: ${test}`);
+        }
+      }
+    }
   }
 
   const headings = [...text.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
 
-  if (JSON.stringify(headings) !== JSON.stringify(sections))
+  if (JSON.stringify(headings) !== JSON.stringify(sections)) {
     fail(path, 'module sections do not match module-template.md');
+  }
 }
 
 if (failures.length) {

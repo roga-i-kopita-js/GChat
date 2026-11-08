@@ -3,7 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { createPortal } from 'react-dom';
 
 import { useCalls } from '../features/calls/CallsProvider';
-import { applyUpdate, subscribeUpdate, updateSnapshot } from '../shared/pwa-update';
+import { UpdateEvent } from '../shared/device';
+import { useDevice, useDeviceState } from '../shared/device/react';
 
 function UpdateDialog({ close, confirm }: { close(): void; confirm(): void }): JSX.Element {
   const ref = useRef<HTMLDialogElement>(null);
@@ -27,7 +28,9 @@ function UpdateDialog({ close, confirm }: { close(): void; confirm(): void }): J
         close();
       }}
       onKeyDown={(event): void => {
-        if (event.key !== 'Tab') return;
+        if (event.key !== 'Tab') {
+          return;
+        }
 
         const buttons = event.currentTarget.querySelectorAll('button');
         const target = event.shiftKey ? buttons[0] : buttons[buttons.length - 1];
@@ -38,7 +41,9 @@ function UpdateDialog({ close, confirm }: { close(): void; confirm(): void }): J
         }
       }}
       onClick={(event): void => {
-        if (event.target !== event.currentTarget) return;
+        if (event.target !== event.currentTarget) {
+          return;
+        }
 
         const bounds = event.currentTarget.getBoundingClientRect();
 
@@ -47,8 +52,9 @@ function UpdateDialog({ close, confirm }: { close(): void; confirm(): void }): J
           event.clientX > bounds.right ||
           event.clientY < bounds.top ||
           event.clientY > bounds.bottom
-        )
+        ) {
           close();
+        }
       }}
     >
       <div className="pwa-update-copy">
@@ -67,7 +73,13 @@ function UpdateDialog({ close, confirm }: { close(): void; confirm(): void }): J
 }
 
 export function PwaUpdate(): JSX.Element | null {
-  const state = useSyncExternalStore(subscribeUpdate, updateSnapshot);
+  const device = useDevice();
+  const update = useDeviceState(device.updates, UpdateEvent.StateChanged);
+  const state = {
+    available: ['available', 'waiting', 'applying'].includes(update.status),
+    pending: update.status === 'waiting' || update.status === 'applying',
+    error: update.error?.message ?? '',
+  };
   const { ongoing, state: calls } = useCalls();
   const [dismissed, setDismissed] = useState(false);
   const [requested, setRequested] = useState(false);
@@ -99,10 +111,14 @@ export function PwaUpdate(): JSX.Element | null {
   }, []);
 
   useEffect((): void => {
-    if (state.pending) setRequested(false);
+    if (state.pending) {
+      setRequested(false);
+    }
   }, [state.pending]);
 
-  if (!state.available && !state.error && !state.pending) return null;
+  if (!state.available && !state.error && !state.pending) {
+    return null;
+  }
 
   const showDialog =
     state.available &&
@@ -133,7 +149,7 @@ export function PwaUpdate(): JSX.Element | null {
           close={close}
           confirm={(): void => {
             close();
-            void applyUpdate();
+            void device.updates.apply().catch((): void => {});
           }}
         />
       )}

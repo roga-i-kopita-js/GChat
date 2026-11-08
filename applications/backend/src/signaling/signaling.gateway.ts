@@ -126,8 +126,9 @@ export class SignalingGateway implements OnModuleDestroy {
 
       connection.queue = connection.queue
         .then(async (): Promise<void> => {
-          if (!connection.closed && socket.readyState === WebSocket.OPEN)
+          if (!connection.closed && socket.readyState === WebSocket.OPEN) {
             await this.receive(connection, data.toString());
+          }
         })
         .catch((): void => {
           socket.close(1011);
@@ -139,7 +140,9 @@ export class SignalingGateway implements OnModuleDestroy {
 
     if (!this.timer) {
       this.timer = setInterval((): void => {
-        if (this.checking) return;
+        if (this.checking) {
+          return;
+        }
 
         this.checking = this.checkConnections().finally((): void => {
           this.checking = undefined;
@@ -158,11 +161,15 @@ export class SignalingGateway implements OnModuleDestroy {
   private async access(connection: Connection): Promise<void> {
     const access = await this.auth.checkSession(connection.userId, connection.sessionId);
 
-    if (!access.accountActive || !access.sessionActive) throw this.error.sessionInvalid();
+    if (!access.accountActive || !access.sessionActive) {
+      throw this.error.sessionInvalid();
+    }
   }
 
   private actor(connection: Connection): CallActor {
-    if (!connection.deviceId) throw this.error.forbidden();
+    if (!connection.deviceId) {
+      throw this.error.forbidden();
+    }
 
     return {
       userId: connection.userId,
@@ -221,9 +228,11 @@ export class SignalingGateway implements OnModuleDestroy {
         },
       });
 
-      if (failure.code === 'SESSION_INVALID') connection.socket.close(1008);
-      else if (failure.code === 'SERVICE_UNAVAILABLE' || failure.code === 'INTERNAL_ERROR')
+      if (failure.code === 'SESSION_INVALID') {
+        connection.socket.close(1008);
+      } else if (failure.code === 'SERVICE_UNAVAILABLE' || failure.code === 'INTERNAL_ERROR') {
         connection.socket.close(1011);
+      }
     }
   }
 
@@ -238,7 +247,7 @@ export class SignalingGateway implements OnModuleDestroy {
         input.device_id,
       );
 
-      for (const old of this.connections)
+      for (const old of this.connections) {
         if (
           old !== connection &&
           old.sessionId === connection.sessionId &&
@@ -247,6 +256,7 @@ export class SignalingGateway implements OnModuleDestroy {
           old.closed = true;
           old.socket.close(1008);
         }
+      }
 
       connection.deviceId = deviceId;
       clearTimeout(connection.registration);
@@ -321,15 +331,17 @@ export class SignalingGateway implements OnModuleDestroy {
       return { call: await this.calls.current(actor) };
     }
 
-    if (type === 'call.ping')
+    if (type === 'call.ping') {
       return this.calls.ping(actor, await this.validate(payload, CallPingDto));
+    }
 
     if (type === 'call.connected') {
       const input = await this.validate(payload, CallConnectedDto);
 
       return this.serializeNegotiation(async (): Promise<object> => {
-        if (this.negotiations.get(input.call_id)?.id !== input.negotiation_id)
+        if (this.negotiations.get(input.call_id)?.id !== input.negotiation_id) {
           throw this.conflict();
+        }
 
         return { call: await this.calls.connected(actor, input.call_id, input.negotiation_id) };
       });
@@ -394,7 +406,9 @@ export class SignalingGateway implements OnModuleDestroy {
             ? await this.validate(payload, CallIdDto)
             : undefined;
 
-    if (!input) throw this.error.validation();
+    if (!input) {
+      throw this.error.validation();
+    }
 
     let next: Negotiation | undefined;
     let destination: Connection | undefined;
@@ -411,30 +425,40 @@ export class SignalingGateway implements OnModuleDestroy {
             c.sessionId === peer.sessionId,
         );
 
-        if (!destination) throw this.error.serviceUnavailable();
+        if (!destination) {
+          throw this.error.serviceUnavailable();
+        }
 
         await this.access(destination);
         const current = this.negotiations.get(call.id);
 
         if (type === 'rtc.restart') {
-          if (isCaller) throw this.error.forbidden();
+          if (isCaller) {
+            throw this.error.forbidden();
+          }
         } else if (input instanceof RtcSdpDto) {
           if (
             Buffer.byteLength(input.sdp) > 65536 ||
             /(?:^|\r?\n)m=(?!audio\s)/.test(input.sdp) ||
             !/(?:^|\r?\n)m=audio\s/.test(input.sdp)
-          )
+          ) {
             throw this.error.validation();
+          }
 
           const hash = createHash('sha256').update(input.sdp).digest('hex');
 
           if (type === 'rtc.offer') {
-            if (!isCaller) throw this.error.forbidden();
+            if (!isCaller) {
+              throw this.error.forbidden();
+            }
 
-            if (!current && call.negotiationId === input.negotiation_id) throw this.conflict();
-
-            if (current?.id === input.negotiation_id && current.offerHash !== hash)
+            if (!current && call.negotiationId === input.negotiation_id) {
               throw this.conflict();
+            }
+
+            if (current?.id === input.negotiation_id && current.offerHash !== hash) {
+              throw this.conflict();
+            }
 
             await this.calls.registerNegotiation(tx, call, input.negotiation_id);
             next =
@@ -442,36 +466,48 @@ export class SignalingGateway implements OnModuleDestroy {
                 ? current
                 : { id: input.negotiation_id, offerHash: hash };
           } else {
-            if (isCaller) throw this.error.forbidden();
+            if (isCaller) {
+              throw this.error.forbidden();
+            }
 
             if (
               current?.id !== input.negotiation_id ||
               (current.answerHash && current.answerHash !== hash)
-            )
+            ) {
               throw this.conflict();
+            }
 
             next = { ...current, answerHash: hash };
           }
         } else if (input instanceof RtcIceDto) {
-          if (current?.id !== input.negotiation_id) throw this.conflict();
+          if (current?.id !== input.negotiation_id) {
+            throw this.conflict();
+          }
 
           if (
             input.candidate &&
             (Buffer.byteLength(input.candidate.candidate) > 4096 ||
               (input.candidate.sdp_mid === null && input.candidate.sdp_mline_index === null))
-          )
+          ) {
             throw this.error.validation();
+          }
         }
       },
     );
 
-    if (next) this.negotiations.set(input.call_id, next);
+    if (next) {
+      this.negotiations.set(input.call_id, next);
+    }
 
-    if (destination) this.send(destination, { type, payload });
+    if (destination) {
+      this.send(destination, { type, payload });
+    }
   }
 
   private send(connection: Connection, message: object): void {
-    if (connection.closed || connection.socket.readyState !== WebSocket.OPEN) return;
+    if (connection.closed || connection.socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
 
     const encoded = JSON.stringify(message);
 
@@ -482,13 +518,17 @@ export class SignalingGateway implements OnModuleDestroy {
     }
 
     connection.socket.send(encoded, (cause?: Error): void => {
-      if (cause) connection.socket.close(1011);
+      if (cause) {
+        connection.socket.close(1011);
+      }
     });
   }
 
   private async broadcastDialog(notice: DialogNotice): Promise<void> {
     for (const connection of this.connections) {
-      if (!connection.deviceId || !notice.users.includes(connection.userId)) continue;
+      if (!connection.deviceId || !notice.users.includes(connection.userId)) {
+        continue;
+      }
 
       if (
         await this.dialogs.canDeliver(
@@ -504,14 +544,17 @@ export class SignalingGateway implements OnModuleDestroy {
   }
 
   async broadcast(call: CallDto): Promise<void> {
-    if (call.state === 'ended') this.negotiations.delete(call.call_id);
+    if (call.state === 'ended') {
+      this.negotiations.delete(call.call_id);
+    }
 
     for (const connection of this.connections) {
       if (
         !connection.deviceId ||
         (connection.userId !== call.caller_id && connection.userId !== call.recipient_id)
-      )
+      ) {
         continue;
+      }
 
       try {
         await this.access(connection);

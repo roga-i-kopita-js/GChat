@@ -68,19 +68,24 @@ export class DirectCallsService {
     const accounts = await this.auth.lockActiveAccountRoles(tx, [callerId, recipientId]);
     const caller = accounts.find((account): boolean => account.id === callerId);
 
-    if (!caller) throw this.error.sessionInvalid();
+    if (!caller) {
+      throw this.error.sessionInvalid();
+    }
 
     if (
       !accounts.some((account): boolean => account.id === recipientId) ||
       (caller.role !== 'admin' && !(await this.groups.lockCommonGroup(tx, callerId, recipientId)))
-    )
+    ) {
       throw this.failure('CALL_NOT_ALLOWED');
+    }
   }
 
   async create(actor: CallActor, recipientId: string): Promise<CallDto> {
     await this.devices.assertBinding(actor.userId, actor.sessionId, actor.deviceId);
 
-    if (actor.userId === recipientId) throw this.failure('CALL_NOT_ALLOWED');
+    if (actor.userId === recipientId) {
+      throw this.failure('CALL_NOT_ALLOWED');
+    }
 
     const id = randomUUID();
     const userIds = [actor.userId, recipientId];
@@ -92,7 +97,9 @@ export class DirectCallsService {
 
     const reserved = await this.presence.reserve(id, userIds);
 
-    if (reserved) throw this.failure(reserved === 1 ? 'CALLER_BUSY' : 'RECIPIENT_BUSY');
+    if (reserved) {
+      throw this.failure(reserved === 1 ? 'CALLER_BUSY' : 'RECIPIENT_BUSY');
+    }
 
     let result: CallDto;
 
@@ -102,7 +109,9 @@ export class DirectCallsService {
 
         await this.repository.lock(tx, id);
 
-        if (!(await this.presence.owns(id, userIds))) throw this.error.serviceUnavailable();
+        if (!(await this.presence.owns(id, userIds))) {
+          throw this.error.serviceUnavailable();
+        }
 
         const busy = await tx
           .select({ userId: callParticipants.userId })
@@ -117,10 +126,11 @@ export class DirectCallsService {
             ),
           );
 
-        if (busy.length)
+        if (busy.length) {
           throw this.failure(
             busy.some((p): boolean => p.userId === actor.userId) ? 'CALLER_BUSY' : 'RECIPIENT_BUSY',
           );
+        }
 
         const targets = await this.devices.listVoipTargets(recipientId);
         const webTargets = await this.devices.listWebPushTargets(recipientId);
@@ -155,7 +165,7 @@ export class DirectCallsService {
           .insert(callDeliveries)
           .values({ callId: id, kind: 'state', version: 0, snapshot: callDto(call!) });
 
-        if (targets.length)
+        if (targets.length) {
           await tx.insert(callDeliveries).values(
             targets.map((target): typeof callDeliveries.$inferInsert => ({
               callId: id,
@@ -165,8 +175,9 @@ export class DirectCallsService {
               sessionId: target.sessionId,
             })),
           );
+        }
 
-        if (webTargets.length)
+        if (webTargets.length) {
           await tx.insert(callDeliveries).values(
             webTargets.map((target): typeof callDeliveries.$inferInsert => ({
               callId: id,
@@ -176,6 +187,7 @@ export class DirectCallsService {
               sessionId: target.sessionId,
             })),
           );
+        }
 
         return callDto(call!);
       });
@@ -187,14 +199,17 @@ export class DirectCallsService {
             await this.repository.lock(tx, id);
             const [row] = await tx.select().from(directCalls).where(eq(directCalls.id, id));
 
-            if (!row) await this.presence.release(id, userIds);
+            if (!row) {
+              await this.presence.release(id, userIds);
+            }
 
             return row;
           },
         );
 
-        if (existing) result = callDto(existing);
-        else {
+        if (existing) {
+          result = callDto(existing);
+        } else {
           const failure =
             cause instanceof Error && cause.cause instanceof Error ? cause.cause : cause;
 
@@ -217,7 +232,9 @@ export class DirectCallsService {
           throw cause;
         }
       } catch (resolution) {
-        if (resolution instanceof AppError) throw resolution;
+        if (resolution instanceof AppError) {
+          throw resolution;
+        }
 
         throw this.error.serviceUnavailable();
       }
@@ -264,7 +281,9 @@ export class DirectCallsService {
       .from(callParticipants)
       .where(and(eq(callParticipants.userId, actor.userId), isNull(callParticipants.releasedAt)));
 
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
 
     const call = await this.get(actor, row.id);
 
@@ -317,8 +336,9 @@ export class DirectCallsService {
       async (tx, call, participants): Promise<{ value?: T; failure?: AppError }> => {
         this.authorize(actor, call, participants, 'ping');
 
-        if (call.state !== 'connecting' && call.state !== 'active')
+        if (call.state !== 'connecting' && call.state !== 'active') {
           return { failure: this.failure('CALL_STATE_CONFLICT') };
+        }
 
         const peer = participants.find((p): boolean => p.userId !== actor.userId)!;
 
@@ -327,22 +347,27 @@ export class DirectCallsService {
       actor,
     );
 
-    if (result.failure) throw result.failure;
+    if (result.failure) {
+      throw result.failure;
+    }
 
     return result.value!;
   }
 
   async registerNegotiation(tx: DatabaseTransaction, call: CallRecord, id: string): Promise<void> {
-    if (call.negotiationId === id) return;
+    if (call.negotiationId === id) {
+      return;
+    }
 
     call.negotiationId = id;
     await tx.update(directCalls).set({ negotiationId: id }).where(eq(directCalls.id, call.id));
 
-    if (call.state === 'connecting')
+    if (call.state === 'connecting') {
       await tx
         .update(callParticipants)
         .set({ connectedAt: null, connectedNegotiationId: null })
         .where(eq(callParticipants.callId, call.id));
+    }
   }
 
   private authorize(
@@ -353,31 +378,41 @@ export class DirectCallsService {
   ): Participant {
     const participant = participants.find((p): boolean => p.userId === actor.userId);
 
-    if (!participant) throw this.error.notFound();
+    if (!participant) {
+      throw this.error.notFound();
+    }
 
-    if (command === 'get') return participant;
+    if (command === 'get') {
+      return participant;
+    }
 
     if (
       command === 'reject' &&
       participant.role === 'recipient' &&
       (call.state === 'ringing' || call.state === 'ended')
-    )
+    ) {
       return participant;
+    }
 
     if (
       command === 'accept' &&
       participant.role === 'recipient' &&
       (call.state === 'ringing' || participant.deviceId === null)
-    )
+    ) {
       return participant;
+    }
 
-    if (participant.deviceId !== actor.deviceId || participant.sessionId !== actor.sessionId)
+    if (participant.deviceId !== actor.deviceId || participant.sessionId !== actor.sessionId) {
       throw this.error.forbidden();
+    }
 
-    if ((command === 'accept' || command === 'reject') && participant.role !== 'recipient')
+    if ((command === 'accept' || command === 'reject') && participant.role !== 'recipient') {
       throw this.error.forbidden();
+    }
 
-    if (command === 'cancel' && participant.role !== 'caller') throw this.error.forbidden();
+    if (command === 'cancel' && participant.role !== 'caller') {
+      throw this.error.forbidden();
+    }
 
     return participant;
   }
@@ -415,13 +450,17 @@ export class DirectCallsService {
                   and(eq(callParticipants.callId, id), eq(callParticipants.role, 'recipient')),
                 );
               await this.devices.assertAccess(actor.userId, actor.sessionId);
-            } else if (call.state === 'ended') failure = this.failure('CALL_STATE_CONFLICT');
+            } else if (call.state === 'ended') {
+              failure = this.failure('CALL_STATE_CONFLICT');
+            }
 
             break;
           case 'reject':
           case 'cancel':
           case 'end':
-            if (call.state === 'ended') break;
+            if (call.state === 'ended') {
+              break;
+            }
 
             if ((command === 'end') === (call.state === 'ringing')) {
               failure = this.failure('CALL_STATE_CONFLICT');
@@ -444,7 +483,9 @@ export class DirectCallsService {
               break;
             }
 
-            if (call.state === 'active') break;
+            if (call.state === 'active') {
+              break;
+            }
 
             if (!me.connectedAt) {
               me.connectedAt = now;
@@ -472,15 +513,18 @@ export class DirectCallsService {
               break;
             }
 
-            if (ping.sequence <= me.lastSequence) break;
+            if (ping.sequence <= me.lastSequence) {
+              break;
+            }
 
             me.lastSequence = ping.sequence;
             me.lastPingAt = now;
             me.audioConnected = ping.audio_connected;
 
             if (call.state === 'active') {
-              if (!ping.audio_connected && !call.recoveryId)
+              if (!ping.audio_connected && !call.recoveryId) {
                 await this.openRecovery(tx, call, participants, now);
+              }
 
               if (call.recoveryId) {
                 me.confirmedRecoveryId =
@@ -513,13 +557,17 @@ export class DirectCallsService {
       actor,
     );
 
-    if (result.failure) throw result.failure;
+    if (result.failure) {
+      throw result.failure;
+    }
 
     return callDto(result.call);
   }
 
   private finish(call: CallRecord, reason: EndReason, now: Date): void {
-    if (call.state === 'ended') return;
+    if (call.state === 'ended') {
+      return;
+    }
 
     call.state = 'ended';
     call.endedAt = now;
@@ -543,7 +591,9 @@ export class DirectCallsService {
       now.getTime() + this.timeout('DIRECT_CALLS_RECONNECT_TIMEOUT_SECONDS'),
     );
 
-    for (const p of participants) p.confirmedRecoveryId = null;
+    for (const p of participants) {
+      p.confirmedRecoveryId = null;
+    }
 
     await tx
       .update(callParticipants)
@@ -557,7 +607,9 @@ export class DirectCallsService {
     participants: Participant[],
     checkAuth: boolean,
   ): Promise<void> {
-    if (call.state === 'ended') return;
+    if (call.state === 'ended') {
+      return;
+    }
 
     const now = new Date();
 
@@ -582,12 +634,13 @@ export class DirectCallsService {
       }
     }
 
-    if (call.ringingDeadline && call.ringingDeadline <= now) this.finish(call, 'no_answer', now);
-    else if (call.connectingDeadline && call.connectingDeadline <= now)
+    if (call.ringingDeadline && call.ringingDeadline <= now) {
+      this.finish(call, 'no_answer', now);
+    } else if (call.connectingDeadline && call.connectingDeadline <= now) {
       this.finish(call, 'connection_timeout', now);
-    else if (call.recoveryDeadline && call.recoveryDeadline <= now)
+    } else if (call.recoveryDeadline && call.recoveryDeadline <= now) {
       this.finish(call, 'connection_lost', now);
-    else if (
+    } else if (
       call.state === 'active' &&
       !call.recoveryId &&
       participants.some(
@@ -595,8 +648,9 @@ export class DirectCallsService {
           now.getTime() - (p.lastPingAt ?? call.connectingStartedAt ?? call.createdAt).getTime() >=
           this.timeout('DIRECT_CALLS_HEARTBEAT_TIMEOUT_SECONDS'),
       )
-    )
+    ) {
       await this.openRecovery(tx, call, participants, now);
+    }
   }
 
   private async locked<T>(
@@ -616,8 +670,9 @@ export class DirectCallsService {
         if (
           !initial ||
           (actor && initial.callerId !== actor.userId && initial.recipientId !== actor.userId)
-        )
+        ) {
           throw this.error.notFound();
+        }
 
         await this.auth.lockActiveAccounts(tx, [initial.callerId, initial.recipientId]);
         const [call] = await tx
@@ -626,7 +681,9 @@ export class DirectCallsService {
           .where(eq(directCalls.id, id))
           .for('update');
 
-        if (!call) throw this.error.notFound();
+        if (!call) {
+          throw this.error.notFound();
+        }
 
         const participants = await tx
           .select()
@@ -646,9 +703,13 @@ export class DirectCallsService {
     );
 
     try {
-      if (result.call.state === 'ended')
+      if (result.call.state === 'ended') {
         await this.presence.release(id, [result.call.callerId, result.call.recipientId]);
-      else for (const p of result.participants) await this.presence.project(p, result.call.version);
+      } else {
+        for (const p of result.participants) {
+          await this.presence.project(p, result.call.version);
+        }
+      }
     } catch {
       this.logger.warn('Call Redis projection deferred', { callId: id });
     }
@@ -670,7 +731,9 @@ export class DirectCallsService {
       try {
         await this.maintain(row.id, checkAuth);
       } catch (cause) {
-        if (strict) throw cause;
+        if (strict) {
+          throw cause;
+        }
 
         this.logger.warn('Call maintenance deferred', { callId: row.id });
       }
@@ -688,7 +751,9 @@ export class DirectCallsService {
       const reservations = await this.presence.read(userIds);
 
       for (const foreign of new Set(reservations)) {
-        if (!foreign || foreign === call.id) continue;
+        if (!foreign || foreign === call.id) {
+          continue;
+        }
 
         await this.repository.transaction(async (tx): Promise<void> => {
           await this.repository.lock(tx, foreign);
@@ -698,7 +763,9 @@ export class DirectCallsService {
             .where(eq(directCalls.id, foreign))
             .for('update');
 
-          if (!owner || owner.state === 'ended') await this.presence.release(foreign, userIds);
+          if (!owner || owner.state === 'ended') {
+            await this.presence.release(foreign, userIds);
+          }
         });
       }
 
@@ -710,9 +777,11 @@ export class DirectCallsService {
           .where(eq(directCalls.id, call.id))
           .for('update');
 
-        if (current?.state === 'ended' || !current)
+        if (current?.state === 'ended' || !current) {
           await this.presence.release(call.id, [call.callerId, call.recipientId]);
-        else await this.presence.reserve(call.id, [call.callerId, call.recipientId]);
+        } else {
+          await this.presence.reserve(call.id, [call.callerId, call.recipientId]);
+        }
       });
     }
   }

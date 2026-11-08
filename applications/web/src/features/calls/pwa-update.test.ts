@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { GChatClient } from '../../shared/calls/client';
 import { BrowserTransport } from '../../shared/runtime/transport';
-import { GChatClient } from './client';
 
 vi.mock('../auth/session', (): object => ({
   readSession: vi.fn(),
@@ -39,9 +39,9 @@ function fixture(): { client: any; transport: any } {
 describe('shared transport update barrier', (): void => {
   it('closes WSS and media before releasing its lifetime', (): void => {
     const { client, transport } = fixture();
-    const release = transport.release,
-      close = vi.fn(),
-      stop = vi.fn();
+    const release = transport.release;
+    const close = vi.fn();
+    const stop = vi.fn();
 
     transport.socket = { close };
     client.stream = { getTracks: (): object[] => [{ stop }] };
@@ -55,8 +55,8 @@ describe('shared transport update barrier', (): void => {
     expect(release).toHaveBeenCalledOnce();
   });
   it('keeps an active call and in-flight command protected', (): void => {
-    const { client, transport } = fixture(),
-      release = transport.release;
+    const { client, transport } = fixture();
+    const release = transport.release;
 
     client.state.call = { state: 'active' };
     client.state.busy = true;
@@ -68,8 +68,8 @@ describe('shared transport update barrier', (): void => {
     expect(release).toHaveBeenCalledOnce();
   });
   it('waits for authoritative call recovery', (): void => {
-    const { client, transport } = fixture(),
-      release = transport.release;
+    const { client, transport } = fixture();
+    const release = transport.release;
 
     client.hydrated = false;
     transport.prepare();

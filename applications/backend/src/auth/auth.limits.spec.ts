@@ -17,9 +17,13 @@ describe('Auth limits', (): void => {
   it('counts repeated request IDs once even if the initial operation failed before persistence', (): void => {
     const limits = new AuthLimits(new ErrorService(), config);
 
-    for (let i = 0; i < 20; i++) limits.check('session', 'refresh', true, 'same-id');
+    for (let i = 0; i < 20; i++) {
+      limits.check('session', 'refresh', true, 'same-id');
+    }
 
-    for (let i = 0; i < 9; i++) limits.check('session', 'refresh', true, `next-${i}`);
+    for (let i = 0; i < 9; i++) {
+      limits.check('session', 'refresh', true, `next-${i}`);
+    }
 
     expect((): void => limits.check('session', 'refresh', true, 'extra')).toThrow(
       expect.objectContaining({ code: 'RATE_LIMITED' }),
@@ -30,7 +34,9 @@ describe('Auth limits', (): void => {
     jest.useFakeTimers();
     const limits = new AuthLimits(new ErrorService(), config);
 
-    for (let i = 0; i < 5; i++) limits.check('user', 'login', true);
+    for (let i = 0; i < 5; i++) {
+      limits.check('user', 'login', true);
+    }
 
     expect((): void => limits.check('user', 'login')).toThrow(
       expect.objectContaining({ retryAfterSeconds: 300 }),
@@ -46,7 +52,9 @@ describe('Auth limits', (): void => {
     limits.check('user', 'login', true);
     jest.advanceTimersByTime(299000);
 
-    for (let i = 0; i < 4; i++) limits.check('user', 'login', true);
+    for (let i = 0; i < 4; i++) {
+      limits.check('user', 'login', true);
+    }
 
     jest.advanceTimersByTime(1000);
     limits.check('user', 'login', true);

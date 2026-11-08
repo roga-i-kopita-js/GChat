@@ -43,9 +43,12 @@ export class DialogsLimits {
       throw this.error.serviceUnavailable();
     }
 
-    if (typeof result !== 'number' || !Number.isSafeInteger(result) || result < 0)
+    if (typeof result !== 'number' || !Number.isSafeInteger(result) || result < 0) {
       throw this.error.serviceUnavailable();
+    }
 
-    if (result > 0) throw this.error.rateLimited({ retryAfterSeconds: Math.ceil(result / 1000) });
+    if (result > 0) {
+      throw this.error.rateLimited({ retryAfterSeconds: Math.ceil(result / 1000) });
+    }
   }
 }

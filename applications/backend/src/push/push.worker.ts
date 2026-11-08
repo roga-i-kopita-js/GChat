@@ -23,10 +23,14 @@ export class PushWorker implements OnApplicationBootstrap, OnModuleDestroy {
   ) {}
 
   onApplicationBootstrap(): void {
-    if (!this.config.get<boolean>('APNS_ENABLED', true)) return;
+    if (!this.config.get<boolean>('APNS_ENABLED', true)) {
+      return;
+    }
 
     this.timer = setInterval((): void => {
-      if (this.running) return;
+      if (this.running) {
+        return;
+      }
 
       this.running = this.tick()
         .catch((): void => {
@@ -41,7 +45,9 @@ export class PushWorker implements OnApplicationBootstrap, OnModuleDestroy {
 
   private async tick(): Promise<void> {
     for (const job of await this.store.claim('voip', 4)) {
-      if (!job.leaseToken || !job.deviceId || !job.sessionId) continue;
+      if (!job.leaseToken || !job.deviceId || !job.sessionId) {
+        continue;
+      }
 
       try {
         const target = await this.devices.resolveVoipTarget(job.deviceId, job.sessionId);
@@ -79,8 +85,9 @@ export class PushWorker implements OnApplicationBootstrap, OnModuleDestroy {
           new Date(call.ringing_deadline),
         );
 
-        if (result.status === 200) await this.store.complete(job.id, job.leaseToken);
-        else if (
+        if (result.status === 200) {
+          await this.store.complete(job.id, job.leaseToken);
+        } else if (
           ['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic'].includes(result.reason ?? '')
         ) {
           await this.devices.invalidateVoipTarget(
@@ -89,9 +96,9 @@ export class PushWorker implements OnApplicationBootstrap, OnModuleDestroy {
             result.reason === 'Unregistered' ? result.timestamp : undefined,
           );
           await this.store.complete(job.id, job.leaseToken, 'cancelled');
-        } else if (result.status === 429 || result.status >= 500)
+        } else if (result.status === 429 || result.status >= 500) {
           await this.store.retry(job.id, job.leaseToken, job.attempts, result.retryAfterSeconds);
-        else {
+        } else {
           this.logger.warn('APNs configuration or request rejected', {
             status: result.status,
             reason: result.reason,

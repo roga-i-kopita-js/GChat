@@ -2,11 +2,7 @@ import type {
   AdminGroupsResponseDto,
   AdminUserDto,
   AdminUserResponseDto,
-  AdminUsersResponseDto,
-  ApiResult,
 } from '@gchat/backend-api';
-import { ApiError } from '@gchat/backend-api';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft,
   ChevronRight,
@@ -19,24 +15,28 @@ import {
 } from 'lucide-react';
 import type { FormEvent, JSX } from 'react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import {
+  Link,
+  Outlet,
+  useFetcher,
+  useLoaderData,
+  useLocation,
+  useNavigate,
+  useOutletContext,
+  useParams,
+  useRevalidator,
+  useRouteLoaderData,
+  useSearchParams,
+} from 'react-router';
 
+import { useNavigationProtection } from '../../shared/navigation-protection';
 import { Avatar, Modal, Select } from '../../shared/ui';
-import { request } from '../auth/session';
 import type { Credentials } from './CredentialsDialog';
-import { generatePassword, mutationError } from './policy';
+import { generatePassword } from './policy';
+import type { AdminData, AdminResult, AdminUsersData } from './routes';
 
 type Action = 'create' | 'password' | 'disable' | 'enable';
 type Operation = { action: Action; user?: AdminUserDto };
-
-function readError(cause: unknown): string {
-  if (cause instanceof ApiError && cause.status === 403)
-    return 'Доступ запрещён. Требуются права администратора.';
-
-  if (cause instanceof ApiError && cause.status === 404) return 'Аккаунт не найден.';
-
-  return 'Не удалось загрузить данные. Проверьте соединение и повторите запрос.';
-}
 
 function AccountOperation({
   operation,
@@ -70,15 +70,65 @@ function AccountOperation({
   const sending = useRef(false);
   const [error, setError] = useState('');
   const [failed, setFailed] = useState(false);
-  const groups = useQuery({
-    queryKey: ['admin', userId, 'group-suggestions', group.trim()],
-    queryFn: ({ signal }): Promise<AdminGroupsResponseDto> =>
-      request((api): ReturnType<typeof api.adminListGroups> =>
-        api.adminListGroups({ query: { q: group.trim(), limit: 20, offset: 0 }, signal }),
-      ),
-    enabled: action === 'create' && !!group.trim(),
-    retry: false,
+  const formRef = useRef<HTMLFormElement>(null);
+  const basePassword = useRef(password);
+  const discarded = useRef(false);
+
+  const updateBlocked = useNavigationProtection({
+    dirty: (): boolean => {
+      if (discarded.current || sending.current || !formRef.current) {
+        return false;
+      }
+
+      const fields = new FormData(formRef.current);
+
+      return (
+        ['display_name', 'login', 'group_name'].some((name): boolean =>
+          Boolean(fields.get(name)),
+        ) || String(fields.get('password') ?? '') !== basePassword.current
+      );
+    },
+    discard: (): void => {
+      discarded.current = true;
+      close();
+    },
   });
+  const groupsFetcher = useFetcher<AdminData<AdminGroupsResponseDto>>();
+  const mutation = useFetcher<AdminResult>();
+  const handled = useRef<AdminResult | undefined>(undefined);
+
+  useEffect((): void => {
+    if (action === 'create' && group.trim()) {
+      void groupsFetcher.load('/resources/admin/groups?q=' + encodeURIComponent(group.trim()));
+    }
+  }, [action, group]);
+  useEffect((): void => {
+    const result = mutation.data;
+
+    if (mutation.state !== 'idle' || !result || handled.current === result) {
+      return;
+    }
+
+    handled.current = result;
+    sending.current = false;
+    setBusy(false);
+
+    if (result.outcome === 'saved') {
+      discarded.current = true;
+      setPassword('');
+      setCopyStatus('');
+      complete(result.user);
+    } else {
+      setError(result.error);
+
+      if (result.outcome === 'unknown') {
+        setFailed(true);
+        setPassword('');
+        setCopyStatus('');
+      }
+    }
+  }, [mutation.data, mutation.state]);
+  const groups = groupsFetcher.data?.data;
   const title =
     action === 'create'
       ? 'Создать аккаунт'
@@ -88,79 +138,42 @@ function AccountOperation({
           ? 'Отключить аккаунт?'
           : 'Включить аккаунт?';
 
-  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+  function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
 
-    if (sending.current || failed) return;
+    if (sending.current || failed || updateBlocked) {
+      return;
+    }
 
     sending.current = true;
     setBusy(true);
     setError('');
     const form = new FormData(event.currentTarget);
-    const sentPassword = password;
 
-    try {
-      let result: AdminUserResponseDto;
+    form.set('operation', action);
 
-      if (action === 'create') {
-        const login = String(form.get('login')).trim();
-
-        result = await request((api): Promise<ApiResult<AdminUserResponseDto>> =>
-          api.adminCreateUser({
-            body: {
-              display_name: String(form.get('display_name')).trim(),
-              group_name: group.trim(),
-              password: sentPassword,
-              ...(login ? { login } : {}),
-            },
-          }),
-        );
-      } else {
-        if (!user) return;
-
-        const path = { user_id: user.id };
-
-        result = await request((api): Promise<ApiResult<AdminUserResponseDto>> =>
-          action === 'password'
-            ? api.adminChangeUserPassword({ path, body: { password: sentPassword } })
-            : action === 'disable'
-              ? api.adminDisableUser({ path, body: {} })
-              : api.adminEnableUser({ path, body: {} }),
-        );
-      }
-
-      setPassword('');
-      setCopyStatus('');
-      complete(
-        result.user,
-        action === 'create' || action === 'password'
-          ? {
-              login: result.user.login,
-              password: sentPassword,
-              self: action === 'password' && result.user.id === userId,
-            }
-          : undefined,
-      );
-    } catch (cause) {
-      setError(mutationError(cause));
-
-      // A new explicit action is required after an uncertain outcome.
-      if (!(cause instanceof ApiError && cause.status >= 400 && cause.status < 500 && cause.code)) {
-        setFailed(true);
-        setPassword('');
-        setCopyStatus('');
-      }
-    } finally {
-      sending.current = false;
-      setBusy(false);
+    if (user) {
+      form.set('user_id', user.id);
     }
+
+    if (action === 'create' || action === 'password') {
+      form.set('password', password);
+    }
+
+    if (action === 'create') {
+      form.set('group_name', group);
+    }
+
+    void mutation.submit(form, { method: 'post', action: '/admin/users' });
   }
 
   return (
     <Modal
       title={title}
       close={(): void => {
-        if (!sending.current) close();
+        if (!sending.current) {
+          close();
+        }
       }}
     >
       {user && (
@@ -174,11 +187,15 @@ function AccountOperation({
       )}
       <form
         className="admin-form"
+        ref={formRef}
+        onChange={(): void => {
+          discarded.current = false;
+        }}
         onSubmit={(event): void => {
           void submit(event);
         }}
       >
-        <fieldset disabled={busy || failed}>
+        <fieldset disabled={busy || failed || updateBlocked}>
           {action === 'create' && (
             <>
               <label>
@@ -188,6 +205,7 @@ function AccountOperation({
               <label>
                 Группа
                 <input
+                  name="group_name"
                   value={group}
                   onChange={(event): void => setGroup(event.target.value)}
                   list="admin-groups"
@@ -197,17 +215,17 @@ function AccountOperation({
                 />
               </label>
               <datalist id="admin-groups">
-                {groups.data?.groups.map((item): JSX.Element => (
+                {groups?.groups.map((item): JSX.Element => (
                   <option key={item.id} value={item.name} />
                 ))}
               </datalist>
               {group.trim() && (
                 <p className="admin-hint" role="status">
-                  {groups.isError
+                  {groupsFetcher.data?.error
                     ? 'Подсказки групп недоступны. При создании сервер проверит название.'
-                    : groups.isFetching
+                    : groupsFetcher.state !== 'idle'
                       ? 'Ищем группы…'
-                      : groups.data?.groups.some(
+                      : groups?.groups.some(
                             (item): boolean =>
                               item.name.toLocaleLowerCase() === group.trim().toLocaleLowerCase(),
                           )
@@ -235,6 +253,7 @@ function AccountOperation({
                 <div className="password-field">
                   <input
                     id={passwordId}
+                    name="password"
                     type={passwordVisible ? 'text' : 'password'}
                     value={password}
                     onChange={(event): void => {
@@ -281,6 +300,7 @@ function AccountOperation({
                 type="button"
                 className="secondary"
                 onClick={(): void => {
+                  discarded.current = false;
                   setPassword(generatePassword());
                   setPasswordVisible(false);
                   setCopyStatus('');
@@ -328,14 +348,16 @@ function AccountOperation({
 
 export function UsersPage({
   userId,
+  sessionId,
   onCredentials,
   showDetails,
 }: {
   userId: string;
+  sessionId: string;
   onCredentials: (value: Credentials) => void;
   showDetails: boolean;
 }): JSX.Element {
-  const cache = useQueryClient();
+  const revalidator = useRevalidator();
   const mounted = useRef(false);
 
   useEffect((): (() => void) => {
@@ -348,7 +370,8 @@ export function UsersPage({
   const [params, setParams] = useSearchParams();
   const { userId: selected = null } = useParams();
   const navigate = useNavigate();
-  const q = (params.get('q') ?? '').slice(0, 80);
+  const loaded = useRouteLoaderData<AdminUsersData>('admin-users');
+  const { q = '', status = 'all', offset = 0 } = loaded?.filters ?? {};
   const location = useLocation();
   const [searchInput, setSearchInput] = useState(q);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -359,11 +382,6 @@ export function UsersPage({
 
     return (): void => clearTimeout(searchTimer.current);
   }, [q, location.key]);
-  const rawStatus = params.get('status');
-  const status = rawStatus === 'active' || rawStatus === 'disabled' ? rawStatus : 'all';
-  const rawOffset = Number(params.get('offset') ?? 0);
-  const offset =
-    Number.isSafeInteger(rawOffset) && rawOffset >= 0 && rawOffset <= 2147483647 ? rawOffset : 0;
 
   function changeParams(values: Record<string, string>, replace = false): void {
     clearTimeout(searchTimer.current);
@@ -377,8 +395,11 @@ export function UsersPage({
         const next = new URLSearchParams(previous);
 
         for (const [key, value] of Object.entries(changes)) {
-          if (!value || value === 'all' || (key === 'offset' && value === '0')) next.delete(key);
-          else next.set(key, value);
+          if (!value || value === 'all' || (key === 'offset' && value === '0')) {
+            next.delete(key);
+          } else {
+            next.set(key, value);
+          }
         }
 
         return next;
@@ -393,24 +414,9 @@ export function UsersPage({
 
   const [operation, setOperation] = useState<Operation | null>(null);
   const [notice, setNotice] = useState('');
-  const list = useQuery({
-    queryKey: ['admin', userId, 'users', q.trim(), status, offset],
-    queryFn: ({ signal }): Promise<AdminUsersResponseDto> =>
-      request((api): ReturnType<typeof api.adminListUsers> =>
-        api.adminListUsers({ query: { q: q.trim(), status, offset, limit: 25 }, signal }),
-      ),
-    retry: false,
-  });
-  const detail = useQuery({
-    queryKey: ['admin', userId, 'user', selected],
-    queryFn: ({ signal }): Promise<AdminUserResponseDto> =>
-      request((api): Promise<ApiResult<AdminUserResponseDto>> =>
-        api.adminGetUser({ path: { user_id: selected ?? '' }, signal }),
-      ),
-    enabled: !!selected,
-    retry: false,
-  });
-  const user = detail.data?.user;
+  const list = loaded?.sid === sessionId ? loaded.data : null;
+  const listError = loaded?.error;
+  const loading = revalidator.state === 'loading';
 
   function refresh(): void {
     if (searchInput !== q) {
@@ -419,7 +425,7 @@ export function UsersPage({
       return;
     }
 
-    void cache.invalidateQueries({ queryKey: ['admin', userId] });
+    void revalidator.revalidate();
   }
 
   return (
@@ -463,15 +469,16 @@ export function UsersPage({
           className="admin-status-filter"
           value={status}
           onChange={(value): void => {
-            if (value === 'all' || value === 'active' || value === 'disabled')
+            if (value === 'all' || value === 'active' || value === 'disabled') {
               changeParams({ status: value, offset: '0' });
+            }
           }}
         >
           <option value="all">Все аккаунты</option>
           <option value="active">Активные</option>
           <option value="disabled">Отключённые</option>
         </Select>
-        <button className="secondary" onClick={refresh} disabled={list.isFetching}>
+        <button className="secondary" onClick={refresh} disabled={loading}>
           <RefreshCw size={16} /> Обновить
         </button>
       </div>
@@ -481,29 +488,29 @@ export function UsersPage({
         </p>
       )}
       <div className="admin-layout">
-        <section className="admin-list" aria-label="Список аккаунтов" aria-busy={list.isFetching}>
-          {list.isError ? (
+        <section className="admin-list" aria-label="Список аккаунтов" aria-busy={loading}>
+          {listError ? (
             <div className="list-empty" role="alert">
-              <p>{readError(list.error)}</p>
+              <p>{listError}</p>
               <button
                 className="secondary"
                 onClick={(): void => {
-                  void list.refetch();
+                  void revalidator.revalidate();
                 }}
               >
                 Повторить
               </button>
             </div>
-          ) : list.isPending ? (
+          ) : !list ? (
             <div className="list-empty" role="status">
               Загружаем аккаунты…
             </div>
           ) : (
             <>
               <div className="admin-list-caption">
-                Найдено: {list.data.total} · активность означает доступ к входу
+                Найдено: {list.total} · активность означает доступ к входу
               </div>
-              {!list.data.users.length && (
+              {!list.users.length && (
                 <div className="list-empty">
                   {q.trim() || status !== 'all'
                     ? 'Нет совпадений'
@@ -512,7 +519,7 @@ export function UsersPage({
                       : 'Аккаунтов пока нет'}
                 </div>
               )}
-              {list.data.users.map((item): JSX.Element => (
+              {list.users.map((item): JSX.Element => (
                 <Link
                   to={accountUrl(item.id)}
                   className={'admin-row' + (selected === item.id ? ' selected' : '')}
@@ -539,14 +546,14 @@ export function UsersPage({
               ))}
               <div className="admin-pagination">
                 <span>
-                  {list.data.users.length
-                    ? `${offset + 1}–${Math.min(offset + 25, list.data.total)} из ${list.data.total}`
+                  {list.users.length
+                    ? `${offset + 1}–${Math.min(offset + 25, list.total)} из ${list.total}`
                     : '0 аккаунтов'}
                 </span>
                 <button
                   className="icon"
                   aria-label="Предыдущая страница"
-                  disabled={!offset || list.isFetching}
+                  disabled={!offset || loading}
                   onClick={(): void => changeParams({ offset: String(Math.max(0, offset - 25)) })}
                 >
                   <ChevronLeft size={19} />
@@ -554,7 +561,7 @@ export function UsersPage({
                 <button
                   className="icon"
                   aria-label="Следующая страница"
-                  disabled={offset + 25 >= list.data.total || list.isFetching}
+                  disabled={offset + 25 >= list.total || loading}
                   onClick={(): void => changeParams({ offset: String(offset + 25) })}
                 >
                   <ChevronRight size={19} />
@@ -564,7 +571,64 @@ export function UsersPage({
           )}
         </section>
       </div>
-      {selected && !operation && showDetails && (
+      <Outlet
+        context={
+          {
+            userId,
+            sessionId,
+            setOperation,
+            showDetails: !operation && showDetails,
+          } satisfies UserDetailContext
+        }
+      />
+      {operation && (
+        <AccountOperation
+          operation={operation}
+          userId={userId}
+          close={(): void => {
+            setOperation(null);
+            refresh();
+          }}
+          complete={(updated, credentials): void => {
+            if (mounted.current) {
+              setOperation(null);
+              void navigate(accountUrl(updated.id));
+              setNotice('Операция выполнена. Данные аккаунта обновлены.');
+            }
+
+            if (credentials) {
+              onCredentials(credentials);
+            }
+
+            if (!credentials?.self) {
+              refresh();
+            }
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+interface UserDetailContext {
+  userId: string;
+  sessionId: string;
+  setOperation(operation: Operation): void;
+  showDetails: boolean;
+}
+
+export function UserDetailRoute(): JSX.Element {
+  const { userId, sessionId, setOperation, showDetails } = useOutletContext<UserDetailContext>();
+  const detail = useLoaderData<AdminData<AdminUserResponseDto>>();
+  const user = detail?.sid === sessionId ? detail.data?.user : null;
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const revalidator = useRevalidator();
+  const loading = revalidator.state === 'loading';
+
+  return (
+    <>
+      {showDetails && (
         <Modal
           title="Карточка аккаунта"
           close={(): void => {
@@ -574,13 +638,13 @@ export function UsersPage({
           }}
         >
           <div className="admin-detail">
-            {detail.isError ? (
+            {detail?.error ? (
               <div className="list-empty" role="alert">
-                <p>{readError(detail.error)}</p>
+                <p>{detail.error}</p>
                 <button
                   className="secondary"
                   onClick={(): void => {
-                    void detail.refetch();
+                    void revalidator.revalidate();
                   }}
                 >
                   Повторить
@@ -619,14 +683,14 @@ export function UsersPage({
                 </dl>
                 <button
                   className="secondary"
-                  disabled={detail.isFetching}
+                  disabled={loading}
                   onClick={(): void => setOperation({ action: 'password', user })}
                 >
                   Сменить пароль
                 </button>
                 <button
                   className={user.status === 'active' ? 'danger-button' : 'primary'}
-                  disabled={user.id === userId || detail.isFetching}
+                  disabled={user.id === userId || loading}
                   onClick={(): void =>
                     setOperation({ action: user.status === 'active' ? 'disable' : 'enable', user })
                   }
@@ -641,29 +705,6 @@ export function UsersPage({
           </div>
         </Modal>
       )}
-      {operation && (
-        <AccountOperation
-          operation={operation}
-          userId={userId}
-          close={(): void => {
-            setOperation(null);
-            refresh();
-          }}
-          complete={(updated, credentials): void => {
-            if (mounted.current) {
-              setOperation(null);
-              void navigate(accountUrl(updated.id));
-              setNotice('Операция выполнена. Данные аккаунта обновлены.');
-            }
-
-            cache.setQueryData(['admin', userId, 'user', updated.id], { user: updated });
-
-            if (credentials) onCredentials(credentials);
-
-            if (!credentials?.self) refresh();
-          }}
-        />
-      )}
-    </section>
+    </>
   );
 }

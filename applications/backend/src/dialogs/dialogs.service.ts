@@ -43,9 +43,13 @@ export class DialogsService {
     try {
       return await this.database.db.transaction(work, { isolationLevel: 'read committed' });
     } catch (cause) {
-      if (cause instanceof AppError) throw cause;
+      if (cause instanceof AppError) {
+        throw cause;
+      }
 
-      if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable();
+      if (isDatabaseUnavailable(cause)) {
+        throw this.error.serviceUnavailable();
+      }
 
       throw this.error.internal();
     }
@@ -67,7 +71,9 @@ export class DialogsService {
       .where(and(eq(dialogs.id, id), this.member(actor)));
     const [row] = await (lock ? query.for('update') : query);
 
-    if (!row) throw this.error.notFound();
+    if (!row) {
+      throw this.error.notFound();
+    }
 
     return row;
   }
@@ -159,16 +165,22 @@ export class DialogsService {
     );
     const me = accounts.find((a): boolean => a.id === actor.userId);
 
-    if (!me || me.disabledAt) throw this.error.sessionInvalid();
+    if (!me || me.disabledAt) {
+      throw this.error.sessionInvalid();
+    }
 
     await this.auth.lockSession(tx, actor.userId, actor.sessionId);
     const { deviceId } = await this.devices.lockSessionBinding(tx, actor.userId, actor.sessionId);
 
-    if (!peerId) return { deviceId, can_read: false, can_send: false };
+    if (!peerId) {
+      return { deviceId, can_read: false, can_send: false };
+    }
 
     const peer = accounts.find((a): boolean => a.id === peerId);
 
-    if (!peer) return { deviceId, can_read: false, can_send: false };
+    if (!peer) {
+      return { deviceId, can_read: false, can_send: false };
+    }
 
     const meAdmin = me.role === 'admin';
     const peerAdmin = peer.role === 'admin' && !peer.disabledAt;
@@ -191,12 +203,16 @@ export class DialogsService {
   ): Promise<{ dialog: DialogDto; created: boolean }> {
     await this.limits.check(actor.userId, 'create');
 
-    if (peerId === actor.userId) this.denied();
+    if (peerId === actor.userId) {
+      this.denied();
+    }
 
     return this.transaction(async (tx): Promise<{ dialog: DialogDto; created: boolean }> => {
       const access = await this.access(tx, actor, peerId);
 
-      if (!access.can_send) this.denied();
+      if (!access.can_send) {
+        this.denied();
+      }
 
       const [low, high] = [actor.userId, peerId].sort();
       const [inserted] = await tx
@@ -213,11 +229,15 @@ export class DialogsService {
             .where(and(eq(dialogs.participantLowId, low!), eq(dialogs.participantHighId, high!)))
         )[0];
 
-      if (!row) throw this.error.internal();
+      if (!row) {
+        throw this.error.internal();
+      }
 
       const [dialog] = await this.metadata(tx, actor.userId, 1, 0, row.id);
 
-      if (!dialog) throw this.error.internal();
+      if (!dialog) {
+        throw this.error.internal();
+      }
 
       return { dialog, created: !!inserted };
     });
@@ -243,7 +263,9 @@ export class DialogsService {
 
       const [dialog] = await this.metadata(tx, actor.userId, 1, 0, id);
 
-      if (!dialog) throw this.error.notFound();
+      if (!dialog) {
+        throw this.error.notFound();
+      }
 
       return { dialog };
     });
@@ -272,8 +294,9 @@ export class DialogsService {
     return this.transaction(async (tx): Promise<HistoryResponseDto> => {
       const row = await this.own(tx, actor.userId, id);
 
-      if (!(await this.access(tx, actor, this.peer(row, actor.userId), true)).can_read)
+      if (!(await this.access(tx, actor, this.peer(row, actor.userId), true)).can_read) {
         this.denied();
+      }
 
       // One statement snapshots messages and read positions together.
       const rows = await tx
@@ -299,7 +322,9 @@ export class DialogsService {
         const candidate = { messages: [...messages, dto], has_more: true };
 
         if (Buffer.byteLength(JSON.stringify(candidate)) > 524288) {
-          if (!messages.length) throw this.error.internal();
+          if (!messages.length) {
+            throw this.error.internal();
+          }
 
           break;
         }
@@ -326,7 +351,9 @@ export class DialogsService {
         const initial = await this.own(tx, actor.userId, id);
         const access = await this.access(tx, actor, this.peer(initial, actor.userId));
 
-        if (!access.can_send) this.denied();
+        if (!access.can_send) {
+          this.denied();
+        }
 
         const dialog = await this.own(tx, actor.userId, id, true);
         const [existing] = await tx
@@ -341,11 +368,17 @@ export class DialogsService {
           );
         const users = [dialog.participantLowId, dialog.participantHighId];
 
-        if (existing) return { message: this.message(existing, dialog), created: false, users };
+        if (existing) {
+          return { message: this.message(existing, dialog), created: false, users };
+        }
 
-        if (!reserved) throw this.error.serviceUnavailable();
+        if (!reserved) {
+          throw this.error.serviceUnavailable();
+        }
 
-        if (dialog.lastSequence >= Number.MAX_SAFE_INTEGER) throw this.error.internal();
+        if (dialog.lastSequence >= Number.MAX_SAFE_INTEGER) {
+          throw this.error.internal();
+        }
 
         const [clock] = await tx
           .select({
@@ -354,7 +387,9 @@ export class DialogsService {
           .from(dialogs)
           .where(eq(dialogs.id, id));
 
-        if (!clock) throw this.error.internal();
+        if (!clock) {
+          throw this.error.internal();
+        }
 
         const metadata = {
           id: randomUUID(),
@@ -373,7 +408,9 @@ export class DialogsService {
           .values({ ...metadata, ...encrypted })
           .returning();
 
-        if (!message) throw this.error.internal();
+        if (!message) {
+          throw this.error.internal();
+        }
 
         await tx
           .update(dialogs)
@@ -384,7 +421,7 @@ export class DialogsService {
       },
     );
 
-    if (result.created)
+    if (result.created) {
       this.events.publish({
         users: result.users,
         message: result.message,
@@ -393,6 +430,7 @@ export class DialogsService {
           payload: { dialog_id: id, last_sequence: result.message.sequence },
         },
       });
+    }
 
     return { message: result.message, created: result.created };
   }
@@ -407,23 +445,26 @@ export class DialogsService {
       async (tx): Promise<{ sequence: number; changed: boolean; users: string[] }> => {
         const initial = await this.own(tx, actor.userId, id);
 
-        if (!(await this.access(tx, actor, this.peer(initial, actor.userId), true)).can_read)
+        if (!(await this.access(tx, actor, this.peer(initial, actor.userId), true)).can_read) {
           this.denied();
+        }
 
         const row = await this.own(tx, actor.userId, id, true);
 
-        if (sequence > row.lastSequence)
+        if (sequence > row.lastSequence) {
           throw this.error.validation({ fields: [{ field: 'sequence', code: 'INVALID' }] });
+        }
 
         const low = row.participantLowId === actor.userId;
         const previous = low ? row.lowRead : row.highRead;
         const maximum = Math.max(sequence, previous);
 
-        if (maximum > previous)
+        if (maximum > previous) {
           await tx
             .update(dialogs)
             .set(low ? { lowRead: maximum } : { highRead: maximum })
             .where(eq(dialogs.id, id));
+        }
 
         return {
           sequence: maximum,
@@ -433,7 +474,7 @@ export class DialogsService {
       },
     );
 
-    if (result.changed)
+    if (result.changed) {
       this.events.publish({
         users: result.users,
         event: {
@@ -441,6 +482,7 @@ export class DialogsService {
           payload: { dialog_id: id, reader_id: actor.userId, last_read_sequence: result.sequence },
         },
       });
+    }
 
     return { last_read_sequence: result.sequence };
   }

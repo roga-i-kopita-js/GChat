@@ -1,33 +1,27 @@
 import type { JSX } from 'react';
-import { useEffect, useState } from 'react';
-import { Link, Navigate, Outlet, Route, Routes, useLocation } from 'react-router';
+import { createContext, useEffect, useRef, useState } from 'react';
+import { Link, Navigate, Outlet, useLoaderData, useLocation } from 'react-router';
 
 import { type Credentials, CredentialsDialog } from '../features/administration/CredentialsDialog';
-import { UsersPage } from '../features/administration/UsersPage';
 import { AuthProvider, useAuth } from '../features/auth/AuthProvider';
-import { LoginPage } from '../features/auth/LoginPage';
-import { identity, readSession, saveSession } from '../features/auth/session';
-import { CallsPage } from '../features/calls/CallsPage';
-import { CallsProvider, useCalls } from '../features/calls/CallsProvider';
+import { CallsProvider } from '../features/calls/CallsProvider';
 import { IncomingCall } from '../features/calls/IncomingCall';
-import { DialogsPage } from '../features/dialogs/DialogsPage';
-import { SettingsPage } from '../features/settings/SettingsPage';
-import { embedded } from '../shared/native/bridge';
-import { nativeRuntime } from '../shared/native/runtime';
-import { AppLayout } from './AppLayout';
-import { Bootstrap } from './bootstrap/Bootstrap';
-import { DeviceProvider } from './DeviceProvider';
-import { NativeBoundary } from './NativeBoundary';
+import { LifecycleEvent, SessionEvent } from '../shared/device';
+import { deviceInternals } from '../shared/device/internals';
+import { DeviceCallCameraHost, useDevice, useDevicePresentation } from '../shared/device/react';
+import { BootstrapProvider } from '../shared/dialogs/BootstrapProvider';
+import { retainFrontendUpdate } from '../shared/frontend-update-lease';
+import { NavigationProtectionRoot } from '../shared/navigation-protection';
+import type { ApplicationLoaderData } from './loaders';
 import { PwaUpdate } from './PwaUpdate';
+import { RoutePending } from './RoutePending';
 
-function RequireSession(): JSX.Element {
+export function RequireSession(): JSX.Element {
   const { session } = useAuth();
   const location = useLocation();
 
   return session ? (
     <Outlet />
-  ) : embedded ? (
-    <p role="status">Ожидаем входа в приложении…</p>
   ) : (
     <Navigate
       to="/login"
@@ -37,7 +31,7 @@ function RequireSession(): JSX.Element {
   );
 }
 
-function RequireAdmin(): JSX.Element {
+export function RequireAdmin(): JSX.Element {
   const { user } = useAuth();
 
   return user?.role === 'admin' ? (
@@ -53,142 +47,123 @@ function RequireAdmin(): JSX.Element {
   );
 }
 
-function ApplicationRoutes({
-  credentials,
-  onCredentials,
-}: {
-  credentials: Credentials | null;
-  onCredentials(value: Credentials, sid: string): void;
-}): JSX.Element {
-  const { user } = useAuth();
-  const { incoming } = useCalls();
-
-  return (
-    <>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route element={<RequireSession />}>
-          <Route element={<AppLayout />}>
-            <Route index element={<Navigate to="/calls" replace />} />
-            <Route path="calls" element={<CallsPage />} />
-            <Route path="dialogs" element={<DialogsPage />}>
-              <Route path=":dialogId" element={null} />
-            </Route>
-            <Route path="settings/*" element={<SettingsPage />} />
-            <Route path="admin" element={<RequireAdmin />}>
-              <Route index element={<Navigate to="users" replace />} />
-              <Route
-                path="users"
-                element={
-                  user && (
-                    <UsersPage
-                      key={user.sid}
-                      userId={user.sub}
-                      showDetails={!credentials && !incoming}
-                      onCredentials={(value): void => {
-                        onCredentials(value, user.sid);
-
-                        if (embedded) {
-                          if (value.self) void nativeRuntime.ready();
-
-                          return;
-                        }
-
-                        const current = readSession();
-
-                        if (value.self && current && identity(current).sid === user.sid)
-                          saveSession(null);
-                      }}
-                    />
-                  )
-                }
-              >
-                <Route path=":userId" element={null} />
-              </Route>
-            </Route>
-          </Route>
-        </Route>
-        <Route
-          path="*"
-          element={
-            <main className="list-empty">
-              <h1>Страница не найдена</h1>
-              <Link className="primary" to="/calls">
-                К звонкам
-              </Link>
-            </main>
-          }
-        />
-      </Routes>
-    </>
-  );
-}
+export const CredentialsContext = createContext<{
+  value: Credentials | null;
+  show(value: Credentials, sid: string): void;
+} | null>(null);
 
 export function App(): JSX.Element {
+  const { device, adminResults } = useLoaderData<ApplicationLoaderData>();
+  const core = useDevice();
+  const presentation = useDevicePresentation();
   const [credentials, setCredentials] = useState<{ value: Credentials; sid: string } | null>(null);
 
-  // A one-time self-reset result must survive confirmed revocation, as in the browser UI.
-  // Other account data is discarded on resync, and all credentials are hidden on backgrounding.
-  useEffect((): (() => void) | undefined => {
-    if (!embedded || !credentials) return;
+  const currentCredentials = useRef<{ value: Credentials; sid: string } | null>(null);
+  const credentialLease = useRef<(() => void) | null>(null);
+  const showCredentials = (value: Credentials, sid: string): void => {
+    const lease = retainFrontendUpdate();
 
-    const sync = (): void => {
-      const state = nativeRuntime.getSnapshot();
-      const token = nativeRuntime.getToken();
+    credentialLease.current?.();
+    credentialLease.current = lease.release;
+    currentCredentials.current = { value, sid };
+    setCredentials(currentCredentials.current);
+  };
+  const hideCredentials = (): void => {
+    currentCredentials.current = null;
+    credentialLease.current?.();
+    credentialLease.current = null;
+    setCredentials(null);
+  };
+
+  useEffect(
+    (): (() => void) => (): void => {
+      credentialLease.current?.();
+      credentialLease.current = null;
+      currentCredentials.current = null;
+    },
+    [],
+  );
+  useEffect(
+    (): (() => void) =>
+      adminResults.subscribe((value, sid): void => {
+        if (document.visibilityState === 'visible') {
+          showCredentials(value, sid);
+        }
+
+        if (!value.self) {
+          return;
+        }
+
+        void deviceInternals(core)
+          .confirmSessionRevoked(Number(sid))
+          .catch((): void => {});
+      }),
+    [adminResults, core],
+  );
+
+  useEffect((): (() => void) => {
+    const offVisibility = core.lifecycle.on(LifecycleEvent.VisibilityChanged, (state): void => {
+      if (state.visibility === 'background') {
+        hideCredentials();
+      }
+    });
+    const offSession = core.session.on(SessionEvent.StateChanged, (state): void => {
+      const value = currentCredentials.current;
 
       if (
-        (state.phase !== 'ready' && !credentials.value.self) ||
-        (token && identity({ access_token: token }).sid !== credentials.sid)
-      )
-        setCredentials(null);
-    };
-    const visibility = (): void => {
-      if (document.visibilityState !== 'visible') setCredentials(null);
-    };
-    const unsubscribe = nativeRuntime.subscribe(sync);
-
-    document.addEventListener('visibilitychange', visibility);
+        value &&
+        ((state.status === 'starting' && !value.value.self) ||
+          (state.status === 'authenticated' && String(state.generation) !== value.sid))
+      ) {
+        hideCredentials();
+      }
+    });
 
     return (): void => {
-      unsubscribe();
-      document.removeEventListener('visibilitychange', visibility);
+      offVisibility();
+      offSession();
     };
-  }, [credentials]);
+  }, [core]);
 
-  if (!embedded && (!('locks' in navigator) || !('mediaDevices' in navigator)))
+  if (!presentation.supportedEnvironment) {
     return (
       <main className="unsupported">
         <h1>Откройте GChat в современном браузере</h1>
-        <p>
-          Для звонков нужны HTTPS, доступ к микрофону и поддержка Web Locks. Локальная разработка
-          доступна на localhost.
-        </p>
+        <p>Для звонков нужны HTTPS, доступ к микрофону и поддержка Web Locks.</p>
       </main>
     );
+  }
 
   const content = (
-    <AuthProvider>
-      <Bootstrap>
-        <CallsProvider>
-          {!embedded && <PwaUpdate />}
-          <DeviceProvider>
-            <ApplicationRoutes
-              credentials={credentials?.value ?? null}
-              onCredentials={(value, sid): void => setCredentials({ value, sid })}
-            />
-            <IncomingCall />
-          </DeviceProvider>
-        </CallsProvider>
-      </Bootstrap>
+    <AuthProvider device={device}>
+      <NavigationProtectionRoot session={device.session}>
+        <BootstrapProvider session={device.session}>
+          <CallsProvider>
+            <div data-gchat-surface>
+              <PwaUpdate />
+
+              <RoutePending />
+              <Outlet />
+              <IncomingCall />
+            </div>
+            <DeviceCallCameraHost />
+          </CallsProvider>
+        </BootstrapProvider>
+      </NavigationProtectionRoot>
     </AuthProvider>
   );
 
   return (
     <>
-      {embedded ? <NativeBoundary>{content}</NativeBoundary> : content}
-      {credentials && (
-        <CredentialsDialog value={credentials.value} close={(): void => setCredentials(null)} />
-      )}
+      <CredentialsContext
+        value={{
+          value: credentials?.value ?? null,
+          show: showCredentials,
+        }}
+      >
+        {content}
+      </CredentialsContext>
+      {credentials && <CredentialsDialog value={credentials.value} close={hideCredentials} />}
     </>
   );
 }

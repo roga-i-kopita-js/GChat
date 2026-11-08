@@ -182,7 +182,9 @@ export class DialogsController {
     const after = queryInteger(query.after_sequence, 'after_sequence', undefined, this.error);
     const before = queryInteger(query.before_sequence, 'before_sequence', undefined, this.error);
 
-    if (after !== undefined && before !== undefined) throw this.error.validation();
+    if (after !== undefined && before !== undefined) {
+      throw this.error.validation();
+    }
 
     return this.dialogs.history(req.user, id.toLowerCase(), this.limit(query.limit), after, before);
   }

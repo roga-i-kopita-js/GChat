@@ -25,7 +25,9 @@ export class AuthGuard implements CanActivate {
       .getRequest<{ headers: { authorization?: string }; user?: AuthIdentity }>();
     const match = /^Bearer ([^\s]+)$/i.exec(request.headers.authorization ?? '');
 
-    if (!match) throw this.error.accessTokenInvalid();
+    if (!match) {
+      throw this.error.accessTokenInvalid();
+    }
 
     request.user = await this.auth.authenticate(match[1]!);
 

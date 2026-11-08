@@ -43,7 +43,9 @@ class NativeDialogStorage implements DialogStorage {
   constructor(private context: NativeContext) {
     this.epoch = context.epoch;
 
-    if (context.purgePending) this.warning = 'Очистка прежнего локального кеша ещё не завершена.';
+    if (context.purgePending) {
+      this.warning = 'Очистка прежнего локального кеша ещё не завершена.';
+    }
 
     this.scope = {
       serverOrigin: location.origin,
@@ -62,8 +64,9 @@ class NativeDialogStorage implements DialogStorage {
       this.closed ||
       nativeRuntime.getSnapshot().cycleId !== this.context.cycleId ||
       nativeRuntime.getSignal().aborted
-    )
+    ) {
       throw new StorageError('STORAGE_STALE_CONTEXT');
+    }
   }
 
   private async command(command: string, args: unknown): Promise<unknown> {
@@ -95,7 +98,9 @@ class NativeDialogStorage implements DialogStorage {
 
       return response.data;
     } catch (cause) {
-      if (cause instanceof z.ZodError) throw new StorageError('STORAGE_INVALID_ARGUMENT');
+      if (cause instanceof z.ZodError) {
+        throw new StorageError('STORAGE_INVALID_ARGUMENT');
+      }
 
       const parsed = nativeErrors.safeParse(cause);
 
@@ -110,9 +115,13 @@ class NativeDialogStorage implements DialogStorage {
   private async use<T>(operation: () => Promise<T>, fallback: () => Promise<T>): Promise<T> {
     this.check();
 
-    if (this.switching) await this.switching;
+    if (this.switching) {
+      await this.switching;
+    }
 
-    if (this.fallback) return fallback();
+    if (this.fallback) {
+      return fallback();
+    }
 
     try {
       return await operation();
@@ -120,13 +129,15 @@ class NativeDialogStorage implements DialogStorage {
       if (!(
         error instanceof StorageError &&
         ['STORAGE_UNAVAILABLE', 'STORAGE_FULL'].includes(error.code)
-      ))
+      )) {
         throw error;
+      }
 
-      if (!this.switching)
+      if (!this.switching) {
         this.switching = this.switchToIndexedDb().finally((): void => {
           this.switching = null;
         });
+      }
 
       await this.switching;
 
@@ -167,7 +178,7 @@ class NativeDialogStorage implements DialogStorage {
               }),
             );
 
-          for (const entry of page.entries)
+          for (const entry of page.entries) {
             await staging.change(entry.id, 'commitPage', (value): void => {
               value.record = entry.record;
               value.messages = [
@@ -178,17 +189,22 @@ class NativeDialogStorage implements DialogStorage {
                 ),
               ];
             });
+          }
 
           cursor = page.nextCursor;
 
-          if (!page.has_more) break;
+          if (!page.has_more) {
+            break;
+          }
 
-          if (!cursor) throw new StorageError('STORAGE_UNAVAILABLE');
+          if (!cursor) {
+            throw new StorageError('STORAGE_UNAVAILABLE');
+          }
         } while (!this.closed);
       }
     } catch {
       // A partial export cannot carry a checkpoint for messages that never reached staging.
-      for (const dialog of await staging.list())
+      for (const dialog of await staging.list()) {
         await staging.change(dialog.dialog_id, 'commitPage', ({ record }): void => {
           record.initialized = false;
           record.sync_sequence = 0;
@@ -196,9 +212,10 @@ class NativeDialogStorage implements DialogStorage {
           record.before_sequence = null;
           record.has_older = false;
         });
+      }
 
       // Only data actually available to this Web cycle is recoverable from a failed SQLite snapshot.
-      for (const [id, known] of this.known)
+      for (const [id, known] of this.known) {
         await staging.change(id, 'commitPage', (value): void => {
           value.record = {
             ...known.record,
@@ -210,12 +227,16 @@ class NativeDialogStorage implements DialogStorage {
           };
           value.messages = known.messages;
         });
+      }
     }
 
-    for (const dialog of await staging.list())
+    for (const dialog of await staging.list()) {
       await staging.change(dialog.dialog_id, 'markAttempt', ({ record }): void => {
-        for (const pending of record.outbox) pending.state = 'unknown';
+        for (const pending of record.outbox) {
+          pending.state = 'unknown';
+        }
       });
+    }
 
     try {
       await this.command('selectIndexedDb', {});
@@ -244,11 +265,15 @@ class NativeDialogStorage implements DialogStorage {
 
           messages.push(...page.messages);
 
-          if (!page.has_more) break;
+          if (!page.has_more) {
+            break;
+          }
 
           const next = page.messages.at(-1)?.sequence;
 
-          if (!next || next <= after) throw new StorageError('STORAGE_UNAVAILABLE');
+          if (!next || next <= after) {
+            throw new StorageError('STORAGE_UNAVAILABLE');
+          }
 
           after = next;
         }
@@ -280,9 +305,13 @@ class NativeDialogStorage implements DialogStorage {
 
           dialogs.push(...page.dialogs);
 
-          if (!page.has_more) return dialogs;
+          if (!page.has_more) {
+            return dialogs;
+          }
 
-          if (page.nextOffset <= offset) throw new StorageError('STORAGE_UNAVAILABLE');
+          if (page.nextOffset <= offset) {
+            throw new StorageError('STORAGE_UNAVAILABLE');
+          }
 
           offset = page.nextOffset;
         }
@@ -324,7 +353,9 @@ class NativeDialogStorage implements DialogStorage {
 
             return value;
           } catch (error) {
-            if (!(error instanceof StorageError && error.code === 'STORAGE_CONFLICT')) throw error;
+            if (!(error instanceof StorageError && error.code === 'STORAGE_CONFLICT')) {
+              throw error;
+            }
           }
         }
 
@@ -350,14 +381,17 @@ class NativeDialogStorage implements DialogStorage {
 export async function openNativeDialogs(): Promise<DialogStorage> {
   const state = nativeRuntime.getSnapshot();
 
-  if (!state.dialogStorageVersion) throw new StorageError('STORAGE_VERSION_UNSUPPORTED');
+  if (!state.dialogStorageVersion) {
+    throw new StorageError('STORAGE_VERSION_UNSUPPORTED');
+  }
 
   const context = contextSchema.parse(
     await nativePlugin.getDialogStorageContext({ cycleId: state.cycleId }),
   );
 
-  if (context.cycleId !== nativeRuntime.getSnapshot().cycleId)
+  if (context.cycleId !== nativeRuntime.getSnapshot().cycleId) {
     throw new StorageError('STORAGE_STALE_CONTEXT');
+  }
 
   const scope = {
     serverOrigin: location.origin,
@@ -369,8 +403,9 @@ export async function openNativeDialogs(): Promise<DialogStorage> {
   let purgePending = context.purgePending;
 
   if (context.purgePending) {
-    for (const accountId of context.pendingWebPurges)
+    for (const accountId of context.pendingWebPurges) {
       await purgeAccount({ serverOrigin: location.origin, accountId });
+    }
 
     const cleaned = await IndexedDialogStorage.open(scope, context.epoch);
 
@@ -394,7 +429,9 @@ export async function openNativeDialogs(): Promise<DialogStorage> {
   if (context.adapter === 'indexeddb') {
     const storage = await IndexedDialogStorage.open(scope, context.epoch);
 
-    if (purgePending) storage.warning = 'Очистка прежнего локального кеша ещё не завершена.';
+    if (purgePending) {
+      storage.warning = 'Очистка прежнего локального кеша ещё не завершена.';
+    }
 
     return storage;
   }

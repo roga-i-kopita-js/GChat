@@ -23,6 +23,10 @@
 
 Обычный APNs-токен регистрируется NativeCore через device.apns_token после binding; Web получает только безопасный intent диалога. Настройки push.enable/disable используют обычные уведомления, не VoIP. UI/bridge, XCTest и Simulator-сборка не заменяют приёмку доставки и работы на физическом iPhone.
 
+## Тестовое приложение bridge
+
+[BridgeHarness](BridgeHarness/README.md) собирает отдельное приложение `GChat Bridge` с тем же Swift-плагином. Реализован нативный HTTP v1 по [API device](../../docs/web/device-api.md#профиль-native-http-первой-версии): URLSession без cookies/кеша/редиректов, лимит 8 МиБ, native-токен и отмена по requestId/циклу/сессии. Диагностический HTTPS-экран проверяет HTTP и существующие системные команды. SDK основного Web подключён к Fetch-совместимому адаптеру native HTTP; сеть WebView не используется. Добавлены нативные области Data/Temporary/Cache через тот же диспетчер: постоянные внутренние ссылки, usage и очистка Temporary с защитой живых владельцев. Добавлен navigation v1: проверка маршрутов, readiness/cycle, коррелированные результаты, вытеснение и дедупликация команд; Web-адаптер проверяется на Data router в harness. Добавлены Web-фасад StorageService, browser OPFS и подключение основных экранов к Data router. Публичная композиция device подключена в Web. Native media v1 поддерживает камеру View lifetime, preview под WKWebView, JPEG и потоковую запись H.264/MP4 в Data, чтение системной громкости/текущего выхода и системный выбор аудиомаршрута. Общие Call lifetime/PiP-компоненты подключены к настоящему владельцу DirectCalls в CallHarness, системная громкость доступна только при активном VoIP owner. Общий blocker реализован в Web. Основная оболочка сохраняет nativeCalls=false до Gate 1; физическая приёмка и интеграционный этап остаются по контракту. Query удалён из Web; контакты/admin используют loaders/actions, диалоги — live-модели runtime.
+
 ## Запуск
 
 Из корня репозитория:

@@ -9,6 +9,7 @@ export const prepareUpdate = 'gchat-prepare-update';
 export interface UpdateState {
   available: boolean;
   pending: boolean;
+  applying?: boolean;
   error: string;
 }
 
@@ -16,11 +17,29 @@ let state: UpdateState = { available: false, pending: false, error: '' };
 const listeners = new Set<() => void>();
 let waiting: ServiceWorker | null = null;
 let started = false;
+let generation = 0;
+let controller = new AbortController();
+const cleanup: (() => void)[] = [];
+
+export function stopUpdates(): void {
+  generation++;
+  started = false;
+  controller.abort();
+
+  for (const stop of cleanup.splice(0)) {
+    stop();
+  }
+
+  waiting = null;
+  set({ available: false, pending: false, applying: false, error: '' });
+}
 
 function set(patch: Partial<UpdateState>): void {
   state = { ...state, ...patch };
 
-  for (const listener of listeners) listener();
+  for (const listener of listeners) {
+    listener();
+  }
 }
 
 export const updateSnapshot = (): UpdateState => state;
@@ -42,58 +61,104 @@ export async function updateRequested(): Promise<boolean> {
 }
 
 export function startUpdates(): void {
-  if (started || !pwaSupported()) return;
+  if (started || !pwaSupported()) {
+    return;
+  }
 
   started = true;
+  controller = new AbortController();
+  const current = ++generation;
   const channel = new BroadcastChannel(updateChannel);
 
   channel.onmessage = (event: MessageEvent<unknown>): void => {
-    if (event.data === 'prepare') set({ pending: true });
+    if (event.data === 'prepare') {
+      set({ pending: true });
+    }
   };
-  setInterval((): void => {
-    if (state.pending)
+  const heartbeat = setInterval((): void => {
+    if (state.pending) {
       void updateRequested()
         .then((pending): void => {
-          if (!pending) set({ pending: false });
+          if (!pending) {
+            set({ pending: false });
+          }
         })
         .catch((): void => {});
+    }
   }, 1000);
+
+  cleanup.push((): void => {
+    clearInterval(heartbeat);
+    channel.close();
+  });
   let controlled = !!navigator.serviceWorker.controller;
 
-  navigator.serviceWorker.addEventListener('controllerchange', (): void => {
+  const controlledChange = (): void => {
     // First installation claims open clients too; only replacement reloads them.
-    if (controlled || state.pending) window.location.reload();
+    if (controlled || state.pending) {
+      window.location.reload();
+    }
 
     controlled = true;
-  });
+  };
+
+  navigator.serviceWorker.addEventListener('controllerchange', controlledChange);
+  cleanup.push((): void =>
+    navigator.serviceWorker.removeEventListener('controllerchange', controlledChange),
+  );
   void registerPwa()
     .then((registration): void => {
+      if (current !== generation) {
+        return;
+      }
+
       const inspect = (): void => {
         waiting = registration.waiting;
         set({ available: !!waiting });
       };
 
       inspect();
-      registration.addEventListener('updatefound', (): void => {
-        registration.installing?.addEventListener('statechange', inspect);
-      });
-      window.addEventListener('online', (): void => {
+      const update = (): void => {
         void registration.update().catch((): void => {});
-      });
-      document.addEventListener('visibilitychange', (): void => {
-        if (document.visibilityState === 'visible')
-          void registration.update().catch((): void => {});
+      };
+      const visible = (): void => {
+        if (document.visibilityState === 'visible') {
+          update();
+        }
+      };
+      const found = (): void => {
+        const installing = registration.installing;
+
+        installing?.addEventListener('statechange', inspect);
+        cleanup.push((): void => installing?.removeEventListener('statechange', inspect));
+      };
+
+      registration.addEventListener('updatefound', found);
+      window.addEventListener('online', update);
+      document.addEventListener('visibilitychange', visible);
+      cleanup.push((): void => {
+        registration.removeEventListener('updatefound', found);
+        window.removeEventListener('online', update);
+        document.removeEventListener('visibilitychange', visible);
       });
     })
     .catch((): void => {
+      if (current !== generation) {
+        return;
+      }
+
       set({ error: 'Не удалось подготовить офлайн-режим. Перезагрузите страницу для повтора.' });
     });
 }
 
 export async function applyUpdate(): Promise<void> {
-  if (!waiting || state.pending) return;
+  if (!waiting || state.pending) {
+    return;
+  }
 
   const worker = waiting;
+  const signal = controller.signal;
+  const current = generation;
 
   set({ pending: true, error: '' });
   const channel = new BroadcastChannel(updateChannel);
@@ -102,18 +167,30 @@ export async function applyUpdate(): Promise<void> {
     window.dispatchEvent(new Event(prepareUpdate));
   };
   // Queue the exclusive request before asking current owners to release their shared locks.
-  const request = navigator.locks.request(updateLock, async (): Promise<void> => {
-    if (worker.state !== 'installed')
+  const request = navigator.locks.request(updateLock, { signal }, async (): Promise<void> => {
+    set({ applying: true });
+
+    if (worker.state !== 'installed') {
       throw new Error('Сборка уже изменилась. Перезагрузите страницу.');
+    }
 
     await new Promise<void>((resolve, reject): void => {
+      const cancel = (): void => {
+        worker.removeEventListener('statechange', changed);
+        reject(new DOMException('Cancelled', 'AbortError'));
+      };
+
+      signal.addEventListener('abort', cancel, { once: true });
       const changed = (): void => {
         if (worker.state === 'activated' || worker.state === 'redundant') {
           worker.removeEventListener('statechange', changed);
+          signal.removeEventListener('abort', cancel);
 
-          if (worker.state === 'redundant')
+          if (worker.state === 'redundant') {
             reject(new Error('Не удалось активировать обновление.'));
-          else resolve();
+          } else {
+            resolve();
+          }
         }
       };
 
@@ -122,7 +199,13 @@ export async function applyUpdate(): Promise<void> {
     });
     window.location.reload();
     // Retain exclusion until this document is actually destroyed by navigation.
-    await new Promise<void>((): void => {});
+    await new Promise<void>((resolve): void => {
+      if (signal.aborted) {
+        resolve();
+      } else {
+        signal.addEventListener('abort', (): void => resolve(), { once: true });
+      }
+    });
   });
 
   notify();
@@ -131,7 +214,12 @@ export async function applyUpdate(): Promise<void> {
   try {
     await request;
   } catch (cause) {
+    if (current !== generation || signal.aborted) {
+      return;
+    }
+
     set({
+      applying: false,
       pending: false,
       error: cause instanceof Error ? cause.message : 'Не удалось обновить GChat.',
     });

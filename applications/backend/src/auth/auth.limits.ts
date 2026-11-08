@@ -22,8 +22,11 @@ export class AuthLimits {
         : this.config.getOrThrow<number>('AUTH_REFRESH_WINDOW_MS');
       const live = times.filter((entry): boolean => entry.time > now - window);
 
-      if (live.length) this.entries.set(name, live);
-      else this.entries.delete(name);
+      if (live.length) {
+        this.entries.set(name, live);
+      } else {
+        this.entries.delete(name);
+      }
     }
 
     const name = `${kind}:${key}`;
@@ -35,12 +38,15 @@ export class AuthLimits {
       kind === 'login' ? 'AUTH_LOGIN_MAX_FAILURES' : 'AUTH_REFRESH_MAX_OPERATIONS',
     );
 
-    if (operationId && times.some((entry): boolean => entry.operationId === operationId)) return;
+    if (operationId && times.some((entry): boolean => entry.operationId === operationId)) {
+      return;
+    }
 
-    if (times.length >= max)
+    if (times.length >= max) {
       throw this.error.rateLimited({
         retryAfterSeconds: Math.max(1, Math.ceil((times[0]!.time + window - now) / 1000)),
       });
+    }
 
     if (consume) {
       times.push({ time: now, operationId });

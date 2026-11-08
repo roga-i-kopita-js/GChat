@@ -19,7 +19,9 @@ export class AuthSessions {
     try {
       return await this.database.db.transaction(action);
     } catch (cause) {
-      if (isDatabaseUnavailable(cause)) throw this.error.serviceUnavailable({ cause });
+      if (isDatabaseUnavailable(cause)) {
+        throw this.error.serviceUnavailable({ cause });
+      }
 
       throw cause;
     }
@@ -40,10 +42,11 @@ export class AuthSessions {
     tx?: DatabaseTransaction,
     lock = false,
   ): Promise<StoredSession | undefined> {
-    if (!tx)
+    if (!tx) {
       return this.transaction((connection): Promise<StoredSession | undefined> =>
         this.read(sid, connection),
       );
+    }
 
     const query = tx.select().from(authSessions).where(eq(authSessions.id, sid));
 

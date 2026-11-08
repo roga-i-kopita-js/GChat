@@ -19,7 +19,9 @@ export class DirectCallsWorker implements OnApplicationBootstrap, OnModuleDestro
     await this.calls.sweep(true, true);
     await this.calls.restoreReservations();
     this.timer = setInterval((): void => {
-      if (this.running) return;
+      if (this.running) {
+        return;
+      }
 
       this.running = this.tick()
         .catch((): void => {
@@ -36,9 +38,13 @@ export class DirectCallsWorker implements OnApplicationBootstrap, OnModuleDestro
     this.cycles++;
     await this.calls.sweep(this.cycles % 5 === 0);
 
-    if (this.cycles % 10 === 0) await this.calls.restoreReservations();
+    if (this.cycles % 10 === 0) {
+      await this.calls.restoreReservations();
+    }
 
-    if (this.cycles % 86400 === 0) await this.calls.cleanup();
+    if (this.cycles % 86400 === 0) {
+      await this.calls.cleanup();
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

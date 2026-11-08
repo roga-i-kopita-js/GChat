@@ -30,7 +30,9 @@ export class WebPushClient {
   ): Promise<WebPushResult> {
     const remaining = Date.parse(deadline) - Date.now();
 
-    if (remaining <= 0 || !validWebPushAddress(address)) return { status: 410 };
+    if (remaining <= 0 || !validWebPushAddress(address)) {
+      return { status: 410 };
+    }
 
     try {
       const result = await webPush.sendNotification(

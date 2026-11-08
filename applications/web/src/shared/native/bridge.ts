@@ -1,11 +1,15 @@
 import { Capacitor, type PluginListenerHandle, registerPlugin } from '@capacitor/core';
 import { z } from 'zod';
 
-import { ClientError } from '../api/client';
+import { ClientError } from '../api/client-error';
+import { NativeHttpTransport } from '../device/http';
 
 export const bridgeVersion = 1;
 
 interface NativePlugin {
+  mediaCommand(options: Record<string, unknown>): Promise<unknown>;
+  httpRequest(options: Record<string, unknown>): Promise<unknown>;
+  httpCancel(options: Record<string, unknown>): Promise<unknown>;
   getDialogStorageContext(options: { cycleId: string }): Promise<unknown>;
   dialogStorage(options: {
     version: number;
@@ -25,6 +29,8 @@ interface NativePlugin {
     command: string;
     args: unknown;
   }): Promise<unknown>;
+  navigationReady(options: Record<string, unknown>): Promise<void>;
+  completeNavigation(options: Record<string, unknown>): Promise<void>;
   getCapabilities(): Promise<unknown>;
   webReady(options: { bridgeVersion: number; cycleId: string }): Promise<void>;
   login(options: { serverUrl: string; login: string; password: string }): Promise<void>;
@@ -36,6 +42,8 @@ interface NativePlugin {
 }
 
 export const nativePlugin = registerPlugin<NativePlugin>('GChat');
+
+export const nativeHttp = new NativeHttpTransport(nativePlugin);
 
 export interface WsRequest {
   type: string;
@@ -111,10 +119,13 @@ export function serverUrl(value: string): string {
     url.pathname !== '/' ||
     url.search ||
     url.hash
-  )
+  ) {
     throw bridgeError({ code: 'VALIDATION_ERROR' });
+  }
 
-  if (url.origin !== window.location.origin) throw bridgeError({ code: 'VALIDATION_ERROR' });
+  if (url.origin !== window.location.origin) {
+    throw bridgeError({ code: 'VALIDATION_ERROR' });
+  }
 
   return url.origin;
 }

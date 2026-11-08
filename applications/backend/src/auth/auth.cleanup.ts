@@ -19,7 +19,9 @@ export class AuthCleanup implements OnModuleDestroy {
 
   @Cron(CronExpression.EVERY_MINUTE, { waitForCompletion: true })
   async cleanup(): Promise<void> {
-    if (this.stopping || this.active) return;
+    if (this.stopping || this.active) {
+      return;
+    }
 
     const task = this.run();
 
@@ -46,7 +48,9 @@ export class AuthCleanup implements OnModuleDestroy {
           sql`update gchat_auth_sessions set rotation_request_id=null, rotation_token_hash=null, rotation_encrypted=null, rotation_expires_at=null where id in (select id from gchat_auth_sessions where rotation_expires_at <= clock_timestamp() order by rotation_expires_at limit 100 for update skip locked) and rotation_expires_at <= clock_timestamp()`,
           sql`update gchat_auth_sessions set ws_ticket_window_started_at=null, ws_ticket_count=0 where id in (select id from gchat_auth_sessions where ws_ticket_window_started_at <= clock_timestamp() - interval '60 seconds' order by ws_ticket_window_started_at limit 100 for update skip locked) and ws_ticket_window_started_at <= clock_timestamp() - interval '60 seconds'`,
         ]) {
-          if (this.stopping || context.signal.aborted) return;
+          if (this.stopping || context.signal.aborted) {
+            return;
+          }
 
           context.assertHeld();
           await this.database.db.transaction(async (tx): Promise<void> => {

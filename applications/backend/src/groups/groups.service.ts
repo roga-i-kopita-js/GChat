@@ -43,14 +43,18 @@ export class GroupsService {
     firstUserId: string,
     secondUserId: string,
   ): Promise<boolean> {
-    if (firstUserId === secondUserId) return false;
+    if (firstUserId === secondUserId) {
+      return false;
+    }
 
     return this.repository.lockCommonGroup(tx, firstUserId, secondUserId);
   }
 
   /** Checks membership only, not account activity, sessions or call availability. */
   async hasCommonGroup(firstUserId: string, secondUserId: string): Promise<boolean> {
-    if (firstUserId === secondUserId) return false;
+    if (firstUserId === secondUserId) {
+      return false;
+    }
 
     return this.repository.hasCommonGroup(firstUserId, secondUserId);
   }

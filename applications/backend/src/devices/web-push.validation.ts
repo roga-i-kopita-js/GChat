@@ -23,11 +23,13 @@ export function validWebPushAddress(address: WebPushAddress): boolean {
       url.password ||
       url.hash ||
       !(allowed.includes(url.hostname) || url.hostname.endsWith('.push.apple.com'))
-    )
+    ) {
       return false;
+    }
 
-    if (!/^[A-Za-z0-9_-]{87}$/.test(address.p256dh) || !/^[A-Za-z0-9_-]{22}$/.test(address.auth))
+    if (!/^[A-Za-z0-9_-]{87}$/.test(address.p256dh) || !/^[A-Za-z0-9_-]{22}$/.test(address.auth)) {
       return false;
+    }
 
     const key = Buffer.from(address.p256dh, 'base64url');
 

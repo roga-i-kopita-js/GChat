@@ -40,7 +40,9 @@ export class DirectCallsPresence {
         arguments: [callId],
       });
 
-      if (typeof result !== 'number') throw this.error.serviceUnavailable();
+      if (typeof result !== 'number') {
+        throw this.error.serviceUnavailable();
+      }
 
       return result;
     } catch (cause) {

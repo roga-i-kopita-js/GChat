@@ -17,15 +17,17 @@ export function parseAdminArgs(args: string[]): {
     allowPositionals: false,
   });
 
-  if (!values['display-name'] || !values.login)
+  if (!values['display-name'] || !values.login) {
     throw new Error('Required: --display-name and --login');
+  }
 
   return { display_name: values['display-name'], login: values.login, group: values.group };
 }
 
 export async function readHiddenPassword(): Promise<string> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY)
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new Error('Interactive terminal required');
+  }
 
   const input = process.stdin;
   const wasRaw = input.isRaw;
@@ -48,8 +50,11 @@ export async function readHiddenPassword(): Promise<string> {
         } else if (key.name === 'return' || key.name === 'enter') {
           finish();
           resolve(password);
-        } else if (key.name === 'backspace') password = [...password].slice(0, -1).join('');
-        else if (text && !key.ctrl && !/[\x00-\x1f\x7f]/.test(text)) password += text;
+        } else if (key.name === 'backspace') {
+          password = [...password].slice(0, -1).join('');
+        } else if (text && !key.ctrl && !/[\x00-\x1f\x7f]/.test(text)) {
+          password += text;
+        }
       };
 
       input.on('keypress', onKey);

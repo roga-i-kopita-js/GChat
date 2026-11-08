@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { BrowserStorage, type StorageAreaName } from './browser-storage';
 import { argsSchemas, DeviceError, type FileRef, type Metadata } from './contract';
 
 declare global {
@@ -21,6 +22,8 @@ declare global {
   }
 }
 interface Entry {
+  captureMime?: string;
+  internal?: { area: StorageAreaName; components: string[] };
   ref: FileRef;
   handle?: FileSystemHandle;
   file?: File;
@@ -51,9 +54,16 @@ function isFile(handle: FileSystemHandle): handle is FileSystemFileHandle {
 function isDirectory(handle: FileSystemHandle): handle is FileSystemDirectoryHandle {
   return 'getDirectoryHandle' in handle;
 }
+const internalStored = z.strictObject({
+  captureMime: z.string().optional(),
+  id: z.uuid(),
+  ref: z.object({ name: z.string(), kind: z.enum(['file', 'directory']) }),
+  internal: z.strictObject({ area: z.enum(['data', 'cache']), components: z.array(z.string()) }),
+});
 const stored = z.object({ id: z.uuid(), handle: z.custom<FileSystemHandle>(isHandle) });
 
 export class BrowserFiles {
+  private storage = new BrowserStorage();
   private entries = new Map<string, Entry>();
   private writes = new Map<string, Write>();
   private loading?: Promise<void>;
@@ -66,7 +76,9 @@ export class BrowserFiles {
   constructor(private readonly changed: () => void) {}
 
   private async db(): Promise<IDBDatabase> {
-    if (this.database) return this.database;
+    if (this.database) {
+      return this.database;
+    }
 
     const db = await new Promise<IDBDatabase>((resolve, reject): void => {
       const request = indexedDB.open('gchat-device-files', 1);
@@ -107,6 +119,28 @@ export class BrowserFiles {
         });
 
         for (const value of values) {
+          const internal = internalStored.safeParse(value);
+
+          if (internal.success) {
+            const { id, ref, internal: path } = internal.data;
+
+            try {
+              const handle = await this.storage.resolve(path.area, path.components, ref.kind);
+
+              this.entries.set(id, {
+                ref: { id, ...ref, persistence: 'persistent' },
+                handle,
+                root: id,
+                internal: path,
+                captureMime: internal.data.captureMime,
+              });
+            } catch {
+              /* Missing internal files are not restored as usable handles. */
+            }
+
+            continue;
+          }
+
           const item = stored.safeParse(value);
 
           if (item.success) {
@@ -119,6 +153,27 @@ export class BrowserFiles {
             });
           }
         }
+
+        for (const entry of this.entries.values()) {
+          if (!entry.internal) {
+            continue;
+          }
+
+          const path = entry.internal;
+          const parent = [...this.entries.values()].find(
+            (candidate): boolean =>
+              candidate.internal?.area === path.area &&
+              JSON.stringify(candidate.internal.components) ===
+                JSON.stringify(path.components.slice(0, -1)),
+          );
+          const root = [...this.entries.values()].find(
+            (candidate): boolean =>
+              candidate.internal?.area === path.area && candidate.internal.components.length === 0,
+          );
+
+          entry.parent = path.components.length ? parent?.ref.id : undefined;
+          entry.root = root?.ref.id ?? entry.ref.id;
+        }
       } catch {
         /* Private browsing can still provide session-only files. */
       }
@@ -128,7 +183,9 @@ export class BrowserFiles {
           const root = await navigator.storage.getDirectory();
 
           for await (const entry of root.values()) {
-            if (!/^gchat-write-[0-9a-f-]{36}$/.test(entry.name)) continue;
+            if (!/^gchat-write-[0-9a-f-]{36}$/.test(entry.name)) {
+              continue;
+            }
 
             const id = entry.name.slice('gchat-write-'.length);
 
@@ -136,7 +193,9 @@ export class BrowserFiles {
               `gchat-device-write-${id}`,
               { ifAvailable: true },
               async (lock): Promise<void> => {
-                if (lock) await root.removeEntry(entry.name).catch((): void => {});
+                if (lock) {
+                  await root.removeEntry(entry.name).catch((): void => {});
+                }
               },
             );
           }
@@ -151,8 +210,9 @@ export class BrowserFiles {
   async count(): Promise<number> {
     await this.load();
 
-    return [...this.entries.values()].filter((entry): boolean => entry.root === entry.ref.id)
-      .length;
+    return [...this.entries.values()].filter(
+      (entry): boolean => !entry.internal && entry.root === entry.ref.id,
+    ).length;
   }
 
   private touch(): void {
@@ -167,10 +227,7 @@ export class BrowserFiles {
       if (entry.handle && (await entry.handle.isSameEntry(handle).catch((): boolean => false))) {
         entry.handle = handle;
 
-        if (entry.ref.persistence === 'persistent')
-          await this.transaction((store): void => {
-            store.put({ id: entry.ref.id, handle });
-          });
+        await this.persist(entry);
 
         return entry;
       }
@@ -178,14 +235,21 @@ export class BrowserFiles {
 
     const id = crypto.randomUUID();
     const root = parent ? this.entry(parent).root : id;
+    const owner = parent ? this.entry(parent).internal : undefined;
     const entry: Entry = {
       ref: { id, name: handle.name, kind: handle.kind, persistence: 'session' },
       handle,
       parent,
       root,
+      ...(owner
+        ? { internal: { area: owner.area, components: [...owner.components, handle.name] } }
+        : {}),
     };
 
-    if (!parent) {
+    if (entry.internal) {
+      entry.ref.persistence = entry.internal.area === 'temporary' ? 'session' : 'persistent';
+      await this.persist(entry);
+    } else if (!parent) {
       try {
         await this.transaction((store): void => {
           store.put({ id, handle });
@@ -202,10 +266,35 @@ export class BrowserFiles {
     return entry;
   }
 
+  private async persist(entry: Entry): Promise<void> {
+    if (entry.internal) {
+      if (entry.internal.area === 'temporary') {
+        await this.transaction((store): void => {
+          store.delete(entry.ref.id);
+        });
+      } else {
+        await this.transaction((store): void => {
+          store.put({
+            id: entry.ref.id,
+            ref: { name: entry.ref.name, kind: entry.ref.kind },
+            internal: entry.internal,
+            ...(entry.captureMime ? { captureMime: entry.captureMime } : {}),
+          });
+        });
+      }
+    } else if (entry.ref.persistence === 'persistent') {
+      await this.transaction((store): void => {
+        store.put({ id: entry.ref.id, handle: entry.handle });
+      });
+    }
+  }
+
   private entry(id: string): Entry {
     const entry = this.entries.get(id);
 
-    if (!entry) throw new DeviceError('NOT_FOUND');
+    if (!entry) {
+      throw new DeviceError('NOT_FOUND');
+    }
 
     return entry;
   }
@@ -213,35 +302,58 @@ export class BrowserFiles {
   private async authorize(entry: Entry, mode: 'read' | 'readwrite', prompt = false): Promise<void> {
     const handle = entry.handle;
 
-    if (!handle?.queryPermission) return;
+    if (!handle?.queryPermission) {
+      return;
+    }
 
     let permission = await handle.queryPermission({ mode });
 
-    if (permission === 'prompt' && prompt && handle.requestPermission)
+    if (permission === 'prompt' && prompt && handle.requestPermission) {
       permission = await handle.requestPermission({ mode });
+    }
 
-    if (permission !== 'granted') throw new DeviceError('ACCESS_LOST');
+    if (permission !== 'granted') {
+      throw new DeviceError('ACCESS_LOST');
+    }
   }
 
   private async file(entry: Entry): Promise<File> {
     await this.authorize(entry, 'read');
 
-    if (entry.file) return entry.file;
+    if (entry.file) {
+      return entry.file;
+    }
 
-    if (!entry.handle || !isFile(entry.handle)) throw new DeviceError('WRONG_TYPE');
+    if (!entry.handle || !isFile(entry.handle)) {
+      throw new DeviceError('WRONG_TYPE');
+    }
 
     return entry.handle.getFile();
   }
 
   private directory(entry: Entry): FileSystemDirectoryHandle {
-    if (!entry.handle || !isDirectory(entry.handle)) throw new DeviceError('WRONG_TYPE');
+    if (!entry.handle || !isDirectory(entry.handle)) {
+      throw new DeviceError('WRONG_TYPE');
+    }
 
     return entry.handle;
   }
 
+  async setCaptureMime(id: string, mime: string): Promise<void> {
+    const entry = this.entry(id);
+
+    if (entry.internal?.area !== 'data' || entry.ref.kind !== 'file') {
+      throw new DeviceError('INVALID_ARGUMENT');
+    }
+
+    entry.captureMime = mime;
+    await this.persist(entry);
+  }
+
   private async metadata(entry: Entry): Promise<Metadata> {
-    if (entry.ref.kind === 'directory')
+    if (entry.ref.kind === 'directory') {
       return { ref: entry.ref, size: null, modifiedAt: null, mimeType: null, version: null };
+    }
 
     const file = await this.file(entry);
 
@@ -249,7 +361,7 @@ export class BrowserFiles {
       ref: entry.ref,
       size: file.size,
       modifiedAt: new Date(file.lastModified).toISOString(),
-      mimeType: file.type || null,
+      mimeType: entry.captureMime || file.type || null,
       version: `${file.size}:${file.lastModified}`,
     };
   }
@@ -279,7 +391,9 @@ export class BrowserFiles {
           })(),
         );
 
-      if (!parsed.success) throw new DeviceError('CONFLICT');
+      if (!parsed.success) {
+        throw new DeviceError('CONFLICT');
+      }
 
       offset = parsed.data.offset;
     }
@@ -317,23 +431,30 @@ export class BrowserFiles {
         try {
           await directory.getDirectoryHandle(name);
         } catch (second) {
-          if (second instanceof DOMException && second.name === 'NotFoundError') return;
+          if (second instanceof DOMException && second.name === 'NotFoundError') {
+            return;
+          }
 
           throw second;
         }
-      } else if (!(error instanceof DOMException && error.name === 'TypeMismatchError'))
+      } else if (!(error instanceof DOMException && error.name === 'TypeMismatchError')) {
         throw error;
+      }
     }
 
     throw new DeviceError('ALREADY_EXISTS');
   }
 
   private ensure(epoch: number): void {
-    if (epoch !== this.epoch) throw new DeviceError('CANCELLED');
+    if (epoch !== this.epoch) {
+      throw new DeviceError('CANCELLED');
+    }
   }
 
   private async choose<T>(action: (current: () => void) => Promise<T>): Promise<T> {
-    if (this.dialog) throw new DeviceError('BUSY');
+    if (this.dialog) {
+      throw new DeviceError('BUSY');
+    }
 
     this.dialog = true;
     const epoch = this.epoch;
@@ -341,7 +462,9 @@ export class BrowserFiles {
     try {
       const result = await action((): void => this.ensure(epoch));
 
-      if (epoch !== this.epoch) throw new DeviceError('CANCELLED');
+      if (epoch !== this.epoch) {
+        throw new DeviceError('CANCELLED');
+      }
 
       return result;
     } finally {
@@ -434,9 +557,11 @@ export class BrowserFiles {
       });
     }
 
-    if (command === 'directory.pick')
+    if (command === 'directory.pick') {
       return this.choose(async (current): Promise<unknown> => {
-        if (!window.showDirectoryPicker) throw new DeviceError('UNSUPPORTED');
+        if (!window.showDirectoryPicker) {
+          throw new DeviceError('UNSUPPORTED');
+        }
 
         const handle = await window.showDirectoryPicker();
 
@@ -444,12 +569,15 @@ export class BrowserFiles {
 
         return { outcome: 'completed', entry: await this.metadata(await this.retain(handle)) };
       });
+    }
 
     if (command === 'file.saveAs') {
       const args = argsSchemas['file.saveAs'].parse(raw);
 
       return this.choose(async (current): Promise<unknown> => {
-        if (!window.showSaveFilePicker) throw new DeviceError('UNSUPPORTED');
+        if (!window.showSaveFilePicker) {
+          throw new DeviceError('UNSUPPORTED');
+        }
 
         const pending = window.showSaveFilePicker({ suggestedName: args.suggestedName });
         const target = await pending;
@@ -474,12 +602,44 @@ export class BrowserFiles {
     this.ensure(epoch);
 
     switch (command) {
+      case 'storage.getRoot': {
+        const { area } = argsSchemas[command].parse(raw);
+        const handle = await this.storage.root(area);
+
+        this.ensure(epoch);
+
+        for (const entry of this.entries.values()) {
+          if (entry.internal?.area === area && entry.internal.components.length === 0) {
+            return entry.ref;
+          }
+        }
+
+        const id = crypto.randomUUID();
+        const entry: Entry = {
+          ref: {
+            id,
+            name: area,
+            kind: 'directory',
+            persistence: area === 'temporary' ? 'session' : 'persistent',
+          },
+          handle,
+          root: id,
+          internal: { area, components: [] },
+        };
+
+        await this.persist(entry);
+        this.entries.set(id, entry);
+
+        return entry.ref;
+      }
+      case 'storage.getUsage':
+        return this.storage.usage(argsSchemas[command].parse(raw).area);
       case 'file.access.list': {
         const a = argsSchemas[command].parse(raw);
 
         return this.page(
           [...this.entries.values()]
-            .filter((e): boolean => e.root === e.ref.id)
+            .filter((e): boolean => !e.internal && e.root === e.ref.id)
             .map((e): FileRef => e.ref),
           a.cursor,
           a.limit,
@@ -490,6 +650,10 @@ export class BrowserFiles {
         const a = argsSchemas[command].parse(raw);
         const entry = this.entry(a.id);
 
+        if (entry.internal) {
+          throw new DeviceError('INVALID_ARGUMENT');
+        }
+
         await this.authorize(entry, 'read', true);
 
         return this.metadata(entry);
@@ -498,16 +662,27 @@ export class BrowserFiles {
         const a = argsSchemas[command].parse(raw);
         const entry = this.entry(a.id);
 
-        if (entry.ref.persistence === 'persistent')
+        if (entry.internal) {
+          throw new DeviceError('INVALID_ARGUMENT');
+        }
+
+        if (entry.ref.persistence === 'persistent') {
           await this.transaction((store): void => {
             store.delete(a.id);
           });
+        }
 
-        for (const [writeId, write] of this.writes)
-          if (write.entry.root === entry.root) await this.perform('file.write.abort', { writeId });
+        for (const [writeId, write] of this.writes) {
+          if (write.entry.root === entry.root) {
+            await this.perform('file.write.abort', { writeId });
+          }
+        }
 
-        for (const [id, value] of this.entries)
-          if (id === a.id || value.root === a.id) this.entries.delete(id);
+        for (const [id, value] of this.entries) {
+          if (id === a.id || value.root === a.id) {
+            this.entries.delete(id);
+          }
+        }
 
         this.touch();
 
@@ -522,8 +697,9 @@ export class BrowserFiles {
         await this.authorize(entry, 'read');
         const items: Metadata[] = [];
 
-        for await (const handle of this.directory(entry).values())
+        for await (const handle of this.directory(entry).values()) {
           items.push(await this.metadata(await this.retain(handle, a.directoryId)));
+        }
 
         items.sort((x, y): number => x.ref.name.localeCompare(y.ref.name));
 
@@ -535,7 +711,9 @@ export class BrowserFiles {
         const bytes = new Uint8Array(await file.slice(a.offset, a.offset + a.length).arrayBuffer());
         let binary = '';
 
-        for (const byte of bytes) binary += String.fromCharCode(byte);
+        for (const byte of bytes) {
+          binary += String.fromCharCode(byte);
+        }
 
         return {
           dataBase64: btoa(binary),
@@ -568,19 +746,24 @@ export class BrowserFiles {
         await this.authorize(entry, 'readwrite', true);
         this.ensure(epoch);
 
-        if (!entry.handle || !isFile(entry.handle)) throw new DeviceError('UNSUPPORTED');
+        if (!entry.handle || !isFile(entry.handle)) {
+          throw new DeviceError('UNSUPPORTED');
+        }
 
-        if ([...this.writes.values()].some((w): boolean => w.entry === entry))
+        if ([...this.writes.values()].some((w): boolean => w.entry === entry)) {
           throw new DeviceError('BUSY');
+        }
 
         const source = await this.file(entry);
         const version = `${source.size}:${source.lastModified}`;
 
-        if (a.expectedVersion !== null && version !== a.expectedVersion)
+        if (a.expectedVersion !== null && version !== a.expectedVersion) {
           throw new DeviceError('CONFLICT');
+        }
 
-        if (!navigator.storage?.getDirectory || !navigator.locks)
+        if (!navigator.storage?.getDirectory || !navigator.locks) {
           throw new DeviceError('UNSUPPORTED');
+        }
 
         const writeId = crypto.randomUUID();
         const releaseTarget = await this.acquire(`target-${entry.ref.id}`);
@@ -592,7 +775,9 @@ export class BrowserFiles {
           const tempName = `gchat-write-${writeId}`;
           const temp = await root.getFileHandle(tempName, { create: true });
 
-          if (a.mode === 'update') await source.stream().pipeTo(await temp.createWritable());
+          if (a.mode === 'update') {
+            await source.stream().pipeTo(await temp.createWritable());
+          }
 
           const writer = await temp.createWritable({ keepExistingData: a.mode === 'update' });
 
@@ -629,12 +814,15 @@ export class BrowserFiles {
         const a = argsSchemas[command].parse(raw);
         const write = this.writes.get(a.writeId);
 
-        if (!write) throw new DeviceError('NOT_FOUND');
+        if (!write) {
+          throw new DeviceError('NOT_FOUND');
+        }
 
         const bytes = Uint8Array.from(atob(a.dataBase64), (c): number => c.charCodeAt(0));
 
-        if (bytes.length > 262144 || a.offset > write.size)
+        if (bytes.length > 262144 || a.offset > write.size) {
           throw new DeviceError('INVALID_ARGUMENT');
+        }
 
         await write.writer.write({ type: 'write', position: a.offset, data: bytes });
         write.size = Math.max(write.size, a.offset + bytes.length);
@@ -645,13 +833,16 @@ export class BrowserFiles {
         const a = argsSchemas[command].parse(raw);
         const write = this.writes.get(a.writeId);
 
-        if (!write) throw new DeviceError('NOT_FOUND');
+        if (!write) {
+          throw new DeviceError('NOT_FOUND');
+        }
 
         if (
           write.expected !== null &&
           (await this.metadata(write.entry)).version !== write.expected
-        )
+        ) {
           throw new DeviceError('CONFLICT');
+        }
 
         this.ensure(epoch);
         await write.writer.close();
@@ -660,7 +851,9 @@ export class BrowserFiles {
           this.ensure(epoch);
           const handle = write.entry.handle;
 
-          if (!handle || !isFile(handle)) throw new DeviceError('WRONG_TYPE');
+          if (!handle || !isFile(handle)) {
+            throw new DeviceError('WRONG_TYPE');
+          }
 
           await (await write.temp.getFile()).stream().pipeTo(await handle.createWritable());
         } catch {
@@ -718,6 +911,8 @@ export class BrowserFiles {
         this.ensure(epoch);
         const dir = this.directory(destination);
 
+        this.preventSubtree(source, destination);
+
         await this.absent(dir, a.name);
         const created = await this.copy(source, dir, a.name, a.destinationDirectoryId);
 
@@ -729,12 +924,19 @@ export class BrowserFiles {
       case 'file.rename': {
         const a = argsSchemas[command].parse(raw);
         const source = this.entry(a.id);
+
+        if (source.internal?.components.length === 0) {
+          throw new DeviceError('INVALID_ARGUMENT');
+        }
+
         const parentId =
           command === 'file.move'
             ? argsSchemas['file.move'].parse(raw).destinationDirectoryId
             : source.parent;
 
-        if (!parentId || !source.handle?.move) throw new DeviceError('UNSUPPORTED');
+        if (!parentId || !source.handle?.move) {
+          throw new DeviceError('UNSUPPORTED');
+        }
 
         const destination = this.entry(parentId);
         const dir = this.directory(destination);
@@ -742,17 +944,45 @@ export class BrowserFiles {
         await this.authorize(source, 'readwrite', true);
         await this.authorize(destination, 'readwrite', true);
         this.ensure(epoch);
+        this.preventSubtree(source, destination);
         await this.absent(dir, a.name);
         await source.handle.move(dir, a.name);
+        const previousInternal = source.internal;
+        const targetInternal = destination.internal;
+
         source.parent = parentId;
         source.ref.name = a.name;
+        source.root = destination.root;
+        source.internal = targetInternal
+          ? { area: targetInternal.area, components: [...targetInternal.components, a.name] }
+          : undefined;
+        source.ref.persistence =
+          source.internal?.area === 'temporary' ||
+          (!source.internal && destination.ref.persistence === 'session')
+            ? 'session'
+            : 'persistent';
+        await this.persist(source);
 
-        if (source.root !== source.ref.id) source.root = destination.root;
+        if (previousInternal) {
+          for (const entry of this.entries.values()) {
+            if (
+              entry === source ||
+              entry.internal?.area !== previousInternal.area ||
+              !this.isPrefix(previousInternal.components, entry.internal.components)
+            ) {
+              continue;
+            }
 
-        if (source.ref.persistence === 'persistent')
-          await this.transaction((store): void => {
-            store.put({ id: source.ref.id, handle: source.handle });
-          });
+            const tail = entry.internal.components.slice(previousInternal.components.length);
+
+            entry.internal = source.internal
+              ? { area: source.internal.area, components: [...source.internal.components, ...tail] }
+              : undefined;
+            entry.root = source.root;
+            entry.ref.persistence = source.ref.persistence;
+            await this.persist(entry);
+          }
+        }
 
         this.touch();
 
@@ -762,7 +992,13 @@ export class BrowserFiles {
         const a = argsSchemas[command].parse(raw);
         const entry = this.entry(a.id);
 
-        if (!entry.parent) throw new DeviceError('UNSUPPORTED');
+        if (entry.internal?.components.length === 0) {
+          throw new DeviceError('INVALID_ARGUMENT');
+        }
+
+        if (!entry.parent) {
+          throw new DeviceError('UNSUPPORTED');
+        }
 
         const parent = this.entry(entry.parent);
 
@@ -770,8 +1006,27 @@ export class BrowserFiles {
         this.ensure(epoch);
         await this.directory(parent).removeEntry(entry.ref.name, { recursive: a.recursive });
 
-        for (const [id, value] of this.entries)
-          if (id === a.id || value.parent === a.id) this.entries.delete(id);
+        const removed = [...this.entries.values()].filter(
+          (value): boolean =>
+            value.ref.id === a.id ||
+            (entry.internal && value.internal?.area === entry.internal.area
+              ? this.isPrefix(entry.internal.components, value.internal.components)
+              : this.descends(value, entry.ref.id)),
+        );
+
+        await this.transaction((store): void => {
+          for (const value of removed) {
+            store.delete(value.ref.id);
+          }
+        }).catch((error): void => {
+          if (entry.internal) {
+            throw error;
+          }
+        });
+
+        for (const value of removed) {
+          this.entries.delete(value.ref.id);
+        }
 
         this.touch();
 
@@ -779,6 +1034,62 @@ export class BrowserFiles {
       }
       default:
         throw new DeviceError('UNSUPPORTED');
+    }
+  }
+
+  private isPrefix(parent: string[], child: string[]): boolean {
+    return (
+      parent.length <= child.length && parent.every((part, index): boolean => part === child[index])
+    );
+  }
+
+  private descends(entry: Entry, parent: string): boolean {
+    const visited = new Set<string>();
+    let current = entry;
+
+    while (current.parent && !visited.has(current.ref.id)) {
+      if (current.parent === parent) {
+        return true;
+      }
+
+      visited.add(current.ref.id);
+      const next = this.entries.get(current.parent);
+
+      if (!next) {
+        break;
+      }
+
+      current = next;
+    }
+
+    return false;
+  }
+
+  private preventSubtree(source: Entry, destination: Entry): void {
+    if (
+      source.ref.id === destination.ref.id ||
+      this.descends(destination, source.ref.id) ||
+      (source.internal &&
+        destination.internal?.area === source.internal.area &&
+        this.isPrefix(source.internal.components, destination.internal.components))
+    ) {
+      throw new DeviceError('INVALID_ARGUMENT');
+    }
+  }
+
+  async stop(): Promise<void> {
+    this.epoch++;
+
+    for (const writeId of [...this.writes.keys()]) {
+      await this.perform('file.write.abort', { writeId });
+    }
+
+    await this.storage.stop();
+
+    for (const [id, entry] of this.entries) {
+      if (entry.internal?.area === 'temporary') {
+        this.entries.delete(id);
+      }
     }
   }
 
@@ -801,13 +1112,14 @@ export class BrowserFiles {
 
         created = await this.retain(target, parent);
 
-        for await (const child of this.directory(source).values())
+        for await (const child of this.directory(source).values()) {
           await this.copy(
             await this.retain(child, source.ref.id),
             target,
             child.name,
             created.ref.id,
           );
+        }
       }
 
       return created;
@@ -822,7 +1134,8 @@ export class BrowserFiles {
   reset(): void {
     this.epoch++;
 
-    for (const [writeId] of this.writes)
+    for (const [writeId] of this.writes) {
       void this.perform('file.write.abort', { writeId }).catch((): void => {});
+    }
   }
 }

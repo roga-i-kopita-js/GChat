@@ -2,8 +2,15 @@ import { ApiError, type GroupsResponseDto } from '@gchat/backend-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { errorMessage, retryAfter } from '../../shared/api/client';
-import type { Session } from './session';
-import { identity, login, logout, readSession, request, saveSession } from './session';
+import type { Session } from '../../shared/session/session';
+import {
+  identity,
+  login,
+  logout,
+  readSession,
+  request,
+  saveSession,
+} from '../../shared/session/session';
 
 function session(exp = Date.now() / 1000 + 120, lifetime = 120, sid = 'session'): Session {
   const jwt =
@@ -103,8 +110,9 @@ describe('browser session', (): void => {
       vi.fn(async (path: string): Promise<Response> => {
         paths.push(path);
 
-        if (path === '/api/auth/refresh')
+        if (path === '/api/auth/refresh') {
           return new Response(JSON.stringify(session(Date.now() / 1000 + 15, 15)));
+        }
 
         if (expired) {
           expired = false;
@@ -223,7 +231,9 @@ it('keeps SDK error metadata and Retry-After available to reconnect policy', asy
 
   expect(failure).toBeInstanceOf(ApiError);
 
-  if (!(failure instanceof ApiError)) throw new Error('Expected SDK error');
+  if (!(failure instanceof ApiError)) {
+    throw new Error('Expected SDK error');
+  }
 
   expect(failure.status).toBe(429);
   expect(failure.body).toEqual(body);
@@ -316,7 +326,9 @@ it('clears an invalid session on the single retry and does not refresh repeatedl
     vi.fn(async (path: string): Promise<Response> => {
       calls++;
 
-      if (path === '/api/auth/refresh') return json(session());
+      if (path === '/api/auth/refresh') {
+        return json(session());
+      }
 
       return json(
         {

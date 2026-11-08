@@ -122,14 +122,18 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
     groupId = (await pool.query('INSERT INTO gchat_groups(name) VALUES($1) RETURNING id', ['test']))
       .rows[0].id;
 
-    for (const actor of actors)
+    for (const actor of actors) {
       await pool.query('INSERT INTO gchat_group_members VALUES($1,$2)', [groupId, actor.userId]);
+    }
   });
 
   afterAll(async (): Promise<void> => {
     if (redis?.isOpen) {
-      for await (const keys of redis.scanIterator({ MATCH: prefix + '*' }))
-        if (keys.length) await redis.del(keys);
+      for await (const keys of redis.scanIterator({ MATCH: prefix + '*' })) {
+        if (keys.length) {
+          await redis.del(keys);
+        }
+      }
 
       await redis.close();
     }

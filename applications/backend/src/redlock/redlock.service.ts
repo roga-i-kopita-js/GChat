@@ -44,9 +44,13 @@ export class RedlockService implements BeforeApplicationShutdown {
   ) {}
 
   withLock<T>(resource: string, action: (context: LockContext) => Promise<T>): Promise<T> {
-    if (this.stopping) return Promise.reject(new LockError('LOCK_SHUTTING_DOWN', false));
+    if (this.stopping) {
+      return Promise.reject(new LockError('LOCK_SHUTTING_DOWN', false));
+    }
 
-    if (this.scope.getStore()) return Promise.reject(new Error('Nested locks are not supported'));
+    if (this.scope.getStore()) {
+      return Promise.reject(new Error('Nested locks are not supported'));
+    }
 
     const controller = new AbortController();
     const task = this.scope.run(true, (): Promise<T> => this.run(resource, action, controller));
@@ -89,7 +93,9 @@ export class RedlockService implements BeforeApplicationShutdown {
     action: (ctx: LockContext) => Promise<T>,
     controller: AbortController,
   ): Promise<T> {
-    if (!/^[a-zA-Z0-9:_-]+$/.test(resource)) throw new Error('Invalid lock resource');
+    if (!/^[a-zA-Z0-9:_-]+$/.test(resource)) {
+      throw new Error('Invalid lock resource');
+    }
 
     const key = this.redis.key(`lock:${resource}`);
     const owner = randomUUID();
@@ -100,13 +106,16 @@ export class RedlockService implements BeforeApplicationShutdown {
     let expires = 0;
 
     while (true) {
-      if (controller.signal.aborted || this.stopping)
+      if (controller.signal.aborted || this.stopping) {
         throw new LockError('LOCK_SHUTTING_DOWN', false);
+      }
 
       const start = performance.now();
       const remaining = Math.floor(acquireDeadline - start);
 
-      if (remaining <= 0) throw new LockError('LOCK_ACQUIRE_FAILED', false);
+      if (remaining <= 0) {
+        throw new LockError('LOCK_ACQUIRE_FAILED', false);
+      }
 
       let result;
 
@@ -143,10 +152,14 @@ export class RedlockService implements BeforeApplicationShutdown {
     let renewal: Promise<void> | undefined;
     let finished = false;
     const lost = (): void => {
-      if (!controller.signal.aborted) controller.abort(new LockError('LOCK_LOST', true));
+      if (!controller.signal.aborted) {
+        controller.abort(new LockError('LOCK_LOST', true));
+      }
     };
     const assertHeld = (): void => {
-      if (performance.now() >= expires || performance.now() >= holdDeadline) lost();
+      if (performance.now() >= expires || performance.now() >= holdDeadline) {
+        lost();
+      }
 
       controller.signal.throwIfAborted();
     };
@@ -180,7 +193,9 @@ export class RedlockService implements BeforeApplicationShutdown {
 
         expires = start + lease - drift;
 
-        if (!finished && !controller.signal.aborted) schedule();
+        if (!finished && !controller.signal.aborted) {
+          schedule();
+        }
       } catch {
         lost();
       }
@@ -203,7 +218,9 @@ export class RedlockService implements BeforeApplicationShutdown {
     try {
       assertHeld();
 
-      if (performance.now() > acquireDeadline) throw new LockError('LOCK_ACQUIRE_FAILED', false);
+      if (performance.now() > acquireDeadline) {
+        throw new LockError('LOCK_ACQUIRE_FAILED', false);
+      }
 
       schedule();
       const result = await action({
@@ -233,14 +250,20 @@ export class RedlockService implements BeforeApplicationShutdown {
           arguments: [owner],
         });
 
-        if (released !== 1) throw new Error('Ownership not confirmed');
+        if (released !== 1) {
+          throw new Error('Ownership not confirmed');
+        }
       } catch {
         this.logger.warn('Lock release not confirmed');
 
-        if (!failed) throw new LockError('LOCK_RELEASE_FAILED', true);
+        if (!failed) {
+          throw new LockError('LOCK_RELEASE_FAILED', true);
+        }
       }
 
-      if (!failed) controller.signal.throwIfAborted();
+      if (!failed) {
+        controller.signal.throwIfAborted();
+      }
     }
   }
 }

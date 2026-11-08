@@ -9,6 +9,7 @@ tests:
   - applications/web/src/shared/device/browser.test.ts
   - applications/web/src/shared/device/browser-files.test.ts
   - applications/ios/NativeCore/Tests/GChatCoreTests/DeviceCommandTests.swift
+  - applications/ios/NativeCore/Tests/GChatCoreTests/DeviceFilesMatrixTests.swift
 ---
 
 # Bridge устройства

@@ -3,14 +3,20 @@ import Foundation
 /// All calls run on one serial file queue, separate from the main actor.
 public final class DeviceFiles: @unchecked Sendable {
     private let lock = NSRecursiveLock()
-    private struct Entry { var url: URL; var root: String; var name: String; var persistent: Bool }
+    private struct Entry { var url: URL; var root: String; var name: String; var persistent: Bool; var captureMime: String? = nil }
     private struct Write { let id: String; let temp: URL; let expected: String?; var size: Int }
     private let defaults: UserDefaults
     private let key = "gchat.device.file-grants.v1"
     private var entries: [String: Entry] = [:]
     private var lost: [String: [String: Any]] = [:]
+    private var captures = Set<URL>()
     private var writes: [String: Write] = [:]
     private var revision = 0
+    private let internalKey = "gchat.device.internal-refs.v1"
+    private let storageLocations: DeviceStorageLocations?
+    private var storageSession: DeviceStorageSession?
+    private var internalAreas: [String: String] = [:]
+    private var temporaryCleanupNeeded = false
     private let staging: URL
     private var onChanged: (() -> Void)?
     public var changed: (() -> Void)? {
@@ -18,7 +24,8 @@ public final class DeviceFiles: @unchecked Sendable {
         set { lock.lock(); defer { lock.unlock() }; onChanged = newValue }
     }
 
-    public init(defaults: UserDefaults = .standard, staging: URL? = nil) {
+    public init(defaults: UserDefaults = .standard, staging: URL? = nil, storageLocations: DeviceStorageLocations? = nil) {
+        self.storageLocations = storageLocations
         self.defaults = defaults
         self.staging = staging ?? FileManager.default.temporaryDirectory.appendingPathComponent("gchat-device-writes", isDirectory: true)
         try? FileManager.default.createDirectory(at: self.staging, withIntermediateDirectories: true)
@@ -37,10 +44,11 @@ public final class DeviceFiles: @unchecked Sendable {
         }
     }
 
-    public var count: Int { lock.lock(); defer { lock.unlock() }; return entries.filter { $0.key == $0.value.root }.count + lost.count }
+    public var count: Int { lock.lock(); defer { lock.unlock() }; return entries.filter { $0.key == $0.value.root && internalAreas[$0.value.root] == nil }.count + lost.count }
 
     private func touch() { revision += 1; changed?() }
     private func save(_ id: String) {
+        if let entry = entries[id], internalAreas[entry.root] != nil { persistInternal(); return }
         guard var entry = entries[id], entry.root == id else { return }
         var saved = defaults.dictionary(forKey: key) ?? [:]
         if let bookmark = try? entry.url.bookmarkData(options: [.minimalBookmark], includingResourceValuesForKeys: nil, relativeTo: nil) { saved[id] = ["bookmark": bookmark, "name": entry.name, "kind": ((try? entry.url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true) ? "directory" : "file"]; defaults.set(saved, forKey: key); entry.persistent = true; entries[id] = entry }
@@ -56,11 +64,82 @@ public final class DeviceFiles: @unchecked Sendable {
         return try metadata(id)
     }
 
-    private func entry(_ id: String) throws -> Entry { guard let value = entries[id] else { throw DeviceCommandError(lost[id] == nil ? "NOT_FOUND" : "ACCESS_LOST") }; return value }
+    private func entry(_ id: String) throws -> Entry {
+        if entries[id] == nil, let registry = defaults.dictionary(forKey: internalKey),
+           let records = registry["entries"] as? [String: Any], records[id] != nil { try ensureStorage() }
+        guard let value = entries[id] else { throw DeviceCommandError(lost[id] == nil ? "NOT_FOUND" : "ACCESS_LOST") }
+        if internalAreas[value.root] != nil, !FileManager.default.fileExists(atPath: value.url.path) { throw DeviceCommandError("NOT_FOUND") }
+        return value
+    }
+
+    public func prepareStorage() throws {
+        lock.lock(); defer { lock.unlock() }
+        try ensureStorage()
+    }
+
+    private func ensureStorage() throws {
+        guard storageSession == nil else { return }
+        let session = try DeviceStorageSession(storageLocations ?? .standard)
+        let saved = defaults.dictionary(forKey: internalKey) ?? [:]
+        let roots = saved["roots"] as? [String: String] ?? [:]
+        for area in ["data", "cache"] {
+            let id = roots[area].flatMap { UUID(uuidString: $0) != nil ? $0 : nil } ?? UUID().uuidString
+            let url = try session.root(area)
+            internalAreas[id] = area
+            entries[id] = Entry(url: url, root: id, name: area, persistent: true)
+        }
+        for (id, record) in saved["entries"] as? [String: [String: Any]] ?? [:] {
+            guard UUID(uuidString: id) != nil, let area = record["area"] as? String,
+                  let root = internalAreas.first(where: { $0.value == area })?.key,
+                  let components = record["components"] as? [String],
+                  components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && !$0.contains("/") && !$0.contains("\\") && !$0.contains("\0") }) else { continue }
+            if components.isEmpty { continue }
+            var url = try session.root(area)
+            for component in components { url.appendPathComponent(component) }
+            entries[id] = Entry(url: url, root: root, name: components.last!, persistent: true, captureMime: record["captureMime"] as? String)
+        }
+        storageSession = session
+        persistInternal()
+    }
+
+    private func persistInternal() {
+        guard storageSession != nil else { return }
+        var roots: [String: String] = [:]
+        var records: [String: [String: Any]] = [:]
+        for (id, area) in internalAreas where area != "temporary" { roots[area] = id }
+        for (id, value) in entries {
+            guard let area = internalAreas[value.root], area != "temporary", let root = entries[value.root] else { continue }
+            let components = value.url.pathComponents
+            let prefix = root.url.pathComponents
+            guard components.starts(with: prefix) else { continue }
+            records[id] = ["area": area, "components": Array(components.dropFirst(prefix.count))]
+            if let mime = value.captureMime { records[id]?["captureMime"] = mime }
+        }
+        defaults.set(["roots": roots, "entries": records], forKey: internalKey)
+    }
+
+    private func storageRoot(_ area: String) throws -> [String: Any] {
+        try ensureStorage()
+        guard let storageSession else { throw DeviceCommandError("IO_ERROR") }
+        if area == "temporary", temporaryCleanupNeeded {
+            try storageSession.clearTemporary(); temporaryCleanupNeeded = false
+        }
+        if let id = internalAreas.first(where: { $0.value == area })?.key {
+            _ = try storageSession.root(area)
+            return try reference(id)
+        }
+        let id = UUID().uuidString
+        internalAreas[id] = area
+        entries[id] = Entry(url: try storageSession.root(area), root: id, name: area, persistent: area != "temporary")
+        persistInternal(); touch()
+        return try reference(id)
+    }
 
     private func scoped<T>(_ id: String, writing: Bool = false, _ body: (URL) throws -> T) throws -> T {
         let value = try entry(id); let root = try entry(value.root)
         let access = root.url.startAccessingSecurityScopedResource(); defer { if access { root.url.stopAccessingSecurityScopedResource() } }
+        if internalAreas[value.root] != nil,
+           root.url.resolvingSymlinksInPath().standardizedFileURL != root.url.standardizedFileURL { throw DeviceCommandError("PERMISSION_DENIED") }
         let resolved = value.url.resolvingSymlinksInPath().standardizedFileURL
         let rootURL = root.url.resolvingSymlinksInPath().standardizedFileURL
         guard resolved == rootURL || resolved.path.hasPrefix(rootURL.path + "/") else { throw DeviceCommandError("PERMISSION_DENIED") }
@@ -77,7 +156,8 @@ public final class DeviceFiles: @unchecked Sendable {
     private func retain(_ url: URL, root: String) -> String {
         if let existing = entries.first(where: { $0.value.url.standardizedFileURL == url.standardizedFileURL }) { return existing.key }
         let id = UUID().uuidString
-        entries[id] = Entry(url: url, root: root, name: url.lastPathComponent, persistent: false)
+        entries[id] = Entry(url: url, root: root, name: url.lastPathComponent, persistent: internalAreas[root].map { $0 != "temporary" } ?? false)
+        persistInternal()
         return id
     }
 
@@ -95,8 +175,39 @@ public final class DeviceFiles: @unchecked Sendable {
             let directory = values[.type] as? FileAttributeType == .typeDirectory
             let size = (values[.size] as? NSNumber)?.intValue ?? 0
             let modified = values[.modificationDate] as? Date
-            return ["ref": ref, "size": directory ? NSNull() : size, "modifiedAt": modified.map { ISO8601DateFormatter().string(from: $0) } as Any? ?? NSNull(), "mimeType": NSNull(), "version": directory ? NSNull() : "\(size):\(modified?.timeIntervalSince1970 ?? 0)"]
+            return ["ref": ref, "size": directory ? NSNull() : size, "modifiedAt": modified.map { ISO8601DateFormatter().string(from: $0) } as Any? ?? NSNull(), "mimeType": entries[id]?.captureMime as Any? ?? NSNull(), "version": directory ? NSNull() : "\(size):\(modified?.timeIntervalSince1970 ?? 0)"]
         }
+    }
+
+    /// Native capture owns this path. It is never accepted as bridge input or returned to Web.
+    public func createCapture(extension suffix: String) throws -> URL {
+        lock.lock(); defer { lock.unlock() }
+        guard ["jpg", "mp4"].contains(suffix) else { throw DeviceCommandError("INVALID_ARGUMENT") }
+        let url = staging.appendingPathComponent(UUID().uuidString + "." + suffix)
+        captures.insert(url)
+        return url
+    }
+
+    public func abortCapture(_ url: URL) {
+        lock.lock(); defer { lock.unlock() }
+        guard captures.remove(url) != nil else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    public func commitCapture(_ url: URL) throws -> [String: Any] {
+        lock.lock(); defer { lock.unlock() }
+        guard captures.contains(url) else { throw DeviceCommandError("INVALID_ARGUMENT") }
+        let values = try FileManager.default.attributesOfItem(atPath: url.path)
+        guard let size = values[.size] as? NSNumber, size.intValue > 0 else { throw DeviceCommandError("IO_ERROR") }
+        try ensureStorage()
+        guard let root = internalAreas.first(where: { $0.value == "data" })?.key,
+              let directory = entries[root]?.url else { throw DeviceCommandError("IO_ERROR") }
+        let destination = directory.appendingPathComponent("camera-" + UUID().uuidString + "." + url.pathExtension)
+        try FileManager.default.moveItem(at: url, to: destination)
+        let id = retain(destination, root: root)
+        entries[id]?.captureMime = url.pathExtension == "jpg" ? "image/jpeg" : "video/mp4"
+        persistInternal(); captures.remove(url); touch()
+        return try reference(id)
     }
 
     public func exportURL(_ id: String) throws -> URL {
@@ -122,16 +233,27 @@ public final class DeviceFiles: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         let a = command
         switch a.name {
+        case "storage.getRoot": return try storageRoot(a.string("area"))
+        case "storage.getUsage":
+            _ = try storageRoot(a.string("area"))
+            guard let storageSession else { throw DeviceCommandError("IO_ERROR") }
+            return try storageSession.usage(a.string("area"))
         case "file.access.list":
-            let roots = entries.filter { $0.key == $0.value.root }.sorted { $0.key < $1.key }
+            let roots = entries.filter { $0.key == $0.value.root && internalAreas[$0.value.root] == nil }.sorted { $0.key < $1.key }
             // A lost grant must still be listed, so the user can forget or select it again.
             let refs: [[String: Any]] = roots.map { id, value in ["id": id, "name": value.name, "kind": (try? reference(id)["kind"]) ?? "file", "persistence": value.persistent ? "persistent" : "session"] } + lost.sorted { $0.key < $1.key }.map { $0.value }
             return try page(refs, cursor: a.args["cursor"] as? String, limit: a.integer("limit"), scope: "grants")
         case "file.access.restore", "file.stat":
+            if a.name == "file.access.restore" {
+                _ = try? entry(a.string("id"))
+                if let value = entries[a.string("id")], internalAreas[value.root] != nil { throw DeviceCommandError("INVALID_ARGUMENT") }
+            }
             do { return try metadata(a.string("id")) }
             catch let error as NSError where a.name == "file.access.restore" && error.domain == NSCocoaErrorDomain { throw DeviceCommandError("ACCESS_LOST") }
         case "file.access.forget":
             let id = a.string("id")
+            _ = try? entry(id)
+            if let value = entries[id], internalAreas[value.root] != nil { throw DeviceCommandError("INVALID_ARGUMENT") }
             lost.removeValue(forKey: id)
             for (writeId, write) in writes where entries[write.id]?.root == id || write.id == id { try? FileManager.default.removeItem(at: write.temp); writes.removeValue(forKey: writeId) }
             for (key, value) in entries where key == id || value.root == id { entries.removeValue(forKey: key) }
@@ -139,7 +261,10 @@ public final class DeviceFiles: @unchecked Sendable {
             return ["outcome": "completed"]
         case "directory.list":
             let id = a.string("directoryId"); let value = try entry(id)
-            let urls = try scoped(id) { try FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: [.isDirectoryKey]).sorted { $0.lastPathComponent < $1.lastPathComponent } }
+            let urls = try scoped(id) { url in
+                guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { throw DeviceCommandError("WRONG_TYPE") }
+                return try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isDirectoryKey]).sorted { $0.lastPathComponent < $1.lastPathComponent }
+            }
             let values = try urls.map { try metadata(retain($0, root: value.root)) }
             return try page(values, cursor: a.args["cursor"] as? String, limit: a.integer("limit"), scope: id)
         case "file.read":
@@ -202,6 +327,7 @@ public final class DeviceFiles: @unchecked Sendable {
             return ["outcome": "completed"]
         case "file.copy", "file.move", "file.rename":
             let id = a.string("id"); let source = try entry(id)
+            guard internalAreas[id] == nil || source.root != id || a.name == "file.copy" else { throw DeviceCommandError("INVALID_ARGUMENT") }
             let destinationDirectory = a.name == "file.rename" ? source.url.deletingLastPathComponent() : try scoped(a.string("destinationDirectoryId")) { url in
                 guard try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else { throw DeviceCommandError("WRONG_TYPE") }; return url
             }
@@ -229,24 +355,42 @@ public final class DeviceFiles: @unchecked Sendable {
                 newId = id
                 for (key, value) in entries where value.url == source.url || value.url.path.hasPrefix(source.url.path + "/") {
                     let suffix = String(value.url.path.dropFirst(source.url.path.count)); entries[key]?.url = URL(fileURLWithPath: destination.path + suffix)
-                    if value.root == source.root { entries[key]?.root = source.root == id ? id : targetRoot }
+                    if value.root == source.root {
+                        entries[key]?.root = source.root == id && internalAreas[targetRoot] == nil ? id : targetRoot
+                        if let root = entries[key]?.root, let area = internalAreas[root] { entries[key]?.persistent = area != "temporary" }
+                        else if value.root != key { entries[key]?.persistent = false }
+                    }
                 }
                 entries[id]?.name = a.string("name")
+                if let root = entries[id]?.root, internalAreas[root] != nil, source.root == id {
+                    var saved = defaults.dictionary(forKey: key) ?? [:]; saved.removeValue(forKey: id); defaults.set(saved, forKey: key)
+                }
                 for (key, value) in entries where value.persistent && value.root == key && (value.url == destination || value.url.path.hasPrefix(destination.path + "/")) { save(key) }
             }
-            touch(); return try metadata(newId)
+            persistInternal(); touch(); return try metadata(newId)
         case "file.remove":
             let id = a.string("id"); let source = try entry(id)
+            guard internalAreas[id] == nil || source.root != id else { throw DeviceCommandError("INVALID_ARGUMENT") }
             try scoped(id, writing: true) { url in
                 if !a.bool("recursive"), (try url.resourceValues(forKeys: [.isDirectoryKey])).isDirectory == true, !(try FileManager.default.contentsOfDirectory(atPath: url.path)).isEmpty { throw DeviceCommandError("CONFLICT") }
                 try FileManager.default.removeItem(at: url)
             }
             for (key, value) in entries where value.url == source.url || value.url.path.hasPrefix(source.url.path + "/") { entries.removeValue(forKey: key) }
-            var saved = defaults.dictionary(forKey: key) ?? [:]; saved.removeValue(forKey: id); defaults.set(saved, forKey: key); touch()
+            var saved = defaults.dictionary(forKey: key) ?? [:]; saved.removeValue(forKey: id); defaults.set(saved, forKey: key); persistInternal(); touch()
             return ["outcome": "completed"]
         default: throw DeviceCommandError("UNSUPPORTED")
         }
     }
 
-    public func reset() { lock.lock(); defer { lock.unlock() }; for write in writes.values { try? FileManager.default.removeItem(at: write.temp) }; writes.removeAll() }
+    public func reset() {
+        lock.lock(); defer { lock.unlock() }
+        for write in writes.values { try? FileManager.default.removeItem(at: write.temp) }; writes.removeAll()
+        if let root = internalAreas.first(where: { $0.value == "temporary" })?.key {
+            for (id, value) in entries where value.root == root { entries.removeValue(forKey: id) }
+            internalAreas.removeValue(forKey: root)
+            temporaryCleanupNeeded = true
+            do { try storageSession?.clearTemporary(); temporaryCleanupNeeded = false } catch { /* Retry before granting a new temporary root. */ }
+            touch()
+        }
+    }
 }
