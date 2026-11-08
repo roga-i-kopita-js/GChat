@@ -1,0 +1,18 @@
+name: gchat-ios-call-spike
+services:
+  coturn:
+    image: coturn/coturn:4.18.0-r0
+    ports:
+      - '${GCHAT_IOS_LAN_IP:?Set Mac LAN IPv4}:33480:3478/tcp'
+      - '${GCHAT_IOS_LAN_IP:?Set Mac LAN IPv4}:33480:3478/udp'
+      - '${GCHAT_IOS_LAN_IP:?Set Mac LAN IPv4}:40000-40039:40000-40039/udp'
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        relay_ip=$$(hostname -i | awk '{print $$1}')
+        exec turnserver --no-tls --fingerprint --use-auth-secret \
+          --static-auth-secret=gchat_web_test_turn_only \
+          --realm=gchat-ios-call-spike --listening-ip=0.0.0.0 \
+          --relay-ip="$$relay_ip" \
+          --external-ip="${GCHAT_IOS_LAN_IP:?Set Mac LAN IPv4}/$$relay_ip" \
+          --min-port=40000 --max-port=40039 --no-multicast-peers --log-file=stdout

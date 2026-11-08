@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "upstream": "https://webrtc.googlesource.com/src.git",
+  "revision": "eeb7e6beb2e20c5a273922fdf22b75a75cc28ad5",
+  "depot_tools_upstream": "https://chromium.googlesource.com/chromium/tools/depot_tools.git",
+  "depot_tools_revision": "289a37bda3d848cfe16e6c1c599741ed3890ab55",
+  "xcode_version": "Xcode 27.2",
+  "xcode_build": "27B52",
+  "architectures": ["device:arm64", "simulator:arm64"],
+  "deployment_target": "16.0",
+  "configuration": "release",
+  "extra_gn_args": [
+    "rtc_include_tests=false",
+    "rtc_build_examples=false",
+    "is_component_build=false",
+    "symbol_level=0"
+  ],
+  "artifact": "WebRTC-eeb7e6beb2e2.xcframework.zip",
+  "artifact_sha256": "9b33241081269e92713d876204136ebe2812149b4f392991126da117a7551bec",
+  "status": "built_not_accepted"
+}

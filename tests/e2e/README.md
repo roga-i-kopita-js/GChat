@@ -156,3 +156,23 @@ pnpm docs:check
 ## Проверки production PWA без звонкового стенда
 
 `pnpm --filter @gchat/e2e test:pwa` собирает оба размещения в `.local/pwa`, запускает отдельный локальный HTTP-сервер и Chromium по `pwa.config.ts`. Backend, БД, TURN и пользовательские сессии не используются. Проверяются manifest, офлайн-навигация, границы кеша, обновление двух окон с реальным Web Lock, удаление старого кеша и отказ установки неполного релиза. Тестовый сервер меняет версию worker; активный shared lock представляет незавершённый звонок. Эти проверки не проверяют медиа, настоящую доставку Web Push, Safari или iOS.
+
+## Локальный iOS аудиостенд
+
+Ручной [CallKit harness](../../applications/ios/CallHarness/README.md) использует существующие тестовые PostgreSQL/Redis и аккаунты из fixtures. Автоматический native E2E runner этим не создаётся. Обычный котurn loopback-стенда сохраняется; отдельный Compose-проект `gchat-ios-call-spike` публикует TURN только на указанном LAN IPv4 Mac: порт 33480 TCP/UDP и relay 40000–40039 UDP. Доступен только участникам этой сети, использует отдельный тестовый realm и тестовый secret; рабочие данные не используются.
+
+Контейнер определяет свой конкретный bridge IPv4 при запуске и задаёт coturn mapping `LAN_IP/container_IP`; wildcard `0.0.0.0` используется только для listener, не для relay-адреса. Это позволяет отдавать клиентам достижимый LAN relay-адрес при Docker NAT.
+
+Сначала подготовить `stack:up` и fixtures по инструкции выше (повтор fixtures меняет тестовые ключи), собрать backend командой из его package.json. Не запускать параллельно автоматические тесты/fixtures/reset: они используют ту же тестовую БД. Порты 3300, 5187, 8446, 33480 и relay-диапазон должны быть свободны. Тестовые серверы на этих портах не переиспользуются.
+
+Установить `GCHAT_IOS_LAN_IP`, `GCHAT_IOS_TLS_CERT` и `GCHAT_IOS_TLS_KEY`: LAN IPv4 Mac, пути к отдельному серверному PEM-сертификату и его ключу. Сертификат содержит LAN IP в SAN и serverAuth EKU; iPhone должен доверять подписавшему его корню. Приватный ключ остаётся на Mac, TLS-проверка не отключается.
+
+```sh
+docker compose -f tests/e2e/ios-call-turn.yml up -d
+# Следующие три процесса — в отдельных терминалах из корня репозитория:
+node tests/e2e/scripts/ios-call-stand.mjs backend
+node tests/e2e/scripts/ios-call-stand.mjs https
+node tests/e2e/scripts/ios-call-stand.mjs peer
+```
+
+Native подключается к `https://<LAN_IP>:8446`; Web peer на Mac — к `http://127.0.0.1:5187`. Native использует существующий header-based WSS; браузер — свой обычный билетный handshake. APNs/Web Push выключены в этом backend-процессе. Секреты читаются из `.local/backend.json`, не выводятся и не передаются Web. По окончании остановить три процесса и выполнить `docker compose -f tests/e2e/ios-call-turn.yml down`; обычный loopback Compose автоматически не останавливается и его данные не удаляются.

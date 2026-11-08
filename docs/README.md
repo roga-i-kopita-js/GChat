@@ -26,6 +26,7 @@
 | Проверить систему целиком              | [E2E-пакет и стенд](../tests/e2e/README.md) → [DirectCalls](backend/modules/direct-calls/README.md) → [Signaling](backend/modules/signaling.md)                                                                 |
 | Работать над настройками устройства    | [Settings](web/settings.md) → [Device bridge](web/device-bridge.md) → [D011](architecture/decisions/D011-native-device-settings.md)                                                                             |
 | Работать над iOS                       | [Каталог iOS](../applications/ios/README.md) → [Требования](product/requirements.md) → [HTML-прототип](design/index.html)                                                                                       |
+| Продолжить отладку аудио iOS            | [Баги и передача между сессиями](ios/audio-bugs.md) → [Native Calls](ios/native-calls.md) → [CallHarness](../applications/ios/CallHarness/README.md) |
 | Планировать деплой GChat               | [Развёртывание](operations/deployment.md) → [D009](architecture/decisions/D009-manual-deployment.md) → [Миграции](backend/operations/migrations.md)                                                             |
 | Обслуживать Mattermost                 | [Legacy-инструкция](legacy/mattermost.md)                                                                                                                                                                       |
 
