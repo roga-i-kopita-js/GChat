@@ -36,21 +36,6 @@ export class ReadDialogDto {
   sequence!: number;
 }
 
-export class DialogDto {
-  dialog_id!: string;
-  peer_id!: string;
-  peer_display_name!: string;
-  has_unread_messages!: boolean;
-  created_at!: string;
-  @ApiProperty({ type: String, nullable: true }) last_message_at!: string | null;
-  @ApiProperty({ type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
-  last_sequence!: number;
-  @ApiProperty({ type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
-  last_read_sequence!: number;
-  @ApiProperty({ type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
-  peer_last_read_sequence!: number;
-}
-
 @ApiExtraModels(TextContentDto, StickerContentDto)
 export class MessageDto {
   message_id!: string;
@@ -64,6 +49,22 @@ export class MessageDto {
   })
   content!: MessageContent;
   @ApiProperty({ enum: ['sent', 'read'] }) status!: 'sent' | 'read';
+}
+
+export class DialogDto {
+  dialog_id!: string;
+  peer_id!: string;
+  peer_display_name!: string;
+  has_unread_messages!: boolean;
+  @ApiProperty({ type: () => MessageDto, nullable: true }) last_message!: MessageDto | null;
+  created_at!: string;
+  @ApiProperty({ type: String, nullable: true }) last_message_at!: string | null;
+  @ApiProperty({ type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
+  last_sequence!: number;
+  @ApiProperty({ type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
+  last_read_sequence!: number;
+  @ApiProperty({ type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
+  peer_last_read_sequence!: number;
 }
 
 export class DialogResponseDto {

@@ -18,6 +18,7 @@ import {
   pingResponse,
   sdpMessage,
 } from './protocol';
+import { CallScreenWakeLock } from './screen-wake-lock';
 
 export interface ClientState {
   owner: boolean;
@@ -28,6 +29,7 @@ export interface ClientState {
   busy: boolean;
   error: string | null;
   audioBlocked: boolean;
+  screenWakeLockWarning: boolean;
   audible: boolean;
   media: string;
   stats: { relay: boolean; sent: number; received: number };
@@ -42,6 +44,7 @@ const initial: ClientState = {
   busy: false,
   error: null,
   audioBlocked: false,
+  screenWakeLockWarning: false,
   audible: false,
   media: 'new',
   stats: { relay: false, sent: 0, received: 0 },
@@ -55,6 +58,7 @@ const stateSchema = z.object({
   busy: z.boolean(),
   error: z.string().nullable(),
   audioBlocked: z.boolean(),
+  screenWakeLockWarning: z.boolean().default(false),
   audible: z.boolean(),
   media: z.string(),
   stats: z.object({ relay: z.boolean(), sent: z.number(), received: z.number() }),
@@ -116,6 +120,11 @@ export class GChatClient {
   private state: ClientState = initial;
   private listeners = new Set<() => void>();
   private lastFailure: unknown = null;
+  private screenWakeLock = new CallScreenWakeLock((unavailable): void => {
+    if (this.state.screenWakeLockWarning !== unavailable) {
+      this.set({ screenWakeLockWarning: unavailable });
+    }
+  });
 
   getLastFailure(): unknown {
     return this.lastFailure;
@@ -167,6 +176,7 @@ export class GChatClient {
 
   private set(patch: Partial<ClientState>): void {
     this.state = { ...this.state, ...patch };
+    this.syncScreenWakeLock();
 
     if (
       !this.state.owner ||
@@ -185,6 +195,14 @@ export class GChatClient {
     }
 
     this.transport.changed();
+  }
+
+  private syncScreenWakeLock(): void {
+    const { owner, selected, call } = this.state;
+
+    this.screenWakeLock.setCall(
+      owner && selected && this.stream && call && call.state !== 'ended' ? call.call_id : null,
+    );
   }
 
   start(): () => void {
@@ -608,6 +626,7 @@ export class GChatClient {
     }
 
     this.stream = stream;
+    this.syncScreenWakeLock();
   }
 
   private async ensurePeer(): Promise<void> {

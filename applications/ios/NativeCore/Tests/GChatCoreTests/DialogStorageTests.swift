@@ -33,6 +33,41 @@ final class DialogStorageTests: XCTestCase {
         XCTAssertEqual(try reopened.context(account: account, session: session, device: device, cycle: UUID().uuidString)["adapter"] as? String, "indexeddb")
     }
 
+    @MainActor func testLastMessageRoundTripAndValidation() throws {
+        let suite = "gchat-dialogs-preview-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storage = try DialogStorage(url: root.appendingPathComponent("dialogs.sqlite"), server: "https://test.invalid", defaults: defaults)
+        let account = UUID().uuidString, session = UUID().uuidString, device = UUID().uuidString, cycle = UUID().uuidString, id = UUID().uuidString
+        let context = try storage.context(account: account, session: session, device: device, cycle: cycle)
+        func call(_ command: String, _ args: [String: Any]) throws -> [String: Any] {
+            let envelope: [String: Any] = ["version": 1, "cycleId": cycle, "operationId": UUID().uuidString, "namespaceId": context["namespaceId"]!, "epoch": context["epoch"]!, "adapterEpoch": context["adapterEpoch"]!, "command": command, "args": args]
+            let response = try storage.execute(envelope, account: account, session: session, device: device, cycle: cycle)
+            return try XCTUnwrap(response["data"] as? [String: Any])
+        }
+        var record = try call("readDialog", ["id": id])
+        var dialog: [String: Any] = ["dialog_id": id, "peer_id": UUID().uuidString, "peer_display_name": "Peer", "has_unread_messages": true, "created_at": "now", "last_message_at": "now", "last_sequence": 1, "last_read_sequence": 0, "peer_last_read_sequence": 0]
+        let message: [String: Any] = ["message_id": UUID().uuidString, "dialog_id": id, "client_message_id": UUID().uuidString, "sequence": 1, "sender_id": account, "created_at": "now", "content": ["kind": "text", "text": "Начало\n😀"], "status": "sent"]
+        dialog["last_message"] = message
+        record["dialog"] = dialog
+        record["revision"] = 1
+        _ = try call("commitMetadata", ["id": id, "expectedRevision": 0, "record": record, "messages": []])
+        let list = try call("readDialogs", ["limit": 30, "offset": 0])
+        let saved = try XCTUnwrap((list["dialogs"] as? [[String: Any]])?.first?["last_message"] as? [String: Any])
+        XCTAssertEqual((saved["content"] as? [String: Any])?["text"] as? String, "Начало\n😀")
+        record["revision"] = 2
+        dialog["last_sequence"] = 2
+        record["dialog"] = dialog
+        XCTAssertThrowsError(try call("commitMetadata", ["id": id, "expectedRevision": 1, "record": record, "messages": []]))
+        dialog["last_message"] = NSNull()
+        record["dialog"] = dialog
+        _ = try call("commitMetadata", ["id": id, "expectedRevision": 1, "record": record, "messages": []])
+        let cleared = try call("readDialog", ["id": id])
+        XCTAssertTrue((cleared["dialog"] as? [String: Any])?["last_message"] is NSNull)
+    }
+
     @MainActor func testPurgeQuarantinesOldEpochAndDoesNotReopenOldSessionData() throws {
         let suite = "gchat-dialogs-purge-" + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!

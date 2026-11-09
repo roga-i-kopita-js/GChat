@@ -25,6 +25,8 @@ Workspace включает `@gchat/backend`, `@gchat/ios`, `@gchat/web` и от�
 
 Корневой Compose и setup.sh относятся к [legacy](legacy/mattermost.md). Команды локального backend обслуживают отдельный Compose и не запускают старый мессенджер.
 
+Адрес локального dev для телефона/PWA и особенности HTTPS-стенда приведены в [README веб-клиента](../applications/web/README.md#локальный-dev-для-телефона-и-pwa).
+
 ## Стиль JavaScript и TypeScript
 
 Статус раздела: **accepted**, согласовано пользователем 2026-11-08.

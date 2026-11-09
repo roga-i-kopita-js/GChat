@@ -1,5 +1,4 @@
-import type { DialogDto } from '@gchat/backend-api';
-
+import type { DialogSummary } from './model';
 import type { DialogRuntime, DialogView } from './runtime';
 import { dialogError } from './runtime';
 
@@ -11,7 +10,7 @@ export enum DialogModelEvent {
 export interface DialogListState {
   revision: number;
   status: 'starting' | 'ready' | 'error';
-  items: readonly DialogDto[];
+  items: readonly DialogSummary[];
   hasMore: boolean;
   error: string | null;
   storageWarning: string | null;

@@ -41,6 +41,7 @@ export class NativeCallsClient implements CallsClient {
     busy: false,
     error: null,
     audioBlocked: false,
+    screenWakeLockWarning: false,
     audible: true,
     media: 'native',
     stats: { relay: false, sent: 0, received: 0 },

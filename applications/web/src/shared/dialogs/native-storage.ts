@@ -1,8 +1,8 @@
-import type { DialogDto } from '@gchat/backend-api';
 import { z } from 'zod';
 
 import { nativePlugin } from '../native/bridge';
 import { nativeRuntime } from '../native/runtime';
+import type { DialogSummary } from './model';
 import type { DialogMessage } from './model';
 import {
   dialogSchema,
@@ -306,10 +306,10 @@ class NativeDialogStorage implements DialogStorage {
     );
   }
 
-  async list(): Promise<DialogDto[]> {
+  async list(): Promise<DialogSummary[]> {
     return this.use(
-      async (): Promise<DialogDto[]> => {
-        const dialogs: DialogDto[] = [];
+      async (): Promise<DialogSummary[]> => {
+        const dialogs: DialogSummary[] = [];
         let offset = 0;
 
         while (true) {
@@ -334,7 +334,7 @@ class NativeDialogStorage implements DialogStorage {
           offset = page.nextOffset;
         }
       },
-      async (): Promise<DialogDto[]> => this.fallback!.list(),
+      async (): Promise<DialogSummary[]> => this.fallback!.list(),
     );
   }
 

@@ -138,6 +138,7 @@ export interface CallPresentationState {
   busy: boolean;
   error: string | null;
   audioBlocked: boolean;
+  screenWakeLockWarning: boolean;
   audible: boolean;
   media: string;
   stats: { relay: boolean; sent: number; received: number };

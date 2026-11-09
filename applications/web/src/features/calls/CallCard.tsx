@@ -1,15 +1,35 @@
-import { ArrowRight, Mic, MicOff, Phone, PhoneOff, ShieldCheck, Volume2 } from 'lucide-react';
+import {
+  ArrowRight,
+  LockKeyhole,
+  Mic,
+  MicOff,
+  Phone,
+  PhoneOff,
+  ShieldCheck,
+  Volume2,
+} from 'lucide-react';
 import type { JSX } from 'react';
 
 import { useDevice, useDevicePresentation } from '../../shared/device/react';
-import { Avatar } from '../../shared/ui';
+import { Avatar, Button } from '../../shared/ui';
+import { CallAudioOutput } from './CallAudioOutput';
 import { useCalls } from './CallsProvider';
 
 export function CallCard(): JSX.Element | null {
   const device = useDevice();
   const presentation = useDevicePresentation();
-  const { state, call, incoming, peerName, duration, status, enabled, setPerson, setMobile } =
-    useCalls();
+  const {
+    state,
+    call,
+    incoming,
+    peerName,
+    duration,
+    status,
+    enabled,
+    setPerson,
+    setMobile,
+    lockScreen,
+  } = useCalls();
 
   if (!call) {
     return null;
@@ -77,6 +97,7 @@ export function CallCard(): JSX.Element | null {
   } else if (state.selected) {
     callActions = (
       <>
+        {state.owner && <CallAudioOutput key={call.call_id} disabled={state.busy} />}
         {call.state !== 'ringing' && (
           <button
             className={'round-action mute' + (state.muted ? ' muted' : '')}
@@ -118,8 +139,18 @@ export function CallCard(): JSX.Element | null {
 
   return (
     <div className={'call-card ' + (call.state === 'ended' ? 'ended' : '')}>
-      <div className="call-brand">
-        <Phone size={16} /> GChat · голосовой звонок
+      <div className="call-card-header">
+        <div className="call-brand">
+          <Phone size={16} /> GChat · голосовой звонок
+        </div>
+        {state.owner &&
+          state.selected &&
+          call.state !== 'ended' &&
+          presentation.callControls === 'application' && (
+            <Button variant="ghost" className="call-lock-button" onClick={lockScreen}>
+              <LockKeyhole aria-hidden="true" /> Заблокировать
+            </Button>
+          )}
       </div>
       <div className="call-person">
         <Avatar name={peerName} large />
@@ -158,6 +189,12 @@ export function CallCard(): JSX.Element | null {
         </button>
       )}
       {incoming && state.error && <p role="alert">{state.error}</p>}
+      {state.owner && state.selected && call.state !== 'ended' && state.screenWakeLockWarning && (
+        <p className="call-hint" role="status">
+          Не удалось удержать экран включённым. Отключите автоблокировку в настройках устройства на
+          время звонка.
+        </p>
+      )}
       {presentation.callControls === 'host' && call.state !== 'ended' && (
         <p className="call-hint">Управление звонком доступно в приложении.</p>
       )}

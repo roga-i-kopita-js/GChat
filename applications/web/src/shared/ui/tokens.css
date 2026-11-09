@@ -3,6 +3,7 @@
   --ui-canvas: var(--ui-surface);
   --ui-surface: #fff;
   --ui-on-accent: #fff;
+  --ui-screen-lock-surface: #000;
   --ui-text: #192738;
   --ui-border: #e4eaf2;
   --ui-accent: #087cf0;

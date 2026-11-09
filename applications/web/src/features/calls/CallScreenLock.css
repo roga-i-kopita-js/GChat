@@ -1,0 +1,68 @@
+.call-screen-lock {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: var(--ui-space-6);
+  border: 0;
+  border-radius: 0;
+  background: var(--ui-screen-lock-surface);
+  color: var(--ui-on-accent);
+  touch-action: none;
+  overscroll-behavior: none;
+  user-select: none;
+  overflow: hidden;
+}
+.call-screen-lock::backdrop {
+  background: var(--ui-screen-lock-surface);
+}
+.call-screen-lock-content {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-5);
+  text-align: center;
+}
+.call-screen-lock-icon {
+  width: var(--ui-size-32);
+  height: var(--ui-size-32);
+}
+.call-screen-lock-content p {
+  font-size: var(--ui-font-body);
+  color: var(--ui-on-accent);
+}
+.call-screen-lock-track {
+  position: relative;
+  width: min(100%, var(--ui-size-300));
+  height: var(--ui-size-56);
+  background: var(--ui-secondary-text);
+  border-radius: var(--ui-radius-32);
+  display: grid;
+  place-items: center;
+  margin-top: var(--ui-space-6);
+  font-size: var(--ui-font-caption);
+}
+.call-screen-lock-track > span {
+  padding-left: var(--ui-space-12);
+}
+.call-screen-lock-thumb {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--ui-size-56);
+  height: var(--ui-size-56);
+  border-radius: var(--ui-radius-full);
+  background: var(--ui-on-accent);
+  color: var(--ui-text);
+  display: grid;
+  place-items: center;
+  touch-action: none;
+}
+.call-screen-lock-thumb svg {
+  width: var(--ui-control-icon-size);
+  height: var(--ui-control-icon-size);
+}

@@ -98,7 +98,34 @@ export type CreateDialogDto = {
   peer_id: string;
 };
 
+export type TextContentDto = {
+  kind: 'text';
+  text: string;
+};
+
+export type StickerContentDto = {
+  kind: 'sticker';
+  sticker_id:
+    | 'animal-pals-v1-cat'
+    | 'animal-pals-v1-dog'
+    | 'animal-pals-v1-fox'
+    | 'animal-pals-v1-bear'
+    | 'animal-pals-v1-bunny';
+};
+
+export type MessageDto = {
+  sequence: number;
+  content: TextContentDto | StickerContentDto;
+  status: 'sent' | 'read';
+  message_id: string;
+  dialog_id: string;
+  client_message_id: string;
+  sender_id: string;
+  created_at: string;
+};
+
 export type DialogDto = {
+  last_message: MessageDto | null;
   last_message_at: string | null;
   last_sequence: number;
   last_read_sequence: number;
@@ -128,35 +155,9 @@ export type PermissionsResponseDto = {
   dialogs: DialogPermissionsDto;
 };
 
-export type TextContentDto = {
-  kind: 'text';
-  text: string;
-};
-
-export type StickerContentDto = {
-  kind: 'sticker';
-  sticker_id:
-    | 'animal-pals-v1-cat'
-    | 'animal-pals-v1-dog'
-    | 'animal-pals-v1-fox'
-    | 'animal-pals-v1-bear'
-    | 'animal-pals-v1-bunny';
-};
-
 export type SendMessageDto = {
   content: TextContentDto | StickerContentDto;
   client_message_id: string;
-};
-
-export type MessageDto = {
-  sequence: number;
-  content: TextContentDto | StickerContentDto;
-  status: 'sent' | 'read';
-  message_id: string;
-  dialog_id: string;
-  client_message_id: string;
-  sender_id: string;
-  created_at: string;
 };
 
 export type MessageResponseDto = {

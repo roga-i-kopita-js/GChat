@@ -20,7 +20,7 @@ function fixture(): { runtime: DialogRuntime; store: any; api: any; saved(): Sto
     epoch: 1,
     adapter: 'sqlite',
     read: async (): Promise<StoredDialog> => structuredClone(saved),
-    list: async (): Promise<[]> => [],
+    list: async () => (saved.record.dialog ? [structuredClone(saved.record.dialog)] : []),
     change: vi.fn(async (_id, _command, update): Promise<StoredDialog> => {
       const next = structuredClone(saved);
 
@@ -157,5 +157,58 @@ describe('durable dialog sends', (): void => {
     ).rejects.toThrow();
     expect(f.saved().record.draft).toEqual({ text: 'Original', revision: 1 });
     f.runtime.stop();
+  });
+});
+
+describe('dialog list previews', (): void => {
+  it('loads content with list metadata, clears denied previews and never fetches history or sends read', async (): Promise<void> => {
+    const f = fixture();
+    const id = crypto.randomUUID();
+    const last = {
+      message_id: crypto.randomUUID(),
+      dialog_id: id,
+      client_message_id: crypto.randomUUID(),
+      sender_id: crypto.randomUUID(),
+      sequence: 1,
+      created_at: new Date().toISOString(),
+      content: { kind: 'text', text: 'Полный текст\n😀 ' + 'т'.repeat(1000) },
+      status: 'sent',
+    };
+    const dialog = {
+      dialog_id: id,
+      peer_id: last.sender_id,
+      peer_display_name: 'Peer',
+      created_at: last.created_at,
+      last_message_at: last.created_at,
+      last_message: last,
+      last_sequence: 1,
+      last_read_sequence: 0,
+      peer_last_read_sequence: 0,
+      has_unread_messages: true,
+    };
+
+    f.api.dialogsList = vi.fn().mockResolvedValue({ data: { dialogs: [dialog], has_more: false } });
+    f.api.dialogsHistory = vi.fn();
+    f.api.dialogsRead = vi.fn();
+
+    try {
+      await f.runtime.refreshList();
+      const [preview] = await f.runtime.list();
+
+      expect(preview?.last_message).toEqual(last);
+      expect(f.saved().record.sync_sequence).toBe(0);
+      f.api.dialogsList.mockResolvedValue({
+        data: { dialogs: [{ ...dialog, last_message: null }], has_more: false },
+      });
+      await f.runtime.refreshList();
+      const [cleared] = await f.runtime.list();
+
+      expect(cleared?.last_message).toBeNull();
+      expect(f.api.dialogsHistory).not.toHaveBeenCalled();
+      expect(f.api.dialogsRead).not.toHaveBeenCalled();
+      expect(f.saved().record.read).toBe(0);
+    } finally {
+      f.runtime.stop();
+    }
   });
 });

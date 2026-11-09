@@ -120,7 +120,7 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
     await expect(sidebar).toHaveAttribute('data-instance', 'original');
     const { url: annaUrl } = anna;
     const url = annaUrl.bind(anna)();
-    const text = 'Тест переписки ' + randomUUID();
+    const text = 'Тест переписки ' + randomUUID() + '\n😀 ' + 'Длинное сообщение '.repeat(40);
 
     const { getByLabel: annaGetByLabel3 } = anna;
 
@@ -133,12 +133,58 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
     await expect(
       annaLocator.bind(anna)('.dialog-message-text').filter({ hasText: text }),
     ).toHaveCount(1);
+    await expect(
+      annaLocator
+        .bind(anna)('.dialog-contact .user-card-subtitle')
+        .filter({ hasText: 'Тест переписки' }),
+    ).toHaveText('Вы: ' + text);
     const { getByRole: maximGetByRole } = maxim;
 
     await maximGetByRole.bind(maxim)('link', { name: 'Диалоги', exact: true }).click();
     const { getByRole: maximGetByRole2 } = maxim;
 
     await expect(maximGetByRole2.bind(maxim)('link', { name: /Анна/ })).toBeVisible();
+    const { locator: previewLocator } = maxim;
+    const preview = previewLocator
+      .bind(maxim)('.dialog-contact .user-card-subtitle')
+      .filter({ hasText: 'Тест переписки' });
+
+    await expect(preview).toHaveText(text);
+    await expect(preview).toHaveCSS('text-overflow', 'ellipsis');
+    await expect(preview).toHaveCSS('white-space', 'nowrap');
+    await expect(preview).toHaveCSS('overflow', 'hidden');
+
+    for (const width of [360, 390, 430, 1024]) {
+      const { setViewportSize: previewViewport } = maxim;
+
+      await previewViewport.bind(maxim)({ width, height: 740 });
+      const { evaluate: measurePreview } = preview;
+
+      expect(
+        await measurePreview.bind(preview)(
+          (element): boolean => element.scrollWidth > element.clientWidth,
+        ),
+      ).toBe(true);
+      const { evaluate: checkPreviewViewport } = maxim;
+
+      expect(
+        await checkPreviewViewport.bind(maxim)(
+          (): boolean => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+
+      if (width === 360) {
+        const { screenshot: previewScreenshot } = maxim;
+
+        await previewScreenshot.bind(maxim)({
+          path: testInfo.outputPath('dialog-preview-mobile.png'),
+        });
+      }
+    }
+
+    expect(
+      [...modules].some((path): boolean => /\/api\/dialogs\/[^/]+\/(messages|read)$/.test(path)),
+    ).toBe(false);
     expect(
       [...modules].some((path): boolean => /\/(DialogConversationRoute|Composer)\.tsx$/.test(path)),
     ).toBe(false);
@@ -210,6 +256,12 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
     const { getByAltText: annaGetByAltText } = anna;
 
     await expect(annaGetByAltText.bind(anna)('Стикер: Кот').last()).toBeVisible();
+    const { locator: stickerPreviewLocator } = anna;
+    const stickerPreview = stickerPreviewLocator
+      .bind(anna)('.dialog-contact .user-card-subtitle')
+      .filter({ hasText: /^Вы: Стикер$/ });
+
+    await expect(stickerPreview).toBeVisible();
     const { getByLabel: annaGetByLabel7 } = anna;
 
     await expect(annaGetByLabel7.bind(anna)('Сообщение', { exact: true })).toBeEditable();

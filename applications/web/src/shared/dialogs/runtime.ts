@@ -1,4 +1,4 @@
-import { ApiError, type ApiResult, type BackendApi, type DialogDto } from '@gchat/backend-api';
+import { ApiError, type ApiResult, type BackendApi } from '@gchat/backend-api';
 import { z } from 'zod';
 
 import { retryAfter } from '../api/client';
@@ -8,6 +8,7 @@ import type { DialogMessage } from './model';
 import {
   commitPage,
   dialogSchema,
+  type DialogSummary,
   eventSchema,
   mergeMessages,
   mergeMetadata,
@@ -592,7 +593,7 @@ export class DialogRuntime {
     }
   }
 
-  async list(): Promise<DialogDto[]> {
+  async list(): Promise<DialogSummary[]> {
     const list = await this.storage.list();
 
     this.signal.throwIfAborted();
@@ -614,7 +615,7 @@ export class DialogRuntime {
     return { ...value, syncing: this.busy.has(id), error: this.errors.get(id) ?? null };
   }
 
-  private async storeMetadata(dialog: DialogDto, version: number): Promise<void> {
+  private async storeMetadata(dialog: DialogSummary, version: number): Promise<void> {
     const { record: valueRecord } = await this.storage.change(
       dialog.dialog_id,
       'commitMetadata',

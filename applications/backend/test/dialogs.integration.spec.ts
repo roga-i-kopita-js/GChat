@@ -277,6 +277,42 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     });
   });
 
+  it('returns the exact last message across list/get/repeated create without marking it read', async (): Promise<void> => {
+    const [a, b] = actors;
+    const { dialog: empty } = await service.create(a!, b!.userId);
+
+    expect(empty.last_message).toBeNull();
+    const text = 'Начало\n😀 ' + 'д'.repeat(3900);
+    const { message: own } = await service.send(a!, empty.dialog_id, input(text));
+
+    const { dialog: ownMetadata } = await service.get(a!, empty.dialog_id);
+    const { dialog: repeatedMetadata } = await service.create(b!, a!.userId);
+
+    expect(ownMetadata.last_message).toEqual(own);
+    expect(repeatedMetadata.last_message).toEqual(own);
+    const { dialogs: previewList } = await service.list(b!, 30, 0);
+
+    expect(previewList[0]).toMatchObject({
+      last_message: own,
+      last_read_sequence: 0,
+      has_unread_messages: true,
+    });
+    const { message: sticker } = await service.send(b!, empty.dialog_id, {
+      client_message_id: randomUUID(),
+      content: { kind: 'sticker', sticker_id: 'animal-pals-v1-cat' },
+    });
+
+    const { dialogs: stickerList } = await service.list(a!, 30, 0);
+
+    expect(stickerList[0]?.last_message).toEqual(sticker);
+    const [, snapshot] = await Promise.all([
+      service.send(a!, empty.dialog_id, input('concurrent')),
+      service.get(b!, empty.dialog_id),
+    ]);
+
+    expect(snapshot.dialog.last_message?.sequence).toBe(snapshot.dialog.last_sequence);
+  });
+
   it('creates a single permanent pair under concurrent requests with 201/200 semantics', async (): Promise<void> => {
     const results = await Promise.all([
       service.create(actors[0], actors[1].userId),
@@ -418,9 +454,11 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const { dialogs: listResultDialogs2 } = await service.list(actors[1], 30, 0);
 
     expect(listResultDialogs2).toHaveLength(1);
+    expect(listResultDialogs2[0]?.last_message).toBeNull();
     const { dialog: getResultDialog7 } = await service.get(actors[1], id);
 
     expect(getResultDialog7.last_sequence).toBe(1);
+    expect(getResultDialog7.last_message).toBeNull();
     expect(await service.permissions(actors[1], id)).toEqual({
       dialogs: { can_read: false, can_send: false },
     });
@@ -436,6 +474,12 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     await pool.query("UPDATE gchat_users SET role='admin' WHERE id=$1", [actors[0].userId]);
     expect(await service.permissions(actors[1], id)).toEqual({
       dialogs: { can_read: true, can_send: false },
+    });
+    const { dialog: readableMetadata } = await service.get(actors[1], id);
+
+    expect(readableMetadata.last_message?.content).toEqual({
+      kind: 'text',
+      text: 'secret',
     });
     await service.read(actors[1], id, 1);
     const { messages: historyResultMessages5 } = await service.history(actors[1], id, 30);
@@ -525,6 +569,12 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     await expect(service.history(actors[0], id, 30, 0)).rejects.toMatchObject({
       code: 'INTERNAL_ERROR',
     });
+    await expect(service.get(actors[0], id)).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
+    await expect(service.list(actors[0], 30, 0)).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
+    await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[0].userId]);
+    const { dialog: deniedMetadata } = await service.get(actors[0], id);
+
+    expect(deniedMetadata.last_message).toBeNull();
   });
   it('protects an admitted real Dialogs transaction until commit while logout waits', async (): Promise<void> => {
     const id = await dialog();

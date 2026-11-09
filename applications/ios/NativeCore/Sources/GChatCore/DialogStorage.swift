@@ -122,12 +122,17 @@ public struct DialogStorageFailure: Error {
               let draft = record["draft"] as? [String: Any], Set(draft.keys) == ["text", "revision"], draft["text"] is String, number(draft["revision"]) != nil,
               let pending = record["outbox"] as? [[String: Any]] else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
         if let dialog = record["dialog"] as? [String: Any] {
-            guard Set(dialog.keys) == ["dialog_id", "peer_id", "peer_display_name", "has_unread_messages", "created_at", "last_message_at", "last_sequence", "last_read_sequence", "peer_last_read_sequence"],
+            let keys: Set<String> = ["dialog_id", "peer_id", "peer_display_name", "has_unread_messages", "created_at", "last_message_at", "last_sequence", "last_read_sequence", "peer_last_read_sequence"]
+            guard Set(dialog.keys) == keys || Set(dialog.keys) == keys.union(["last_message"]),
                   dialog["dialog_id"] as? String == id, let peer = dialog["peer_id"] as? String, UUID(uuidString: peer) != nil,
                   let name = dialog["peer_display_name"] as? String, name.unicodeScalars.count <= 80,
                   dialog["has_unread_messages"] is Bool, dialog["created_at"] is String,
                   dialog["last_message_at"] is NSNull || dialog["last_message_at"] is String,
                   number(dialog["last_sequence"]) != nil, number(dialog["last_read_sequence"]) != nil, number(dialog["peer_last_read_sequence"]) != nil else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
+            if let last = dialog["last_message"], !(last is NSNull) {
+                guard let message = last as? [String: Any], number(message["sequence"]) == number(dialog["last_sequence"]) else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
+                try validateMessage(message, id: id)
+            }
         }
         else if !(record["dialog"] is NSNull) { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
         if let permissions = record["permissions"] as? [String: Any] {
@@ -141,6 +146,16 @@ public struct DialogStorageFailure: Error {
                   let content = item["content"] as? [String: Any] else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
             try validateContent(content)
         }
+    }
+    private func validateMessage(_ message: [String: Any], id: String) throws {
+        guard Set(message.keys) == ["message_id", "dialog_id", "client_message_id", "sequence", "sender_id", "created_at", "content", "status"],
+              message["dialog_id"] as? String == id, let sequence = number(message["sequence"]), sequence > 0,
+              let identifier = message["message_id"] as? String, UUID(uuidString: identifier) != nil,
+              let sender = message["sender_id"] as? String, UUID(uuidString: sender) != nil,
+              let client = message["client_message_id"] as? String, UUID(uuidString: client) != nil,
+              message["created_at"] is String, let status = message["status"] as? String, ["sent", "read"].contains(status),
+              let content = message["content"] as? [String: Any] else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
+        try validateContent(content)
     }
     private func validateContent(_ content: [String: Any]) throws {
         if content["kind"] as? String == "text" {
@@ -258,14 +273,7 @@ public struct DialogStorageFailure: Error {
               let messages = args["messages"] as? [[String: Any]], messages.count <= 100 else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
         try validate(record, id: id, expected: expected)
         for message in messages {
-            guard Set(message.keys) == ["message_id", "dialog_id", "client_message_id", "sequence", "sender_id", "created_at", "content", "status"],
-                  message["dialog_id"] as? String == id, let sequence = number(message["sequence"]), sequence > 0,
-                  let identifier = message["message_id"] as? String, UUID(uuidString: identifier) != nil,
-                  let sender = message["sender_id"] as? String, UUID(uuidString: sender) != nil,
-                  let client = message["client_message_id"] as? String, UUID(uuidString: client) != nil,
-                  message["created_at"] is String, let status = message["status"] as? String, ["sent", "read"].contains(status),
-                  let content = message["content"] as? [String: Any] else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
-            try validateContent(content)
+            try validateMessage(message, id: id)
         }
         try execute("BEGIN IMMEDIATE", [])
         do {

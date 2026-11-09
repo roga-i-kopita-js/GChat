@@ -4,8 +4,13 @@ import { useRouteLoaderData } from 'react-router';
 
 import type { ApplicationLoaderData } from '../../app/loaders';
 import { type Member, reasons } from '../../shared/calls/protocol';
-import { type CallPresentationState, useDeviceCallSnapshot } from '../../shared/device/react';
+import {
+  type CallPresentationState,
+  useDeviceCallSnapshot,
+  useDevicePresentation,
+} from '../../shared/device/react';
 import { useAuth } from '../auth/AuthProvider';
+import { CallScreenLock } from './CallScreenLock';
 import type { ContactsData } from './contacts';
 import { resolvePeerName } from './peer-name';
 
@@ -24,6 +29,7 @@ interface CallsRuntime {
   status: string;
   duration: string;
   enabled: boolean;
+  lockScreen: () => void;
 }
 
 const CallsContext = createContext<CallsRuntime | null>(null);
@@ -38,11 +44,17 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
   const { device } = root;
   const { user } = useAuth();
   const state = useDeviceCallSnapshot();
+  const presentation = useDevicePresentation();
   const [person, setPerson] = useState<Member | null>(null);
   const contacts = useRouteLoaderData<ContactsData>('contacts');
   const [resolvedPeer, setResolvedPeer] = useState<{ id: string; name: string } | null>(null);
   const [now, setNow] = useState(Date.now());
   const [mobile, setMobile] = useState(false);
+  const [locked, setLocked] = useState(false);
+
+  useEffect(() => {
+    setLocked(false);
+  }, [state.call?.call_id, state.owner, state.selected, user?.sid]);
 
   useEffect((): void => {
     setPerson(null);
@@ -144,9 +156,21 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
     status,
     duration,
     enabled,
+    lockScreen: () => setLocked(true),
   };
 
-  return <CallsContext value={value}>{children}</CallsContext>;
+  return (
+    <CallsContext value={value}>
+      {children}
+      {locked &&
+        ongoing &&
+        state.owner &&
+        state.selected &&
+        presentation.callControls === 'application' && (
+          <CallScreenLock unlock={() => setLocked(false)} />
+        )}
+    </CallsContext>
+  );
 }
 
 export function useCalls(): CallsRuntime {

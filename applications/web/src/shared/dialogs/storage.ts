@@ -1,5 +1,4 @@
-import type { DialogDto } from '@gchat/backend-api';
-
+import type { DialogSummary } from './model';
 import type { DialogMessage } from './model';
 import {
   type DialogRecord,
@@ -17,7 +16,7 @@ export interface DialogStorage {
   epoch: number;
   adapter: 'indexeddb' | 'sqlite';
   read(id: string): Promise<StoredDialog>;
-  list(): Promise<DialogDto[]>;
+  list(): Promise<DialogSummary[]>;
   change(id: string, command: string, update: (value: StoredDialog) => void): Promise<StoredDialog>;
   close(): void;
   purge(): Promise<void>;
@@ -259,7 +258,7 @@ export class IndexedDialogStorage implements DialogStorage {
     return value;
   }
 
-  async list(): Promise<DialogDto[]> {
+  async list(): Promise<DialogSummary[]> {
     const tx = this.db.transaction(['control', 'records']);
     const done = completed(tx);
 
@@ -272,7 +271,7 @@ export class IndexedDialogStorage implements DialogStorage {
 
     const { flatMap: rowsFlatMap } = rows;
 
-    return rowsFlatMap.bind(rows)((row): DialogDto[] => {
+    return rowsFlatMap.bind(rows)((row): DialogSummary[] => {
       const record = recordSchema.parse(row.record);
 
       return record.dialog ? [record.dialog] : [];

@@ -63,26 +63,39 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
       </div>
     );
   } else {
-    dialogsContent = result.items.map((dialog): JSX.Element => (
-      <Link
-        key={dialog.dialog_id}
-        to={'/dialogs/' + dialog.dialog_id}
-        aria-current={dialogId === dialog.dialog_id ? 'page' : undefined}
-        className={'dialog-contact' + (dialogId === dialog.dialog_id ? ' current' : '')}
-      >
-        <UserCard
-          userId={dialog.peer_id}
-          displayName={dialog.peer_display_name}
-          subtitle="Последнее сообщение"
-        />
-        <span className="dialog-contact-meta">
-          <time>{time(dialog.last_message_at ?? dialog.created_at)}</time>
-          {dialog.has_unread_messages && (
-            <span className="dialog-unread" aria-label="Есть непрочитанные сообщения" />
-          )}
-        </span>
-      </Link>
-    ));
+    dialogsContent = result.items.map((dialog): JSX.Element => {
+      const message = dialog.last_message;
+      let subtitle: string | undefined;
+
+      if (message) {
+        subtitle = message.content.kind === 'text' ? message.content.text : 'Стикер';
+
+        if (message.sender_id === runtime.scope.accountId) {
+          subtitle = 'Вы: ' + subtitle;
+        }
+      }
+
+      return (
+        <Link
+          key={dialog.dialog_id}
+          to={'/dialogs/' + dialog.dialog_id}
+          aria-current={dialogId === dialog.dialog_id ? 'page' : undefined}
+          className={'dialog-contact' + (dialogId === dialog.dialog_id ? ' current' : '')}
+        >
+          <UserCard
+            userId={dialog.peer_id}
+            displayName={dialog.peer_display_name}
+            subtitle={subtitle}
+          />
+          <span className="dialog-contact-meta">
+            <time>{time(dialog.last_message_at ?? dialog.created_at)}</time>
+            {dialog.has_unread_messages && (
+              <span className="dialog-unread" aria-label="Есть непрочитанные сообщения" />
+            )}
+          </span>
+        </Link>
+      );
+    });
   }
 
   return (

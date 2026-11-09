@@ -2294,9 +2294,114 @@
           "peer_id"
         ]
       },
+      "TextContentDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "text"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "kind",
+          "text"
+        ]
+      },
+      "StickerContentDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "sticker"
+            ],
+            "type": "string"
+          },
+          "sticker_id": {
+            "type": "string",
+            "enum": [
+              "animal-pals-v1-cat",
+              "animal-pals-v1-dog",
+              "animal-pals-v1-fox",
+              "animal-pals-v1-bear",
+              "animal-pals-v1-bunny"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "sticker_id"
+        ]
+      },
+      "MessageDto": {
+        "type": "object",
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "content": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TextContentDto"
+              },
+              {
+                "$ref": "#/components/schemas/StickerContentDto"
+              }
+            ]
+          },
+          "status": {
+            "enum": [
+              "sent",
+              "read"
+            ],
+            "type": "string"
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "dialog_id": {
+            "type": "string"
+          },
+          "client_message_id": {
+            "type": "string"
+          },
+          "sender_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "content",
+          "status",
+          "message_id",
+          "dialog_id",
+          "client_message_id",
+          "sender_id",
+          "created_at"
+        ]
+      },
       "DialogDto": {
         "type": "object",
         "properties": {
+          "last_message": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageDto"
+              }
+            ]
+          },
           "last_message_at": {
             "type": "string",
             "nullable": true
@@ -2333,6 +2438,7 @@
           }
         },
         "required": [
+          "last_message",
           "last_message_at",
           "last_sequence",
           "last_read_sequence",
@@ -2399,50 +2505,6 @@
           "dialogs"
         ]
       },
-      "TextContentDto": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "enum": [
-              "text"
-            ],
-            "type": "string"
-          },
-          "text": {
-            "type": "string",
-            "maxLength": 4000
-          }
-        },
-        "required": [
-          "kind",
-          "text"
-        ]
-      },
-      "StickerContentDto": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "enum": [
-              "sticker"
-            ],
-            "type": "string"
-          },
-          "sticker_id": {
-            "type": "string",
-            "enum": [
-              "animal-pals-v1-cat",
-              "animal-pals-v1-dog",
-              "animal-pals-v1-fox",
-              "animal-pals-v1-bear",
-              "animal-pals-v1-bunny"
-            ]
-          }
-        },
-        "required": [
-          "kind",
-          "sticker_id"
-        ]
-      },
       "SendMessageDto": {
         "type": "object",
         "properties": {
@@ -2464,58 +2526,6 @@
         "required": [
           "content",
           "client_message_id"
-        ]
-      },
-      "MessageDto": {
-        "type": "object",
-        "properties": {
-          "sequence": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "content": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/TextContentDto"
-              },
-              {
-                "$ref": "#/components/schemas/StickerContentDto"
-              }
-            ]
-          },
-          "status": {
-            "enum": [
-              "sent",
-              "read"
-            ],
-            "type": "string"
-          },
-          "message_id": {
-            "type": "string"
-          },
-          "dialog_id": {
-            "type": "string"
-          },
-          "client_message_id": {
-            "type": "string"
-          },
-          "sender_id": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "sequence",
-          "content",
-          "status",
-          "message_id",
-          "dialog_id",
-          "client_message_id",
-          "sender_id",
-          "created_at"
         ]
       },
       "MessageResponseDto": {

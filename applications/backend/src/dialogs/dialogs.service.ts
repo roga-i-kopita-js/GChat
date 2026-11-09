@@ -84,22 +84,23 @@ export class DialogsService {
 
   private async metadata(
     tx: DatabaseTransaction,
-    actor: string,
+    actor: AuthIdentity,
     limit: number,
     offset = 0,
     id?: string,
   ): Promise<DialogDto[]> {
-    // One statement snapshots the read positions, peer name and incoming-message predicate.
+    // Join the exact last sequence in the same statement as metadata/read positions.
     const rows = await tx
       .select({
         row: dialogs,
         name: users.displayName,
+        message: dialogMessages,
         unread: sql<boolean>`exists (
           select 1 from ${dialogMessages}
           where ${dialogMessages.dialogId} = ${dialogs.id}
-            and ${dialogMessages.senderId} <> ${actor}
+            and ${dialogMessages.senderId} <> ${actor.userId}
             and ${dialogMessages.sequence} > case
-              when ${dialogs.participantLowId} = ${actor} then ${dialogs.lowRead}
+              when ${dialogs.participantLowId} = ${actor.userId} then ${dialogs.lowRead}
               else ${dialogs.highRead} end
         )`,
       })
@@ -108,28 +109,52 @@ export class DialogsService {
         users,
         eq(
           users.id,
-          sql`case when ${dialogs.participantLowId} = ${actor}
+          sql`case when ${dialogs.participantLowId} = ${actor.userId}
         then ${dialogs.participantHighId} else ${dialogs.participantLowId} end`,
         ),
       )
-      .where(and(this.member(actor), id ? eq(dialogs.id, id) : undefined))
+      .leftJoin(
+        dialogMessages,
+        and(
+          eq(dialogMessages.dialogId, dialogs.id),
+          eq(dialogMessages.sequence, dialogs.lastSequence),
+        ),
+      )
+      .where(and(this.member(actor.userId), id ? eq(dialogs.id, id) : undefined))
       .orderBy(desc(sql`coalesce(${dialogs.lastMessageAt},${dialogs.createdAt})`), desc(dialogs.id))
       .limit(limit)
       .offset(offset);
 
+    // Acquire account locks in one stable order before checking individual read permissions.
     const { map: rowsMap } = rows;
+    const peers = rowsMap.bind(rows)(({ row }): string => this.peer(row, actor.userId));
 
-    return rowsMap.bind(rows)(({ row, name, unread }): DialogDto => ({
-      dialog_id: row.id,
-      peer_id: this.peer(row, actor),
-      peer_display_name: name,
-      has_unread_messages: unread,
-      created_at: row.createdAt.toISOString(),
-      last_message_at: row.lastMessageAt?.toISOString() ?? null,
-      last_sequence: row.lastSequence,
-      last_read_sequence: row.participantLowId === actor ? row.lowRead : row.highRead,
-      peer_last_read_sequence: row.participantLowId === actor ? row.highRead : row.lowRead,
-    }));
+    await this.auth.lockAccountStates(tx, [actor.userId, ...peers]);
+    await this.access(tx, actor);
+    const result: DialogDto[] = [];
+
+    for (const { row, name, unread, message } of rows) {
+      const { can_read } = await this.access(tx, actor, this.peer(row, actor.userId), true);
+
+      if (can_read && row.lastSequence > 0 && !message) {
+        throw this.error.internal();
+      }
+
+      result.push({
+        dialog_id: row.id,
+        peer_id: this.peer(row, actor.userId),
+        peer_display_name: name,
+        has_unread_messages: unread,
+        last_message: can_read && message ? this.message(message, row) : null,
+        created_at: row.createdAt.toISOString(),
+        last_message_at: row.lastMessageAt?.toISOString() ?? null,
+        last_sequence: row.lastSequence,
+        last_read_sequence: row.participantLowId === actor.userId ? row.lowRead : row.highRead,
+        peer_last_read_sequence: row.participantLowId === actor.userId ? row.highRead : row.lowRead,
+      });
+    }
+
+    return result;
   }
 
   private message(row: MessageRow, dialog: DialogRow): MessageDto {
@@ -236,7 +261,7 @@ export class DialogsService {
         throw this.error.internal();
       }
 
-      const [dialog] = await this.metadata(tx, actor.userId, 1, 0, row.id);
+      const [dialog] = await this.metadata(tx, actor, 1, 0, row.id);
 
       if (!dialog) {
         throw this.error.internal();
@@ -250,8 +275,7 @@ export class DialogsService {
     await this.limits.check(actor.userId, 'get');
 
     return this.transaction(async (tx): Promise<DialogListResponseDto> => {
-      await this.access(tx, actor);
-      const rows = await this.metadata(tx, actor.userId, limit + 1, offset);
+      const rows = await this.metadata(tx, actor, limit + 1, offset);
 
       const { slice: rowsSlice, length: rowsLength } = rows;
 
@@ -264,9 +288,8 @@ export class DialogsService {
 
     return this.transaction(async (tx): Promise<{ dialog: DialogDto }> => {
       await this.own(tx, actor.userId, id);
-      await this.access(tx, actor);
 
-      const [dialog] = await this.metadata(tx, actor.userId, 1, 0, id);
+      const [dialog] = await this.metadata(tx, actor, 1, 0, id);
 
       if (!dialog) {
         throw this.error.notFound();

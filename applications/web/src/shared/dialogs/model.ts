@@ -31,18 +31,6 @@ export type DialogMessage = Omit<MessageDto, 'content'> & {
 
 const sequence = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 
-export const dialogSchema = z.object({
-  dialog_id: z.string().uuid(),
-  peer_id: z.string().uuid(),
-  peer_display_name: z.string(),
-  has_unread_messages: z.boolean(),
-  created_at: z.string(),
-  last_message_at: z.string().nullable(),
-  last_sequence: sequence,
-  last_read_sequence: sequence,
-  peer_last_read_sequence: sequence,
-});
-
 export const messageSchema = z.object({
   message_id: z.string().uuid(),
   dialog_id: z.string().uuid(),
@@ -53,6 +41,23 @@ export const messageSchema = z.object({
   content: contentSchema,
   status: z.enum(['sent', 'read']),
 });
+
+export const dialogSchema = z.object({
+  dialog_id: z.string().uuid(),
+  peer_id: z.string().uuid(),
+  peer_display_name: z.string(),
+  has_unread_messages: z.boolean(),
+  created_at: z.string(),
+  last_message_at: z.string().nullable(),
+  last_message: messageSchema.nullable().default(null),
+  last_sequence: sequence,
+  last_read_sequence: sequence,
+  peer_last_read_sequence: sequence,
+});
+
+export type DialogSummary = Omit<DialogDto, 'last_message'> & {
+  last_message: DialogMessage | null;
+};
 
 export const eventSchema = z.discriminatedUnion('type', [
   z.object({
@@ -182,13 +187,24 @@ export function mergeMessages(
 
 export function mergeMetadata(
   record: DialogRecord,
-  dialog: DialogDto,
+  dialog: DialogSummary,
   permissions?: DialogPermissionsDto,
 ): void {
   record.read = Math.max(record.read, dialog.last_read_sequence);
   record.peer_read = Math.max(record.peer_read, dialog.peer_last_read_sequence);
+  const previous = record.dialog;
+  const older = previous && previous.last_sequence > dialog.last_sequence;
+
   record.dialog = {
     ...dialog,
+    ...(older
+      ? {
+          last_sequence: previous.last_sequence,
+          last_message_at: previous.last_message_at,
+          // A null response revokes the preview even when its activity snapshot is older.
+          last_message: dialog.last_message === null ? null : previous.last_message,
+        }
+      : {}),
     last_read_sequence: record.read,
     peer_last_read_sequence: record.peer_read,
   };
