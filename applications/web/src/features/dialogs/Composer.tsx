@@ -73,7 +73,15 @@ export function Composer({
         throw cause;
       }
     };
-    const task = tail.current.catch((): void => {}).then(run);
+    const task = (async () => {
+      try {
+        await tail.current;
+      } catch {
+        // A failed save must not prevent the next draft from being saved.
+      }
+
+      return run();
+    })();
 
     tail.current = task;
 
@@ -102,7 +110,11 @@ export function Composer({
     }
 
     const timer = setTimeout((): void => {
-      void save().catch((): void => {});
+      void (async () => {
+        try {
+          return await save();
+        } catch (cause) {}
+      })();
     }, 300);
 
     return (): void => clearTimeout(timer);
@@ -111,11 +123,19 @@ export function Composer({
     mounted.current = true;
     const visibility = (): void => {
       if (document.visibilityState !== 'visible') {
-        void save().catch((): void => {});
+        void (async () => {
+          try {
+            return await save();
+          } catch (cause) {}
+        })();
       }
     };
     const prepare = (): void => {
-      void save().catch((): void => {});
+      void (async () => {
+        try {
+          return await save();
+        } catch (cause) {}
+      })();
     };
 
     document.addEventListener('visibilitychange', visibility);
@@ -125,7 +145,11 @@ export function Composer({
       mounted.current = false;
       document.removeEventListener('visibilitychange', visibility);
       window.removeEventListener('gchat-prepare-update', prepare);
-      void save().catch((): void => {});
+      void (async () => {
+        try {
+          return await save();
+        } catch (cause) {}
+      })();
     };
   }, [save]);
   useEffect((): void => {
@@ -145,7 +169,9 @@ export function Composer({
     try {
       const saved = await runtime.view(id);
 
-      revision.current = saved.record.draft.revision;
+      const { record: savedRecord } = saved;
+
+      revision.current = savedRecord.draft.revision;
       conflictRef.current = false;
       setConflict(false);
       setError('');
@@ -153,7 +179,9 @@ export function Composer({
       if (keepMine) {
         await save();
       } else {
-        current.current = saved.record.draft.text;
+        const { record: savedRecord2 } = saved;
+
+        current.current = savedRecord2.draft.text;
         setText(current.current);
         dirty.current = false;
       }
@@ -195,12 +223,22 @@ export function Composer({
         setError(dialogError(cause));
       }
     } finally {
-      const saved = await runtime.view(id).catch((): null => null);
+      const saved = await (async () => {
+        try {
+          return await runtime.view(id);
+        } catch (cause) {
+          return null;
+        }
+      })();
 
       if (mounted.current) {
         if (saved) {
-          revision.current = saved.record.draft.revision;
-          current.current = saved.record.draft.text;
+          const { record: savedRecord3 } = saved;
+
+          revision.current = savedRecord3.draft.revision;
+          const { record: savedRecord4 } = saved;
+
+          current.current = savedRecord4.draft.text;
           dirty.current = false;
           setText(current.current);
         }

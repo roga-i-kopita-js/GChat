@@ -33,19 +33,31 @@ export function retainFrontendUpdate(): FrontendUpdateLease {
       acquired = resolve;
       failed = reject;
     });
-    void ready.catch((): void => {});
-    void navigator.locks
-      .request(updateLock, { mode: 'shared', signal: abort.signal }, async (): Promise<void> => {
-        if (current !== generation || !references) {
-          return;
-        }
+    void (async () => {
+      try {
+        return await ready;
+      } catch (cause) {}
+    })();
+    void (async () => {
+      try {
+        return await navigator.locks.request(
+          updateLock,
+          { mode: 'shared', signal: abort.signal },
+          async (): Promise<void> => {
+            if (current !== generation || !references) {
+              return;
+            }
 
-        acquired();
-        await new Promise<void>((resolve): void => {
-          releaseLock = resolve;
-        });
-      })
-      .catch(failed);
+            acquired();
+            await new Promise<void>((resolve): void => {
+              releaseLock = resolve;
+            });
+          },
+        );
+      } catch (cause) {
+        return failed(cause);
+      }
+    })();
   }
 
   const acquired = ready!;

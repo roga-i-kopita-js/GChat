@@ -343,12 +343,13 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
 
             return value ? { sessionId: identity(value).sid, deviceId: value.deviceId } : null;
           },
-          ticket: async (): Promise<string> =>
-            (
-              await request((api): ReturnType<typeof api.authWsTicket> =>
-                api.authWsTicket({ body: {} }),
-              )
-            ).ticket,
+          ticket: async (): Promise<string> => {
+            const { ticket: resultTicket } = await request(
+              (api): ReturnType<typeof api.authWsTicket> => api.authWsTicket({ body: {} }),
+            );
+
+            return resultTicket;
+          },
           bind: (sid, deviceId): void => {
             const value = readSession();
 
@@ -389,7 +390,9 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
           const revision = ++observerReset;
 
           resettingObserver = true;
-          void observer.stop().then((): void => {
+          void (async () => {
+            await observer.stop();
+
             if (revision !== observerReset || lifetime.signal.aborted) {
               return;
             }
@@ -400,7 +403,7 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
             if (session.source.getSnapshot().status === 'authenticated') {
               observer.start();
             }
-          });
+          })();
 
           if (camera instanceof BrowserCamera) {
             void camera.resetViews();
@@ -408,7 +411,11 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
         }
 
         if (camera instanceof NativeCamera) {
-          void camera.resync().catch((): void => {});
+          void (async () => {
+            try {
+              return await camera.resync();
+            } catch (cause) {}
+          })();
         }
 
         if (!resettingObserver && value.status === 'authenticated') {
@@ -422,13 +429,18 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
           });
 
           if (host || native.phase !== 'ready') {
+            let phaseValue: 'ready' | 'error' | 'starting';
+
+            if (native.phase === 'ready') {
+              phaseValue = 'ready';
+            } else if (native.phase === 'error') {
+              phaseValue = 'error';
+            } else {
+              phaseValue = 'starting';
+            }
+
             publish({
-              phase:
-                native.phase === 'ready'
-                  ? 'ready'
-                  : native.phase === 'error'
-                    ? 'error'
-                    : 'starting',
+              phase: phaseValue,
               error:
                 native.phase === 'error'
                   ? deviceFailure(new DeviceError('BRIDGE_UNAVAILABLE'), 'lifecycle', 'synchronize')
@@ -494,29 +506,36 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
     }
 
     publish({ phase: 'starting', error: null });
-    const promise = startCore().catch((cause): never => {
-      const error = deviceFailure(cause, 'lifecycle', 'start');
+    const promise = (async () => {
+      try {
+        return await startCore();
+      } catch (cause) {
+        const error = deviceFailure(cause, 'lifecycle', 'start');
 
-      if (state.getSnapshot().phase !== 'stopped') {
-        publish({ phase: 'error', error });
+        if (state.getSnapshot().phase !== 'stopped') {
+          publish({ phase: 'error', error });
+        }
+
+        throw error;
       }
-
-      throw error;
-    });
+    })();
 
     startup = promise;
-    void promise.then(
-      (): void => {
+    void (async () => {
+      try {
+        await promise;
+      } catch (rejectedCause) {
         if (startup === promise) {
           startup = null;
         }
-      },
-      (): void => {
-        if (startup === promise) {
-          startup = null;
-        }
-      },
-    );
+
+        return;
+      }
+
+      if (startup === promise) {
+        startup = null;
+      }
+    })();
 
     return promise;
   };
@@ -590,7 +609,11 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
           navigation.stop();
           host?.dispose();
           host = null;
-          cleanupResults.push(...(await Promise.allSettled([bridge.dispose()])));
+          const { push: cleanupResultsPush } = cleanupResults;
+
+          cleanupResultsPush.bind(cleanupResults)(
+            ...(await Promise.allSettled([bridge.dispose()])),
+          );
           files.clear();
 
           for (const service of [
@@ -611,7 +634,10 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
             documentOwner = null;
           }
 
-          const failed = cleanupResults.find((result): boolean => result.status === 'rejected');
+          const { find: cleanupResultsFind } = cleanupResults;
+          const failed = cleanupResultsFind.bind(cleanupResults)(
+            (result): boolean => result.status === 'rejected',
+          );
 
           if (failed?.status === 'rejected') {
             throw deviceFailure(failed.reason, 'lifecycle', 'stop');
@@ -661,11 +687,11 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
             reason: 'authenticationRequired',
           });
         } else {
-          checks.push(
-            ...(await audio.check(options)).checks,
-            ...(await files.check(undefined, options)).checks,
-            ...(await camera.check(undefined, options)).checks,
-          );
+          const { checks: checkResultChecks } = await audio.check(options);
+          const { checks: checkResultChecks2 } = await files.check(undefined, options);
+          const { checks: checkResultChecks3 } = await camera.check(undefined, options);
+
+          checks.push(...checkResultChecks, ...checkResultChecks2, ...checkResultChecks3);
         }
 
         return { checks };

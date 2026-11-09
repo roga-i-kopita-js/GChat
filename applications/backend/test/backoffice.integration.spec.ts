@@ -52,13 +52,15 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
       'INSERT INTO gchat_users(id, login, display_name, password_hash, role) VALUES($1,$2,$3,$4,$5)',
       [id, login, login, hash, role],
     );
-    const tokens = await app.get(AuthService).login({ login, password });
+    const { access_token: tokensAccessToken, refresh_token: tokensRefreshToken } = await app
+      .get(AuthService)
+      .login({ login, password });
 
     return {
       id,
-      token: tokens.access_token,
-      sid: sessionId(tokens.refresh_token)!,
-      refresh: tokens.refresh_token,
+      token: tokensAccessToken,
+      sid: sessionId(tokensRefreshToken)!,
+      refresh: tokensRefreshToken,
       login,
     };
   }
@@ -97,7 +99,9 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
       ],
     }).compile();
 
-    app = module.createNestApplication();
+    const { createNestApplication: moduleCreateNestApplication } = module;
+
+    app = moduleCreateNestApplication.bind(module)();
     await app.listen(0, '127.0.0.1');
     hash = await app.get(AuthCrypto).hashPassword(password);
   }, 20000);
@@ -120,9 +124,11 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
     const user = await account();
 
     await api().get('/admin/users').expect(401).expect('Cache-Control', 'no-store');
+    const { token: userToken } = user;
+
     await api()
       .get('/admin/users/not-a-uuid')
-      .auth(user.token, { type: 'bearer' })
+      .auth(userToken, { type: 'bearer' })
       .expect(403)
       .expect('Cache-Control', 'no-store');
     await api().get('/admin/users/not-a-uuid').auth(actor.token, { type: 'bearer' }).expect(400);
@@ -149,7 +155,9 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
       .expect(201)
       .expect('Cache-Control', 'no-store');
 
-    expect(created.body.user).toMatchObject({
+    const { body: createdBody } = created;
+
+    expect(createdBody.user).toMatchObject({
       login: 'new.user',
       display_name: 'Андрей',
       role: 'user',
@@ -157,7 +165,9 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
       disabled_at: null,
       groups: [{ name: 'family' }],
     });
-    expect(Object.keys(created.body.user).sort()).toEqual(
+    const { body: createdBody2 } = created;
+
+    expect(Object.keys(createdBody2.user).sort()).toEqual(
       [
         'id',
         'login',
@@ -170,9 +180,12 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
         'updated_at',
       ].sort(),
     );
-    const stored = (
-      await pool.query('SELECT password_hash FROM gchat_users WHERE id=$1', [created.body.user.id])
-    ).rows[0];
+    const { body: createdBody3 } = created;
+    const { rows: queryResultRows4 } = await pool.query(
+      'SELECT password_hash FROM gchat_users WHERE id=$1',
+      [createdBody3.user.id],
+    );
+    const stored = queryResultRows4[0];
 
     expect(await app.get(AuthCrypto).verifyPassword(password, stored.password_hash)).toBe(true);
     await api()
@@ -181,15 +194,22 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
       .send({ ...input, group_name: 'must not exist' })
       .expect(409)
       .expect(({ body }): any => expect(body.error.code).toBe('LOGIN_TAKEN'));
-    expect((await pool.query('SELECT name FROM gchat_groups')).rows).toEqual([{ name: 'family' }]);
+    const { rows: queryResultRows } = await pool.query('SELECT name FROM gchat_groups');
+
+    expect(queryResultRows).toEqual([{ name: 'family' }]);
     const generated = await api()
       .post('/admin/users')
       .auth(actor.token, { type: 'bearer' })
       .send({ display_name: 'Generated', password, group_name: 'Family' })
       .expect(201);
 
-    expect(generated.body.user.login).toMatch(/^user-[a-z0-9]{8}$/);
-    expect(generated.body.user.groups).toEqual(created.body.user.groups);
+    const { body: generatedBody } = generated;
+
+    expect(generatedBody.user.login).toMatch(/^user-[a-z0-9]{8}$/);
+    const { body: generatedBody2 } = generated;
+    const { body: createdBody4 } = created;
+
+    expect(generatedBody2.user.groups).toEqual(createdBody4.user.groups);
   });
 
   it('validates fields/query without silently clamping limits or accepting null/role', async (): Promise<void> => {
@@ -231,23 +251,34 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
         .expect(400);
     }
 
-    expect((await pool.query('SELECT count(*)::int as n FROM gchat_groups')).rows[0].n).toBe(0);
+    const { rows: queryResultRows2 } = await pool.query(
+      'SELECT count(*)::int as n FROM gchat_groups',
+    );
+
+    expect(queryResultRows2[0].n).toBe(0);
   });
 
   it('paginates accounts before membership, searches literal wildcards and reports filtered totals', async (): Promise<void> => {
     const first = await account();
     const second = await account();
 
-    await pool.query("UPDATE gchat_users SET display_name='Андрей %_' WHERE id=$1", [first.id]);
+    const { id: firstId } = first;
+
+    await pool.query("UPDATE gchat_users SET display_name='Андрей %_' WHERE id=$1", [firstId]);
+    const { id: secondId } = second;
+
     await pool.query("UPDATE gchat_users SET display_name='Борис', disabled_at=now() WHERE id=$1", [
-      second.id,
+      secondId,
     ]);
-    const groups = (
-      await pool.query("INSERT INTO gchat_groups(name) VALUES('a'),('b') RETURNING id")
-    ).rows;
+    const { rows: queryResultRows3 } = await pool.query(
+      "INSERT INTO gchat_groups(name) VALUES('a'),('b') RETURNING id",
+    );
+    const groups = queryResultRows3;
 
     for (const group of groups) {
-      await pool.query('INSERT INTO gchat_group_members VALUES($1,$2)', [group.id, first.id]);
+      const { id: firstId2 } = first;
+
+      await pool.query('INSERT INTO gchat_group_members VALUES($1,$2)', [group.id, firstId2]);
     }
 
     const page = await api()
@@ -255,79 +286,104 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
       .auth(actor.token, { type: 'bearer' })
       .expect(200);
 
-    expect(page.body.total).toBe(1);
-    expect(page.body.users[0].groups.map((g: { name: string }): string => g.name)).toEqual([
+    const { body: pageBody } = page;
+
+    expect(pageBody.total).toBe(1);
+    const { body: pageBody2 } = page;
+
+    expect(pageBody2.users[0].groups.map((g: { name: string }): string => g.name)).toEqual([
       'a',
       'b',
     ]);
-    const literal = await api()
+    const { body: literalBody } = await api()
       .get('/admin/users')
       .query({ q: '%_' })
       .auth(actor.token, { type: 'bearer' })
       .expect(200);
 
-    expect(literal.body.total).toBe(1);
+    expect(literalBody.total).toBe(1);
     const disabled = await api()
       .get('/admin/users?status=disabled')
       .auth(actor.token, { type: 'bearer' })
       .expect(200);
 
-    expect(disabled.body.users.map((u: { id: string }): string => u.id)).toEqual([second.id]);
-    const empty = await api()
+    const { body: disabledBody } = disabled;
+    const { id: secondId2 } = second;
+
+    expect(disabledBody.users.map((u: { id: string }): string => u.id)).toEqual([secondId2]);
+    const { body: emptyBody } = await api()
       .get('/admin/users?offset=100')
       .auth(actor.token, { type: 'bearer' })
       .expect(200);
 
-    expect(empty.body).toEqual({ users: [], total: 3 });
-    const suggestions = await api()
+    expect(emptyBody).toEqual({ users: [], total: 3 });
+    const { body: suggestionsBody } = await api()
       .get('/admin/groups?limit=1')
       .auth(actor.token, { type: 'bearer' })
       .expect(200);
 
-    expect(suggestions.body).toMatchObject({ groups: [{ name: 'a' }], total: 2 });
+    expect(suggestionsBody).toMatchObject({ groups: [{ name: 'a' }], total: 2 });
   });
 
   it('atomically revokes all sessions on disable/password, preserves disabled state and makes retries safe', async (): Promise<void> => {
     const target = await account();
+    const { id: targetId } = target;
     const disabled = await api()
-      .post(`/admin/users/${target.id}/disable`)
+      .post(`/admin/users/${targetId}/disable`)
       .auth(actor.token, { type: 'bearer' })
       .send({})
       .expect(200);
 
-    expect(disabled.body.user.status).toBe('disabled');
-    const again = await api()
-      .post(`/admin/users/${target.id}/disable`)
+    const { body: disabledBody2 } = disabled;
+
+    expect(disabledBody2.user.status).toBe('disabled');
+    const { id: targetId2 } = target;
+    const { body: againBody } = await api()
+      .post(`/admin/users/${targetId2}/disable`)
       .auth(actor.token, { type: 'bearer' })
       .send({})
       .expect(200);
+    const { body: disabledBody3 } = disabled;
 
-    expect(again.body.user.disabled_at).toBe(disabled.body.user.disabled_at);
-    await api().get('/groups').auth(target.token, { type: 'bearer' }).expect(401);
-    const changed = await api()
-      .post(`/admin/users/${target.id}/password`)
+    expect(againBody.user.disabled_at).toBe(disabledBody3.user.disabled_at);
+    const { token: targetToken } = target;
+
+    await api().get('/groups').auth(targetToken, { type: 'bearer' }).expect(401);
+    const { id: targetId3 } = target;
+    const { body: changedBody } = await api()
+      .post(`/admin/users/${targetId3}/password`)
       .auth(actor.token, { type: 'bearer' })
       .send({ password: 'new valid password value' })
       .expect(200);
+    const { body: disabledBody4 } = disabled;
 
-    expect(changed.body.user.disabled_at).toBe(disabled.body.user.disabled_at);
+    expect(changedBody.user.disabled_at).toBe(disabledBody4.user.disabled_at);
+    const { id: targetId4 } = target;
+
     await api()
-      .post(`/admin/users/${target.id}/enable`)
+      .post(`/admin/users/${targetId4}/enable`)
       .auth(actor.token, { type: 'bearer' })
       .send({})
       .expect(200);
-    await api().post('/auth/login').send({ login: target.login, password }).expect(401);
+    const { login: targetLogin } = target;
+
+    await api().post('/auth/login').send({ login: targetLogin, password }).expect(401);
+    const { login: targetLogin2 } = target;
     const fresh = await api()
       .post('/auth/login')
-      .send({ login: target.login, password: 'new valid password value' })
+      .send({ login: targetLogin2, password: 'new valid password value' })
       .expect(200);
 
+    const { id: targetId5 } = target;
+
     await api()
-      .post(`/admin/users/${target.id}/enable`)
+      .post(`/admin/users/${targetId5}/enable`)
       .auth(actor.token, { type: 'bearer' })
       .send({})
       .expect(200);
-    await api().get('/groups').auth(fresh.body.access_token, { type: 'bearer' }).expect(200);
+    const { body: freshBody } = fresh;
+
+    await api().get('/groups').auth(freshBody.access_token, { type: 'bearer' }).expect(200);
     await api()
       .post(`/admin/users/${actor.id.toUpperCase()}/disable`)
       .auth(actor.token, { type: 'bearer' })
@@ -342,16 +398,24 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
   });
 
   it('serializes reciprocal administrator disable requests and rechecks the losing actor', async (): Promise<void> => {
-    const other = await account('admin');
+    const { id: otherId, token: otherToken } = await account('admin');
     const replies = await Promise.all([
-      api().post(`/admin/users/${other.id}/disable`).auth(actor.token, { type: 'bearer' }).send({}),
-      api().post(`/admin/users/${actor.id}/disable`).auth(other.token, { type: 'bearer' }).send({}),
+      api().post(`/admin/users/${otherId}/disable`).auth(actor.token, { type: 'bearer' }).send({}),
+      api().post(`/admin/users/${actor.id}/disable`).auth(otherToken, { type: 'bearer' }).send({}),
     ]);
 
-    expect(replies.map((reply): number => reply.status).sort()).toEqual([200, 401]);
+    const { map: repliesMap } = replies;
+
     expect(
-      (await pool.query('SELECT id FROM gchat_users WHERE disabled_at IS NULL')).rowCount,
-    ).toBe(1);
+      repliesMap
+        .bind(replies)((reply): number => reply.status)
+        .sort(),
+    ).toEqual([200, 401]);
+    const { rowCount: queryResultRowCount } = await pool.query(
+      'SELECT id FROM gchat_users WHERE disabled_at IS NULL',
+    );
+
+    expect(queryResultRowCount).toBe(1);
   });
 
   it('rolls back account creation when group assignment fails', async (): Promise<void> => {
@@ -368,10 +432,14 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
         .auth(actor.token, { type: 'bearer' })
         .send({ display_name: 'Rollback', login: 'rollback', password, group_name: 'rollback' })
         .expect(500);
-      expect((await pool.query("SELECT id FROM gchat_users WHERE login='rollback'")).rowCount).toBe(
-        0,
+      const { rowCount: queryResultRowCount2 } = await pool.query(
+        "SELECT id FROM gchat_users WHERE login='rollback'",
       );
-      expect((await pool.query('SELECT id FROM gchat_groups')).rowCount).toBe(0);
+
+      expect(queryResultRowCount2).toBe(0);
+      const { rowCount: queryResultRowCount3 } = await pool.query('SELECT id FROM gchat_groups');
+
+      expect(queryResultRowCount3).toBe(0);
     } finally {
       await pool.query('DROP TRIGGER reject_membership ON gchat_group_members');
       await pool.query('DROP FUNCTION reject_membership()');
@@ -400,17 +468,27 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
 
         return result;
       });
-    const login = app.get(AuthService).login({ login: target.login, password });
+    const { login: targetLogin3 } = target;
+    const login = app.get(AuthService).login({ login: targetLogin3, password });
     // Observe rejection immediately to avoid an unhandled rejection during the reset.
-    const outcome = login.then(
-      (): string => 'unexpected success',
-      (error: unknown): unknown => error,
-    );
+    const outcome = (async () => {
+      try {
+        await login;
+      } catch (rejectedCause) {
+        const error: unknown = rejectedCause;
+
+        return error;
+      }
+
+      return 'unexpected success';
+    })();
 
     try {
       await ready;
+      const { id: targetId6 } = target;
+
       await api()
-        .post(`/admin/users/${target.id}/password`)
+        .post(`/admin/users/${targetId6}/password`)
         .auth(actor.token, { type: 'bearer' })
         .send({ password: 'replacement password value' })
         .expect(200);
@@ -420,10 +498,13 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
     }
 
     expect(await outcome).toMatchObject({ code: 'INVALID_CREDENTIALS' });
-    expect(
-      (await pool.query('SELECT id FROM gchat_auth_sessions WHERE user_id=$1', [target.id]))
-        .rowCount,
-    ).toBe(0);
+    const { id: targetId7 } = target;
+    const { rowCount: queryResultRowCount8 } = await pool.query(
+      'SELECT id FROM gchat_auth_sessions WHERE user_id=$1',
+      [targetId7],
+    );
+
+    expect(queryResultRowCount8).toBe(0);
   });
 
   it('reuses one normalized group under concurrent independent transactions', async (): Promise<void> => {
@@ -433,30 +514,50 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
     const groups = app.get(GroupsService);
 
     await Promise.all([
-      db.db.transaction((tx): Promise<void> => groups.assign(tx, first.id, ' CONCURRENT ')),
-      db.db.transaction((tx): Promise<void> => groups.assign(tx, second.id, 'concurrent')),
+      db.db.transaction((tx): Promise<void> => {
+        const { id: firstId3 } = first;
+
+        return groups.assign(tx, firstId3, ' CONCURRENT ');
+      }),
+      db.db.transaction((tx): Promise<void> => {
+        const { id: secondId3 } = second;
+
+        return groups.assign(tx, secondId3, 'concurrent');
+      }),
     ]);
-    expect((await pool.query("SELECT id FROM gchat_groups WHERE name='concurrent'")).rowCount).toBe(
-      1,
+    const { rowCount: queryResultRowCount4 } = await pool.query(
+      "SELECT id FROM gchat_groups WHERE name='concurrent'",
     );
-    expect((await pool.query('SELECT user_id FROM gchat_group_members')).rowCount).toBe(2);
+
+    expect(queryResultRowCount4).toBe(1);
+    const { rowCount: queryResultRowCount5 } = await pool.query(
+      'SELECT user_id FROM gchat_group_members',
+    );
+
+    expect(queryResultRowCount5).toBe(2);
   });
 
   it('cleans expired data in bounded batches, skips locked rows and preserves live state', async (): Promise<void> => {
     const target = await account();
+    const { refresh: targetRefresh } = target;
     const tokens = await app
       .get(AuthService)
-      .refresh({ refresh_token: target.refresh, request_id: randomUUID() });
+      .refresh({ refresh_token: targetRefresh, request_id: randomUUID() });
     const other = await account();
 
-    await app.get(AuthService).refresh({ refresh_token: other.refresh, request_id: randomUUID() });
+    const { refresh: otherRefresh } = other;
+
+    await app.get(AuthService).refresh({ refresh_token: otherRefresh, request_id: randomUUID() });
     const ticketService = app.get(AuthWsTickets);
-    const identity = await app.get(AuthService).authenticate(tokens.access_token);
+    const { access_token: tokensAccessToken2 } = tokens;
+    const identity = await app.get(AuthService).authenticate(tokensAccessToken2);
     const issued = await ticketService.issue(identity, 'http://localhost:5173');
+
+    const { sid: targetSid } = target;
 
     await pool.query(
       "UPDATE gchat_auth_sessions SET rotation_expires_at=clock_timestamp()-interval '1 second', ws_ticket_window_started_at=clock_timestamp()-interval '61 seconds' WHERE id=$1",
-      [target.sid],
+      [targetSid],
     );
     await pool.query(
       "UPDATE gchat_auth_ws_tickets SET issued_at=clock_timestamp()-interval '31 seconds', expires_at=clock_timestamp()-interval '1 second'",
@@ -464,68 +565,100 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
     const connection = await pool.connect();
 
     try {
-      await connection.query('BEGIN');
-      await connection.query('SELECT id FROM gchat_auth_sessions WHERE id=$1 FOR UPDATE', [
-        target.sid,
-      ]);
+      const { query: connectionQuery } = connection;
+
+      await connectionQuery.bind(connection)('BEGIN');
+      const { sid: targetSid2 } = target;
+      const { query: connectionQuery3 } = connection;
+
+      await connectionQuery3.bind(connection)(
+        'SELECT id FROM gchat_auth_sessions WHERE id=$1 FOR UPDATE',
+        [targetSid2],
+      );
       await app.get(AuthCleanup).cleanup();
-      expect(
-        (
-          await pool.query('SELECT rotation_request_id FROM gchat_auth_sessions WHERE id=$1', [
-            target.sid,
-          ])
-        ).rows[0].rotation_request_id,
-      ).not.toBeNull();
+      const { sid: targetSid3 } = target;
+      const { rows: queryResultRows5 } = await pool.query(
+        'SELECT rotation_request_id FROM gchat_auth_sessions WHERE id=$1',
+        [targetSid3],
+      );
+
+      expect(queryResultRows5[0].rotation_request_id).not.toBeNull();
     } finally {
-      await connection.query('ROLLBACK');
-      connection.release();
+      const { query: connectionQuery2 } = connection;
+
+      await connectionQuery2.bind(connection)('ROLLBACK');
+      const { release: connectionRelease } = connection;
+
+      connectionRelease.bind(connection)();
     }
 
     await app.get(AuthCleanup).cleanup();
-    const row = (await pool.query('SELECT * FROM gchat_auth_sessions WHERE id=$1', [target.sid]))
-      .rows[0];
+    const { sid: targetSid4 } = target;
+    const { rows: queryResultRows6 } = await pool.query(
+      'SELECT * FROM gchat_auth_sessions WHERE id=$1',
+      [targetSid4],
+    );
+    const row = queryResultRows6[0];
 
     expect(row.rotation_request_id).toBeNull();
     expect(row.ws_ticket_count).toBe(0);
     expect(row.ws_ticket_window_started_at).toBeNull();
-    expect(
-      (
-        await pool.query('SELECT rotation_request_id FROM gchat_auth_sessions WHERE id=$1', [
-          other.sid,
-        ])
-      ).rows[0].rotation_request_id,
-    ).not.toBeNull();
-    await expect(
-      ticketService.redeem(issued.ticket, 'http://localhost:5173'),
-    ).rejects.toMatchObject({ code: 'ACCESS_TOKEN_INVALID' });
-    await expect(app.get(AuthService).authenticate(tokens.access_token)).resolves.toMatchObject({
-      userId: target.id,
+    const { sid: otherSid } = other;
+    const { rows: queryResultRows7 } = await pool.query(
+      'SELECT rotation_request_id FROM gchat_auth_sessions WHERE id=$1',
+      [otherSid],
+    );
+
+    expect(queryResultRows7[0].rotation_request_id).not.toBeNull();
+    const { ticket: issuedTicket } = issued;
+
+    await expect(ticketService.redeem(issuedTicket, 'http://localhost:5173')).rejects.toMatchObject(
+      { code: 'ACCESS_TOKEN_INVALID' },
+    );
+    const { access_token: tokensAccessToken3 } = tokens;
+    const { id: targetId8 } = target;
+
+    await expect(app.get(AuthService).authenticate(tokensAccessToken3)).resolves.toMatchObject({
+      userId: targetId8,
     });
   });
 
   it('enforces session and ticket CHECK constraints and cascades revocation', async (): Promise<void> => {
     const target = await account();
 
+    const { sid: targetSid5 } = target;
+
     await expect(
       pool.query('UPDATE gchat_auth_sessions SET rotation_request_id=$1 WHERE id=$2', [
         randomUUID(),
-        target.sid,
+        targetSid5,
       ]),
     ).rejects.toMatchObject({ code: '23514' });
+    const { sid: targetSid6 } = target;
+
     await expect(
-      pool.query('UPDATE gchat_auth_sessions SET ws_ticket_count=-1 WHERE id=$1', [target.sid]),
+      pool.query('UPDATE gchat_auth_sessions SET ws_ticket_count=-1 WHERE id=$1', [targetSid6]),
     ).rejects.toMatchObject({ code: '23514' });
-    const identity = await app.get(AuthService).authenticate(target.token);
+    const { token: targetToken2 } = target;
+    const identity = await app.get(AuthService).authenticate(targetToken2);
     const ticket = await app.get(AuthWsTickets).issue(identity, 'http://localhost:5173');
 
+    const { id: targetId9 } = target;
+
     await api()
-      .post(`/admin/users/${target.id}/disable`)
+      .post(`/admin/users/${targetId9}/disable`)
       .auth(actor.token, { type: 'bearer' })
       .send({})
       .expect(200);
-    expect((await pool.query('SELECT ticket_hash FROM gchat_auth_ws_tickets')).rowCount).toBe(0);
+    const { rowCount: queryResultRowCount6 } = await pool.query(
+      'SELECT ticket_hash FROM gchat_auth_ws_tickets',
+    );
+
+    expect(queryResultRowCount6).toBe(0);
+    const { ticket: ticketTicket } = ticket;
+
     await expect(
-      app.get(AuthWsTickets).redeem(ticket.ticket, 'http://localhost:5173'),
+      app.get(AuthWsTickets).redeem(ticketTicket, 'http://localhost:5173'),
     ).rejects.toMatchObject({ code: 'ACCESS_TOKEN_INVALID' });
   });
 
@@ -560,9 +693,11 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
       spy.mockRestore();
     }
 
-    expect(
-      (await pool.query("SELECT id FROM gchat_users WHERE login='unknown-commit'")).rowCount,
-    ).toBe(1);
+    const { rowCount: queryResultRowCount7 } = await pool.query(
+      "SELECT id FROM gchat_users WHERE login='unknown-commit'",
+    );
+
+    expect(queryResultRowCount7).toBe(1);
   });
 
   it('rolls back session revocation together with a failed access change', async (): Promise<void> => {
@@ -576,16 +711,23 @@ integration('Backoffice with isolated PostgreSQL', (): void => {
     );
 
     try {
+      const { id: targetId10 } = target;
+
       await api()
-        .post(`/admin/users/${target.id}/disable`)
+        .post(`/admin/users/${targetId10}/disable`)
         .auth(actor.token, { type: 'bearer' })
         .send({})
         .expect(500);
-      await api().get('/groups').auth(target.token, { type: 'bearer' }).expect(200);
-      expect(
-        (await pool.query('SELECT disabled_at FROM gchat_users WHERE id=$1', [target.id])).rows[0]
-          .disabled_at,
-      ).toBeNull();
+      const { token: targetToken3 } = target;
+
+      await api().get('/groups').auth(targetToken3, { type: 'bearer' }).expect(200);
+      const { id: targetId11 } = target;
+      const { rows: queryResultRows8 } = await pool.query(
+        'SELECT disabled_at FROM gchat_users WHERE id=$1',
+        [targetId11],
+      );
+
+      expect(queryResultRows8[0].disabled_at).toBeNull();
     } finally {
       await pool.query('DROP TRIGGER reject_account_update ON gchat_users');
       await pool.query('DROP FUNCTION reject_account_update()');

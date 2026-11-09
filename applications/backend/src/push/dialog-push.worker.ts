@@ -93,14 +93,17 @@ export class DialogPushWorker implements OnModuleDestroy {
   private drain(): void {
     while (!this.stopped && this.active.size < 4 && this.waiting.length) {
       const job = this.waiting.shift()!;
-      const task = this.bounded(job)
-        .catch((): void => {
+      const execute = async (): Promise<void> => {
+        try {
+          await this.bounded(job);
+        } catch {
           this.skip('dependency');
-        })
-        .finally((): void => {
+        } finally {
           this.active.delete(task);
           this.drain();
-        });
+        }
+      };
+      const task = execute();
 
       this.active.add(task);
     }
@@ -135,25 +138,33 @@ export class DialogPushWorker implements OnModuleDestroy {
 
         const current = await this.devices.resolveApnsTarget(target.deviceId, target.sessionId);
 
-        if (!current || current.version !== target.version || Date.now() >= job.deadline) {
+        const { version: currentVersion } = current ?? {};
+
+        if (!current || currentVersion !== target.version || Date.now() >= job.deadline) {
           return;
         }
 
+        const { token: currentToken } = current;
         const result = await this.apns.send(
           job.message.message_id,
-          current.token,
+          currentToken,
           dialogPushPayload(job.message, true),
           new Date(job.deadline),
           'alert',
         );
 
+        const { reason: resultReason } = result;
+
         if (
-          ['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic'].includes(result.reason ?? '')
+          ['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic'].includes(resultReason ?? '')
         ) {
+          const { deviceId: currentDeviceId, version: currentVersion2 } = current;
+          const { timestamp: resultTimestamp } = result;
+
           await this.devices.invalidateApnsTarget(
-            current.deviceId,
-            current.version,
-            result.timestamp,
+            currentDeviceId,
+            currentVersion2,
+            resultTimestamp,
           );
         }
       });
@@ -175,18 +186,22 @@ export class DialogPushWorker implements OnModuleDestroy {
 
         const current = await this.devices.resolveWebPushTarget(target.deviceId, target.sessionId);
 
-        if (!current || current.version !== target.version || Date.now() >= job.deadline) {
+        const { version: currentVersion3 } = current ?? {};
+
+        if (!current || currentVersion3 !== target.version || Date.now() >= job.deadline) {
           return;
         }
 
-        const result = await this.web.sendPayload(
+        const { status: resultStatus } = await this.web.sendPayload(
           current,
           dialogPushPayload(job.message, false),
           new Date(job.deadline).toISOString(),
         );
 
-        if (result.status === 404 || result.status === 410) {
-          await this.devices.invalidateWebPushTarget(current.sessionId, current.version);
+        if (resultStatus === 404 || resultStatus === 410) {
+          const { sessionId: currentSessionId, version: currentVersion4 } = current;
+
+          await this.devices.invalidateWebPushTarget(currentSessionId, currentVersion4);
         }
       });
     }

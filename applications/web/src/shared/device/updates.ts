@@ -39,17 +39,23 @@ export class DeviceUpdates implements UpdatesService {
 
     const value = updateSnapshot();
 
+    let statusValue: UpdatesState['status'];
+
+    if (value.error) {
+      statusValue = 'error';
+    } else if (value.applying) {
+      statusValue = 'applying';
+    } else if (value.pending) {
+      statusValue = 'waiting';
+    } else if (value.available) {
+      statusValue = 'available';
+    } else {
+      statusValue = 'idle';
+    }
+
     this.source.set({
       ...this.source.getSnapshot(),
-      status: value.error
-        ? 'error'
-        : value.applying
-          ? 'applying'
-          : value.pending
-            ? 'waiting'
-            : value.available
-              ? 'available'
-              : 'idle',
+      status: statusValue,
       error: value.error ? deviceFailure(new DeviceError('IO_ERROR'), 'updates', 'prepare') : null,
     });
   };
@@ -80,13 +86,17 @@ export class DeviceUpdates implements UpdatesService {
     }
 
     if (!value.pending) {
-      void applyUpdate().catch((cause): void => {
-        this.source.set({
-          ...this.source.getSnapshot(),
-          status: 'error',
-          error: deviceFailure(cause, 'updates', 'apply'),
-        });
-      });
+      void (async () => {
+        try {
+          return await applyUpdate();
+        } catch (cause) {
+          this.source.set({
+            ...this.source.getSnapshot(),
+            status: 'error',
+            error: deviceFailure(cause, 'updates', 'apply'),
+          });
+        }
+      })();
     }
 
     return { outcome: this.busy() || value.pending ? 'deferred' : 'scheduled' };

@@ -152,18 +152,25 @@ it('resync keeps router revision, one listener and drops pending old responses',
 
   await binding.start(oldCycle);
   port.callback?.(command(oldCycle));
-  await vi.waitFor(async (): Promise<void> =>
-    expect((await navigation.getState()).status).toBe('loading'),
-  );
-  const revision = (await navigation.getState()).revision;
+  await vi.waitFor(async (): Promise<void> => {
+    const { status: getStateResultStatus } = await navigation.getState();
+
+    return expect(getStateResultStatus).toBe('loading');
+  });
+  const { revision: getStateResultRevision } = await navigation.getState();
+  const revision = getStateResultRevision;
   const nextCycle = crypto.randomUUID();
 
   await binding.start(nextCycle);
   release();
-  await vi.waitFor(async (): Promise<void> =>
-    expect((await navigation.getState()).status).toBe('idle'),
-  );
-  expect((await navigation.getState()).revision).toBeGreaterThanOrEqual(revision);
+  await vi.waitFor(async (): Promise<void> => {
+    const { status: getStateResultStatus2 } = await navigation.getState();
+
+    return expect(getStateResultStatus2).toBe('idle');
+  });
+  const { revision: getStateResultRevision2 } = await navigation.getState();
+
+  expect(getStateResultRevision2).toBeGreaterThanOrEqual(revision);
   expect(port.completions).toHaveLength(0);
   expect(port.listeners).toBe(1);
 });

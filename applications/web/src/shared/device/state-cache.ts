@@ -71,17 +71,33 @@ export class StateCache<T extends Versioned, E extends string> {
       reading = Promise.reject(cause);
     }
 
-    const promise = reading.then(accept, (error): void => {
-      if (generation === this.generation && !controller.signal.aborted && !latest) {
-        this.publish({ status: 'error', error });
+    const promise = (async () => {
+      let fulfilledValue;
+
+      try {
+        fulfilledValue = await reading;
+      } catch (rejectedCause) {
+        const error = rejectedCause;
+
+        if (generation === this.generation && !controller.signal.aborted && !latest) {
+          this.publish({ status: 'error', error });
+        }
+
+        return;
       }
-    });
+
+      return accept(fulfilledValue);
+    })();
 
     if (!this.snapshot || this.snapshot.status !== 'ready') {
       this.snapshot = { status: 'loading', promise };
     }
 
-    void promise.catch((): void => {});
+    void (async () => {
+      try {
+        return await promise;
+      } catch (cause) {}
+    })();
   }
 
   async preload(): Promise<void> {

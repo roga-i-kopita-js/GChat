@@ -35,7 +35,7 @@ export class WebPushClient {
     }
 
     try {
-      const result = await webPush.sendNotification(
+      const { statusCode: resultStatusCode } = await webPush.sendNotification(
         { endpoint: address.endpoint, keys: { p256dh: address.p256dh, auth: address.auth } },
         JSON.stringify(payload),
         {
@@ -51,7 +51,7 @@ export class WebPushClient {
         },
       );
 
-      return { status: result.statusCode };
+      return { status: resultStatusCode };
     } catch (cause) {
       if (cause instanceof webPush.WebPushError) {
         const value = cause.headers['retry-after'];

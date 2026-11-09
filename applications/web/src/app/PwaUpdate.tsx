@@ -149,7 +149,11 @@ export function PwaUpdate(): JSX.Element | null {
           close={close}
           confirm={(): void => {
             close();
-            void device.updates.apply().catch((): void => {});
+            void (async () => {
+              try {
+                return await device.updates.apply();
+              } catch (cause) {}
+            })();
           }}
         />
       )}

@@ -122,7 +122,9 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       ],
     }).compile();
 
-    app = module.createNestApplication<NestExpressApplication>({
+    const { createNestApplication: moduleCreateNestApplication } = module;
+
+    app = moduleCreateNestApplication.bind(module)<NestExpressApplication>({
       bodyParser: false,
       logger: false,
     });
@@ -155,12 +157,15 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
         [sessionId, userId, 'unused'],
       );
       const account = await new AuthRepository(database, error).byId(userId);
-      const token = (await authCrypto.issue(account!, sessionId)).access_token;
+      const { access_token: issueResultAccessToken } = await authCrypto.issue(account!, sessionId);
+      const token = issueResultAccessToken;
+
+      const deviceIdValue = await devices.bind(userId, sessionId, null);
 
       actors.push({
         userId,
         sessionId,
-        deviceId: await devices.bind(userId, sessionId, null),
+        deviceId: deviceIdValue,
         token,
         role: 'user',
         login: 'user' + i,
@@ -168,8 +173,11 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       });
     }
 
-    group = (await pool.query("INSERT INTO gchat_groups(name) VALUES('dialogs') RETURNING id"))
-      .rows[0].id;
+    const { rows: queryResultRows } = await pool.query(
+      "INSERT INTO gchat_groups(name) VALUES('dialogs') RETURNING id",
+    );
+
+    group = queryResultRows[0].id;
 
     for (const actor of actors) {
       await pool.query('INSERT INTO gchat_group_members VALUES($1,$2)', [group, actor.userId]);
@@ -204,7 +212,9 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
   });
 
   async function dialog(): Promise<string> {
-    return (await service.create(actors[0], actors[1].userId)).dialog.dialog_id;
+    const { dialog: createResultDialog } = await service.create(actors[0], actors[1].userId);
+
+    return createResultDialog.dialog_id;
   }
   async function resetRates(): Promise<void> {
     for await (const keys of redis.scanIterator({ MATCH: prefix + 'dialogs:rate:*' })) {
@@ -219,31 +229,49 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
 
     expect(dialog.peer_display_name).toBe('user1');
     expect(dialog.has_unread_messages).toBe(false);
-    expect((await service.create(a!, b!.userId)).dialog).toMatchObject({
+    const { dialog: createResultDialog2 } = await service.create(a!, b!.userId);
+
+    expect(createResultDialog2).toMatchObject({
       peer_display_name: 'user1',
       has_unread_messages: false,
     });
     await service.send(a!, dialog.dialog_id, input('own'));
-    expect((await service.get(a!, dialog.dialog_id)).dialog.has_unread_messages).toBe(false);
-    expect((await service.get(b!, dialog.dialog_id)).dialog.has_unread_messages).toBe(true);
+    const { dialog: getResultDialog } = await service.get(a!, dialog.dialog_id);
+
+    expect(getResultDialog.has_unread_messages).toBe(false);
+    const { dialog: getResultDialog2 } = await service.get(b!, dialog.dialog_id);
+
+    expect(getResultDialog2.has_unread_messages).toBe(true);
     const first = await service.send(b!, dialog.dialog_id, input('incoming'));
     const second = await service.send(b!, dialog.dialog_id, input('also incoming'));
 
-    await service.read(a!, dialog.dialog_id, first.message.sequence);
-    expect((await service.get(a!, dialog.dialog_id)).dialog.has_unread_messages).toBe(true);
-    await service.read(a!, dialog.dialog_id, second.message.sequence);
+    const { message: firstMessage } = first;
+
+    await service.read(a!, dialog.dialog_id, firstMessage.sequence);
+    const { dialog: getResultDialog3 } = await service.get(a!, dialog.dialog_id);
+
+    expect(getResultDialog3.has_unread_messages).toBe(true);
+    const { message: secondMessage } = second;
+
+    await service.read(a!, dialog.dialog_id, secondMessage.sequence);
     await service.send(a!, dialog.dialog_id, input('own after read'));
-    expect((await service.get(a!, dialog.dialog_id)).dialog.has_unread_messages).toBe(false);
+    const { dialog: getResultDialog4 } = await service.get(a!, dialog.dialog_id);
+
+    expect(getResultDialog4.has_unread_messages).toBe(false);
     await pool.query('UPDATE gchat_users SET display_name=$1,disabled_at=now() WHERE id=$2', [
       'Renamed',
       b!.userId,
     ]);
     await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [a!.userId]);
-    expect((await service.list(a!, 30, 0)).dialogs[0]).toMatchObject({
+    const { dialogs: listResultDialogs } = await service.list(a!, 30, 0);
+
+    expect(listResultDialogs[0]).toMatchObject({
       peer_display_name: 'Renamed',
       has_unread_messages: false,
     });
-    expect((await service.get(a!, dialog.dialog_id)).dialog.peer_display_name).toBe('Renamed');
+    const { dialog: getResultDialog5 } = await service.get(a!, dialog.dialog_id);
+
+    expect(getResultDialog5.peer_display_name).toBe('Renamed');
     await expect(service.get(outsider!, dialog.dialog_id)).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
@@ -255,9 +283,15 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       service.create(actors[1], actors[0].userId),
     ]);
 
-    expect(new Set(results.map((r): string => r.dialog.dialog_id)).size).toBe(1);
-    expect(results.filter((r): boolean => r.created)).toHaveLength(1);
-    expect(results[0].dialog).toEqual(
+    const { map: resultsMap } = results;
+
+    expect(new Set(resultsMap.bind(results)((r): string => r.dialog.dialog_id)).size).toBe(1);
+    const { filter: resultsFilter } = results;
+
+    expect(resultsFilter.bind(results)((r): boolean => r.created)).toHaveLength(1);
+    const { [0]: resultsFirst } = results;
+
+    expect(resultsFirst.dialog).toEqual(
       expect.objectContaining({
         last_sequence: 0,
         last_read_sequence: 0,
@@ -265,7 +299,9 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
         last_message_at: null,
       }),
     );
-    expect(Object.keys(results[0].dialog)).not.toContain('can_send');
+    const { [0]: resultsFirst2 } = results;
+
+    expect(Object.keys(resultsFirst2.dialog)).not.toContain('can_send');
   });
   it('serializes sends, deduplicates across devices, preserves original content and emits after commit only once', async (): Promise<void> => {
     const id = await dialog();
@@ -275,19 +311,26 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       service.send(actors[0], id, { ...body, content: { kind: 'text', text: 'changed' } }),
     ]);
 
-    expect(result[0].message).toEqual(result[1].message);
-    expect(result.filter((r): boolean => r.created)).toHaveLength(1);
+    const { [0]: resultFirst, [1]: result1 } = result;
+
+    expect(resultFirst.message).toEqual(result1.message);
+    const { filter: resultFilter } = result;
+
+    expect(resultFilter.bind(result)((r): boolean => r.created)).toHaveLength(1);
     const second = await service.send(actors[0], id, input('same'));
     const third = await service.send(actors[0], id, input('same'));
 
-    expect([second.message.sequence, third.message.sequence]).toEqual([2, 3]);
+    const { message: secondMessage2 } = second;
+    const { message: thirdMessage } = third;
+
+    expect([secondMessage2.sequence, thirdMessage.sequence]).toEqual([2, 3]);
     await Promise.resolve();
     expect(notices).toHaveLength(3);
-    const stored = (
-      await pool.query('SELECT * FROM gchat_dialog_messages WHERE dialog_id=$1 ORDER BY sequence', [
-        id,
-      ])
-    ).rows;
+    const { rows: queryResultRows2 } = await pool.query(
+      'SELECT * FROM gchat_dialog_messages WHERE dialog_id=$1 ORDER BY sequence',
+      [id],
+    );
+    const stored = queryResultRows2;
 
     expect(stored[0].sender_device_id).toBe(actors[0].deviceId);
     expect(stored[0].ciphertext).toBeInstanceOf(Buffer);
@@ -299,16 +342,20 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       [anotherSid, actors[0].userId, 'unused'],
     );
     await devices.bind(actors[0].userId, anotherSid, null);
-    expect((await service.send({ ...actors[0], sessionId: anotherSid }, id, body)).created).toBe(
-      false,
+    const { created: sendResultCreated } = await service.send(
+      { ...actors[0], sessionId: anotherSid },
+      id,
+      body,
     );
-    expect(
-      (
-        await pool.query('SELECT sender_device_id FROM gchat_dialog_messages WHERE id=$1', [
-          result[0].message.message_id,
-        ])
-      ).rows[0].sender_device_id,
-    ).toBe(actors[0].deviceId);
+
+    expect(sendResultCreated).toBe(false);
+    const { [0]: resultFirst2 } = result;
+    const { rows: queryResultRows5 } = await pool.query(
+      'SELECT sender_device_id FROM gchat_dialog_messages WHERE id=$1',
+      [resultFirst2.message.message_id],
+    );
+
+    expect(queryResultRows5[0].sender_device_id).toBe(actors[0].deviceId);
   });
   it('returns both directions with exclusive boundaries and monotone shared read positions', async (): Promise<void> => {
     const id = await dialog();
@@ -319,33 +366,41 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
 
     const page = await service.history(actors[1], id, 2, 0);
 
-    expect(page.messages.map((m): number => m.sequence)).toEqual([1, 2]);
-    expect(page.has_more).toBe(true);
-    expect(
-      (await service.history(actors[1], id, 2, 2)).messages.map((m): number => m.sequence),
-    ).toEqual([3, 4]);
-    expect(
-      (await service.history(actors[1], id, 2, undefined, 4)).messages.map(
-        (m): number => m.sequence,
-      ),
-    ).toEqual([3, 2]);
-    expect(
-      (await service.history(actors[1], id, 30)).messages.map((m): number => m.sequence),
-    ).toEqual([4, 3, 2, 1]);
+    const { messages: pageMessages } = page;
+
+    expect(pageMessages.map((m): number => m.sequence)).toEqual([1, 2]);
+    const { has_more: pageHasMore } = page;
+
+    expect(pageHasMore).toBe(true);
+    const { messages: historyResultMessages } = await service.history(actors[1], id, 2, 2);
+
+    expect(historyResultMessages.map((m): number => m.sequence)).toEqual([3, 4]);
+    const { messages: historyResultMessages2 } = await service.history(
+      actors[1],
+      id,
+      2,
+      undefined,
+      4,
+    );
+
+    expect(historyResultMessages2.map((m): number => m.sequence)).toEqual([3, 2]);
+    const { messages: historyResultMessages3 } = await service.history(actors[1], id, 30);
+
+    expect(historyResultMessages3.map((m): number => m.sequence)).toEqual([4, 3, 2, 1]);
     await Promise.all([service.read(actors[1], id, 4), service.read(actors[1], id, 2)]);
     expect(await service.read(actors[1], id, 1)).toEqual({ last_read_sequence: 4 });
-    expect((await service.get(actors[0], id)).dialog).toEqual(
+    const { dialog: getResultDialog6 } = await service.get(actors[0], id);
+
+    expect(getResultDialog6).toEqual(
       expect.objectContaining({
         last_sequence: 4,
         last_read_sequence: 0,
         peer_last_read_sequence: 4,
       }),
     );
-    expect(
-      (await service.history(actors[0], id, 30)).messages.every(
-        (m): boolean => m.status === 'read',
-      ),
-    ).toBe(true);
+    const { messages: historyResultMessages4 } = await service.history(actors[0], id, 30);
+
+    expect(historyResultMessages4.every((m): boolean => m.status === 'read')).toBe(true);
     await expect(service.read(actors[1], id, 5)).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
       fields: [{ field: 'sequence', code: 'INVALID' }],
@@ -360,8 +415,12 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
 
     await service.send(actors[0], id, input());
     await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[1].userId]);
-    expect((await service.list(actors[1], 30, 0)).dialogs).toHaveLength(1);
-    expect((await service.get(actors[1], id)).dialog.last_sequence).toBe(1);
+    const { dialogs: listResultDialogs2 } = await service.list(actors[1], 30, 0);
+
+    expect(listResultDialogs2).toHaveLength(1);
+    const { dialog: getResultDialog7 } = await service.get(actors[1], id);
+
+    expect(getResultDialog7.last_sequence).toBe(1);
     expect(await service.permissions(actors[1], id)).toEqual({
       dialogs: { can_read: false, can_send: false },
     });
@@ -379,13 +438,17 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       dialogs: { can_read: true, can_send: false },
     });
     await service.read(actors[1], id, 1);
-    expect((await service.history(actors[1], id, 30)).messages).toHaveLength(1);
+    const { messages: historyResultMessages5 } = await service.history(actors[1], id, 30);
+
+    expect(historyResultMessages5).toHaveLength(1);
     await pool.query('UPDATE gchat_users SET disabled_at=now() WHERE id=$1', [actors[0].userId]);
     await expect(service.history(actors[1], id, 30)).rejects.toMatchObject({
       code: 'DIALOG_NOT_ALLOWED',
     });
     await pool.query('INSERT INTO gchat_group_members VALUES($1,$2)', [group, actors[1].userId]);
-    expect((await service.history(actors[1], id, 30)).messages).toHaveLength(1);
+    const { messages: historyResultMessages6 } = await service.history(actors[1], id, 30);
+
+    expect(historyResultMessages6).toHaveLength(1);
     await expect(service.send(actors[1], id, input())).rejects.toMatchObject({
       code: 'DIALOG_NOT_ALLOWED',
     });
@@ -401,8 +464,12 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     await pool.query('DELETE FROM gchat_devices WHERE id=$1', [actors[0].deviceId]);
     await expect(service.get(actors[0], id)).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await devices.bind(actors[0].userId, actors[0].sessionId, null);
-    expect((await service.send(actors[0], id, body)).created).toBe(false);
-    expect((await service.history(actors[0], id, 30)).messages).toHaveLength(1);
+    const { created: sendResultCreated2 } = await service.send(actors[0], id, body);
+
+    expect(sendResultCreated2).toBe(false);
+    const { messages: historyResultMessages7 } = await service.history(actors[0], id, 30);
+
+    expect(historyResultMessages7).toHaveLength(1);
     await pool.query('DELETE FROM gchat_auth_sessions WHERE id=$1', [actors[0].sessionId]);
     await expect(service.get(actors[0], id)).rejects.toMatchObject({ code: 'SESSION_INVALID' });
   });
@@ -416,12 +483,17 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       code: 'INTERNAL_ERROR',
     });
     encrypt.mockRestore();
-    expect((await service.get(actors[0], id)).dialog.last_sequence).toBe(0);
-    expect(
-      (await pool.query('SELECT encryption_attempts FROM gchat_dialog_encryption_keys')).rows[0]
-        .encryption_attempts,
-    ).toBe('1');
-    expect((await service.send(actors[0], id, input())).message.sequence).toBe(1);
+    const { dialog: getResultDialog8 } = await service.get(actors[0], id);
+
+    expect(getResultDialog8.last_sequence).toBe(0);
+    const { rows: queryResultRows3 } = await pool.query(
+      'SELECT encryption_attempts FROM gchat_dialog_encryption_keys',
+    );
+
+    expect(queryResultRows3[0].encryption_attempts).toBe('1');
+    const { message: sendResultMessage } = await service.send(actors[0], id, input());
+
+    expect(sendResultMessage.sequence).toBe(1);
   });
   it('does not create new records at exhausted key budget but can still return an authorized retry or read', async (): Promise<void> => {
     const id = await dialog();
@@ -429,21 +501,26 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const first = await service.send(actors[0], id, body);
 
     await pool.query('UPDATE gchat_dialog_encryption_keys SET encryption_attempts=16777216');
-    expect((await service.send(actors[0], id, body)).message).toEqual(first.message);
+    const { message: sendResultMessage2 } = await service.send(actors[0], id, body);
+    const { message: firstMessage2 } = first;
+
+    expect(sendResultMessage2).toEqual(firstMessage2);
     await expect(service.send(actors[0], id, input())).rejects.toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
     });
-    expect((await service.history(actors[1], id, 30)).messages).toHaveLength(1);
+    const { messages: historyResultMessages8 } = await service.history(actors[1], id, 30);
+
+    expect(historyResultMessages8).toHaveLength(1);
   });
   it('does not issue a partial history page when any authentication tag is damaged', async (): Promise<void> => {
     const id = await dialog();
 
     await service.send(actors[0], id, input('one'));
-    const second = await service.send(actors[0], id, input('two'));
+    const { message: secondMessage3 } = await service.send(actors[0], id, input('two'));
 
     await pool.query(
       "UPDATE gchat_dialog_messages SET auth_tag=decode(repeat('00',16),'hex') WHERE id=$1",
-      [second.message.message_id],
+      [secondMessage3.message_id],
     );
     await expect(service.history(actors[0], id, 30, 0)).rejects.toMatchObject({
       code: 'INTERNAL_ERROR',
@@ -471,17 +548,19 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
 
     await locked;
     let deleted = false;
-    const deletion = pool
-      .query('DELETE FROM gchat_auth_sessions WHERE id=$1', [actors[0].sessionId])
-      .then((): void => {
-        deleted = true;
-      });
+    const deletion = (async () => {
+      await pool.query('DELETE FROM gchat_auth_sessions WHERE id=$1', [actors[0].sessionId]);
+
+      deleted = true;
+    })();
 
     try {
       await pool.query('SELECT 1');
       expect(deleted).toBe(false);
       release();
-      expect((await operation).dialog.dialog_id).toBe(id);
+      const { dialog: resultDialog } = await operation;
+
+      expect(resultDialog.dialog_id).toBe(id);
       await deletion;
       await expect(service.get(actors[0], id)).rejects.toMatchObject({ code: 'SESSION_INVALID' });
     } finally {
@@ -502,8 +581,12 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const page = await service.history(actors[1], id, 100, 0);
 
     expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(524288);
-    expect(page.messages.length).toBe(28);
-    expect(page.has_more).toBe(false);
+    const { messages: pageMessages2 } = page;
+
+    expect(pageMessages2.length).toBe(28);
+    const { has_more: pageHasMore2 } = page;
+
+    expect(pageHasMore2).toBe(false);
 
     // JSON escaping creates the worst valid content expansion (control characters).
     for (let i = 0; i < 10; i++) {
@@ -514,18 +597,30 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const bounded = await service.history(actors[1], id, 100, 0);
 
     expect(Buffer.byteLength(JSON.stringify(bounded))).toBeLessThanOrEqual(524288);
-    expect(bounded.has_more).toBe(true);
-    const rest = await service.history(actors[1], id, 100, bounded.messages.at(-1)!.sequence);
+    const { has_more: boundedHasMore } = bounded;
 
-    expect(rest.messages.length + bounded.messages.length).toBe(38);
+    expect(boundedHasMore).toBe(true);
+    const { messages: boundedMessages } = bounded;
+    const { messages: restMessages } = await service.history(
+      actors[1],
+      id,
+      100,
+      boundedMessages.at(-1)!.sequence,
+    );
+    const { messages: boundedMessages2 } = bounded;
+
+    expect(restMessages.length + boundedMessages2.length).toBe(38);
   });
   it('enforces shared atomic Redis buckets and closed failure behavior', async (): Promise<void> => {
     const results = await Promise.allSettled(
       Array.from({ length: 11 }, (): Promise<void> => limits.check(actors[0].userId, 'send')),
     );
 
-    expect(results.filter((r): boolean => r.status === 'fulfilled')).toHaveLength(10);
-    const rejected = results.find((r): boolean => r.status === 'rejected');
+    const { filter: resultsFilter2 } = results;
+
+    expect(resultsFilter2.bind(results)((r): boolean => r.status === 'fulfilled')).toHaveLength(10);
+    const { find: resultsFind } = results;
+    const rejected = resultsFind.bind(results)((r): boolean => r.status === 'rejected');
 
     expect(rejected).toMatchObject({ reason: { code: 'RATE_LIMITED', retryAfterSeconds: 1 } });
     await expect(limits.check(actors[0].userId, 'read')).resolves.toBeUndefined();
@@ -572,10 +667,11 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
   it('retains key fingerprints and budgets across restarts and refuses changed material or aliases', async (): Promise<void> => {
     await crypto.reserve();
     await crypto.onModuleInit();
-    expect(
-      (await pool.query('SELECT encryption_attempts FROM gchat_dialog_encryption_keys')).rows[0]
-        .encryption_attempts,
-    ).toBe('1');
+    const { rows: queryResultRows4 } = await pool.query(
+      'SELECT encryption_attempts FROM gchat_dialog_encryption_keys',
+    );
+
+    expect(queryResultRows4[0].encryption_attempts).toBe('1');
     const changed = new DialogsCrypto(
       new ConfigService({
         DIALOGS_ACTIVE_KEY_ID: 'test',
@@ -649,11 +745,16 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const body = input();
     const last = await service.send(actors[0], id, body);
 
-    expect(last.message.sequence).toBe(Number.MAX_SAFE_INTEGER);
+    const { message: lastMessage } = last;
+
+    expect(lastMessage.sequence).toBe(Number.MAX_SAFE_INTEGER);
     await expect(service.send(actors[0], id, input())).rejects.toMatchObject({
       code: 'INTERNAL_ERROR',
     });
-    expect((await service.send(actors[0], id, body)).message).toEqual(last.message);
+    const { message: sendResultMessage3 } = await service.send(actors[0], id, body);
+    const { message: lastMessage2 } = last;
+
+    expect(sendResultMessage3).toEqual(lastMessage2);
   });
 
   it('stores ordinary APNs separately and leaves its version intact on an identical registration', async (): Promise<void> => {
@@ -663,13 +764,20 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const first = await devices.resolveApnsTarget(actor.deviceId, actor.sessionId);
 
     await devices.setApnsToken(actor.userId, actor.sessionId, actor.deviceId, 'aabb', 'sandbox');
-    expect((await devices.resolveApnsTarget(actor.deviceId, actor.sessionId))?.version).toBe(
-      first?.version,
-    );
+    const { version: resolveApnsTargetResultVersion } =
+      (await devices.resolveApnsTarget(actor.deviceId, actor.sessionId)) ?? {};
+    const { version: firstVersion } = first ?? {};
+
+    expect(resolveApnsTargetResultVersion).toBe(firstVersion);
     expect(await devices.listVoipTargets(actor.userId)).toHaveLength(0);
     await devices.setApnsToken(actor.userId, actor.sessionId, actor.deviceId, 'ccdd', 'sandbox');
-    await devices.invalidateApnsTarget(actor.deviceId, first!.version);
-    expect((await devices.resolveApnsTarget(actor.deviceId, actor.sessionId))?.token).toBe('ccdd');
+    const { version: firstVersion2 } = first!;
+
+    await devices.invalidateApnsTarget(actor.deviceId, firstVersion2);
+    const { token: resolveApnsTargetResultToken } =
+      (await devices.resolveApnsTarget(actor.deviceId, actor.sessionId)) ?? {};
+
+    expect(resolveApnsTargetResultToken).toBe('ccdd');
   });
 
   it('serves HTTP status, strict DTO/query errors, 413, no-store and Retry-After through the shared filter', async (): Promise<void> => {
@@ -680,41 +788,42 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       .set('Authorization', authorization)
       .send({ peer_id: actors[1].userId });
 
-    expect(created.status).toBe(201);
-    const id = created.body.dialog.dialog_id;
+    const { status: createdStatus } = created;
 
-    expect(
-      (
-        await agent
-          .post('/dialogs')
-          .set('Authorization', authorization)
-          .send({ peer_id: actors[1].userId })
-      ).status,
-    ).toBe(200);
+    expect(createdStatus).toBe(201);
+    const { body: createdBody } = created;
+    const id = createdBody.dialog.dialog_id;
+
+    const { status: sendResultStatus } = await agent
+      .post('/dialogs')
+      .set('Authorization', authorization)
+      .send({ peer_id: actors[1].userId });
+
+    expect(sendResultStatus).toBe(200);
 
     for (const query of ['limit=01', 'limit=0', 'offset=1e2', 'limit=1&limit=2']) {
-      expect(
-        (await agent.get('/dialogs?' + query).set('Authorization', authorization)).status,
-      ).toBe(400);
+      const { status: setResultStatus } = await agent
+        .get('/dialogs?' + query)
+        .set('Authorization', authorization);
+
+      expect(setResultStatus).toBe(400);
     }
 
     for (const body of [{ sequence: '0' }, { sequence: 0, extra: true }]) {
-      expect(
-        (
-          await agent
-            .post('/dialogs/' + id + '/read')
-            .set('Authorization', authorization)
-            .send(body)
-        ).status,
-      ).toBe(400);
+      const { status: sendResultStatus2 } = await agent
+        .post('/dialogs/' + id + '/read')
+        .set('Authorization', authorization)
+        .send(body);
+
+      expect(sendResultStatus2).toBe(400);
     }
 
-    const invalid = await agent
+    const { body: invalidBody } = await agent
       .post('/dialogs/' + id + '/messages')
       .set('Authorization', authorization)
       .send({ ...input(), content: { kind: 'text', text: 'valid', extra: true } });
 
-    expect(invalid.body.error.code).toBe('VALIDATION_ERROR');
+    expect(invalidBody.error.code).toBe('VALIDATION_ERROR');
     const huge = JSON.stringify(input('secret'.repeat(12000)));
     const tooLarge = await agent
       .post('/dialogs/' + id + '/messages')
@@ -722,11 +831,15 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       .set('Content-Type', 'application/json')
       .send(huge);
 
-    expect(tooLarge.status).toBe(413);
-    expect(tooLarge.body).toEqual({
+    const { status: tooLargeStatus } = tooLarge;
+
+    expect(tooLargeStatus).toBe(413);
+    const { body: tooLargeBody } = tooLarge;
+
+    expect(tooLargeBody).toEqual({
       error: { code: 'PAYLOAD_TOO_LARGE', message: expect.any(String) },
     });
-    const compressed = await agent
+    const { status: compressedStatus } = await agent
       .post('/dialogs/' + id + '/messages')
       .set('Authorization', authorization)
       .set('Content-Type', 'application/json')
@@ -734,14 +847,18 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       .serialize((body: any): any => body)
       .send(gzipSync(huge));
 
-    expect(compressed.status).toBe(413);
+    expect(compressedStatus).toBe(413);
     const sent = await agent
       .post('/dialogs/' + id + '/messages')
       .set('Authorization', authorization)
       .send(input());
 
-    expect(sent.status).toBe(201);
-    expect(sent.headers['cache-control']).toBe('no-store');
+    const { status: sentStatus } = sent;
+
+    expect(sentStatus).toBe(201);
+    const { headers: sentHeaders } = sent;
+
+    expect(sentHeaders['cache-control']).toBe('no-store');
     await resetRates();
     await redis.hSet(prefix + 'dialogs:rate:' + actors[0].userId + ':get', {
       credit_ms: '0',
@@ -749,8 +866,14 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     });
     const limited = await agent.get('/dialogs').set('Authorization', authorization);
 
-    expect(limited.status).toBe(429);
-    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
-    expect((await agent.get('/dialogs')).body.error.code).toBe('ACCESS_TOKEN_INVALID');
+    const { status: limitedStatus } = limited;
+
+    expect(limitedStatus).toBe(429);
+    const { headers: limitedHeaders } = limited;
+
+    expect(Number(limitedHeaders['retry-after'])).toBeGreaterThan(0);
+    const { body: getResultBody } = await agent.get('/dialogs');
+
+    expect(getResultBody.error.code).toBe('ACCESS_TOKEN_INVALID');
   });
 });

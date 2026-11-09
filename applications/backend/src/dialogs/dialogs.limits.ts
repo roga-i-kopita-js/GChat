@@ -31,7 +31,17 @@ export class DialogsLimits {
   ) {}
 
   async check(userId: string, group: 'send' | 'create' | 'get' | 'read'): Promise<void> {
-    const [rate, capacity] = group === 'create' ? [1, 5] : group === 'get' ? [10, 20] : [5, 10];
+    let bucketSettings;
+
+    if (group === 'create') {
+      bucketSettings = [1, 5];
+    } else if (group === 'get') {
+      bucketSettings = [10, 20];
+    } else {
+      bucketSettings = [5, 10];
+    }
+
+    const [rate, capacity] = bucketSettings;
     let result: unknown;
 
     try {

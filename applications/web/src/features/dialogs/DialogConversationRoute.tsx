@@ -72,17 +72,86 @@ function Room({
   const data = result.view;
   const loadingPeer = !data?.record.dialog && result.status !== 'error' && !data?.error;
 
+  let conversationContent;
+
+  if (result.status === 'error') {
+    conversationContent = (
+      <div className="dialog-empty">
+        <p role="alert">{dialogError(result.error)}</p>
+        <button
+          onClick={(): void => {
+            model.invalidate();
+          }}
+        >
+          Повторить
+        </button>
+      </div>
+    );
+  } else if (!data) {
+    conversationContent = (
+      <div className="dialog-empty" role="status">
+        Загружаем переписку…
+      </div>
+    );
+  } else {
+    let emptyHistoryMessage;
+
+    if (data.record.permissions?.can_read === false) {
+      emptyHistoryMessage = 'История недоступна';
+    } else if (data.syncing || !data.record.permissions) {
+      emptyHistoryMessage = 'Загружаем переписку…';
+    } else {
+      emptyHistoryMessage = 'Начните переписку';
+    }
+
+    conversationContent = (
+      <>
+        {data.record.permissions?.can_read === false && (
+          <p className="dialog-notice">
+            Серверная история недоступна. Здесь сохранены ранее загруженные сообщения.
+          </p>
+        )}
+        {data.messages.length || data.record.outbox.length ? (
+          <Feed runtime={runtime} id={id} data={data} report={setError} />
+        ) : (
+          <div className="dialog-empty" role="status">
+            <MessageCircle size={36} />
+            <h3>{emptyHistoryMessage}</h3>
+            {data.record.permissions?.can_send && <p>Напишите первое сообщение</p>}
+          </div>
+        )}
+        {data.record.permissions?.can_send ? (
+          <Composer key={id} runtime={runtime} id={id} draft={data.record.draft} />
+        ) : (
+          <div className="dialog-disabled">
+            {data.record.permissions
+              ? 'Отправка сообщений недоступна'
+              : 'Проверяем доступ к переписке…'}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  let peerAvatar;
+
+  if (data?.record.dialog) {
+    peerAvatar = (
+      <Avatar name={data.record.dialog.peer_display_name} seed={data.record.dialog.peer_id} />
+    );
+  } else if (loadingPeer) {
+    peerAvatar = <Skeleton variant="circular" width="var(--ui-control-height)" />;
+  } else {
+    peerAvatar = null;
+  }
+
   return (
     <section className="dialog-room" aria-label="Переписка">
       <PageHeader className="dialog-room-header" aria-busy={loadingPeer}>
         <Link to="/dialogs" className="dialog-icon dialog-back" aria-label="Назад к диалогам">
           <ArrowLeft size={22} />
         </Link>
-        {data?.record.dialog ? (
-          <Avatar name={data.record.dialog.peer_display_name} seed={data.record.dialog.peer_id} />
-        ) : loadingPeer ? (
-          <Skeleton variant="circular" width="var(--ui-control-height)" />
-        ) : null}
+        {peerAvatar}
         <Skeleton loading={loadingPeer} className="dialog-room-title">
           <Text as="h2" variant="heading">
             {data?.record.dialog?.peer_display_name ?? 'Переписка'}
@@ -106,7 +175,11 @@ function Room({
             }
 
             if (!ongoing) {
-              void device.calls.dismissEnded().catch((): void => {});
+              void (async () => {
+                try {
+                  return await device.calls.dismissEnded();
+                } catch (cause) {}
+              })();
               setPerson({ id: dialog.peer_id, display_name: dialog.peer_display_name });
             }
 
@@ -134,54 +207,7 @@ function Room({
           {error}
         </p>
       )}
-      {result.status === 'error' ? (
-        <div className="dialog-empty">
-          <p role="alert">{dialogError(result.error)}</p>
-          <button
-            onClick={(): void => {
-              model.invalidate();
-            }}
-          >
-            Повторить
-          </button>
-        </div>
-      ) : !data ? (
-        <div className="dialog-empty" role="status">
-          Загружаем переписку…
-        </div>
-      ) : (
-        <>
-          {data.record.permissions?.can_read === false && (
-            <p className="dialog-notice">
-              Серверная история недоступна. Здесь сохранены ранее загруженные сообщения.
-            </p>
-          )}
-          {data.messages.length || data.record.outbox.length ? (
-            <Feed runtime={runtime} id={id} data={data} report={setError} />
-          ) : (
-            <div className="dialog-empty" role="status">
-              <MessageCircle size={36} />
-              <h3>
-                {data.record.permissions?.can_read === false
-                  ? 'История недоступна'
-                  : data.syncing || !data.record.permissions
-                    ? 'Загружаем переписку…'
-                    : 'Начните переписку'}
-              </h3>
-              {data.record.permissions?.can_send && <p>Напишите первое сообщение</p>}
-            </div>
-          )}
-          {data.record.permissions?.can_send ? (
-            <Composer key={id} runtime={runtime} id={id} draft={data.record.draft} />
-          ) : (
-            <div className="dialog-disabled">
-              {data.record.permissions
-                ? 'Отправка сообщений недоступна'
-                : 'Проверяем доступ к переписке…'}
-            </div>
-          )}
-        </>
-      )}
+      {conversationContent}
     </section>
   );
 }
@@ -360,6 +386,16 @@ function Feed({
           const read =
             saved && (item.status === 'read' || (own && item.sequence <= data.record.peer_read));
 
+          let deliveryStatus;
+
+          if (!saved && item.state === 'sending') {
+            deliveryStatus = 'Результат ожидается';
+          } else if (!saved && item.state === 'rejected') {
+            deliveryStatus = 'Отклонено';
+          } else {
+            deliveryStatus = 'Результат неизвестен';
+          }
+
           return (
             <div
               key={saved ? item.message_id : item.client_message_id}
@@ -377,13 +413,7 @@ function Feed({
                         {read ? <CheckCheck size={15} /> : <Check size={15} />}
                       </span>
                     ) : (
-                      <span>
-                        {item.state === 'sending'
-                          ? 'Результат ожидается'
-                          : item.state === 'rejected'
-                            ? 'Отклонено'
-                            : 'Результат неизвестен'}
-                      </span>
+                      <span>{deliveryStatus}</span>
                     ))}
                 </div>
                 {!saved && (
@@ -391,9 +421,13 @@ function Feed({
                     {item.error && <span>{item.error}</span>}
                     <button
                       onClick={(): void => {
-                        void runtime
-                          .resend(id, item.client_message_id)
-                          .catch((cause): void => report(dialogError(cause)));
+                        void (async () => {
+                          try {
+                            return await runtime.resend(id, item.client_message_id);
+                          } catch (cause) {
+                            return report(dialogError(cause));
+                          }
+                        })();
                       }}
                     >
                       Повторить

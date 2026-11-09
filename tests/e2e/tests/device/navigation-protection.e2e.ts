@@ -10,7 +10,9 @@ async function start(
       const path = '/tests/navigation-protection-harness.tsx';
       const fixture = await import(path);
 
-      await fixture.start(mode, fail);
+      const { start: fixtureStart } = fixture;
+
+      await fixtureStart.bind(fixture)(mode, fail);
     },
     { mode, fail },
   );
@@ -30,7 +32,10 @@ test('Link and device navigation share a single blocker and continue the origina
   await page.evaluate(async (): Promise<void> => {
     const path = '/tests/navigation-protection-harness.tsx';
 
-    (await import(path)).command(false);
+    const resolved = await import(path);
+    const { command: resultCommand } = resolved;
+
+    resultCommand.bind(resolved)(false);
   });
   await expect(modal).toBeVisible();
   await modal.getByRole('button', { name: 'Уйти без сохранения', exact: true }).click();
@@ -39,7 +44,9 @@ test('Link and device navigation share a single blocker and continue the origina
     await page.evaluate(async (): Promise<string> => {
       const path = '/tests/navigation-protection-harness.tsx';
 
-      return (await import(path)).control.lastOutcome;
+      const { control: resultControl } = await import(path);
+
+      return resultControl.lastOutcome;
     }),
   ).toBe('committed');
 });
@@ -51,7 +58,10 @@ test('native navigation waits for the same dialog and reports Blocked after stay
   await page.evaluate(async (): Promise<void> => {
     const path = '/tests/navigation-protection-harness.tsx';
 
-    (await import(path)).command(true);
+    const resolved2 = await import(path);
+    const { command: resultCommand2 } = resolved2;
+
+    resultCommand2.bind(resolved2)(true);
   });
   await page
     .getByRole('dialog', { name: 'Несохранённые изменения' })
@@ -62,7 +72,9 @@ test('native navigation waits for the same dialog and reports Blocked after stay
       return page.evaluate(async (): Promise<string | undefined> => {
         const path = '/tests/navigation-protection-harness.tsx';
 
-        return (await import(path)).control.nativeOutcomes.at(-1);
+        const { control: resultControl2 } = await import(path);
+
+        return resultControl2.nativeOutcomes.at(-1);
       });
     })
     .toBe('blocked');
@@ -80,7 +92,9 @@ test('drafts flush before leaving and failed flushes can be retried without losi
   await page.evaluate(async (): Promise<void> => {
     const path = '/tests/navigation-protection-harness.tsx';
 
-    (await import(path)).control.fail = false;
+    const { control: resultControl3 } = await import(path);
+
+    resultControl3.fail = false;
   });
   await modal.getByRole('button', { name: 'Повторить сохранение', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Next route' })).toBeVisible();
@@ -88,7 +102,9 @@ test('drafts flush before leaving and failed flushes can be retried without losi
     await page.evaluate(async (): Promise<string> => {
       const path = '/tests/navigation-protection-harness.tsx';
 
-      return (await import(path)).control.stored;
+      const { control: resultControl4 } = await import(path);
+
+      return resultControl4.stored;
     }),
   ).toBe('draft text');
 });
@@ -100,7 +116,10 @@ test('explicit discard after a failed flush continues native navigation without 
   await page.evaluate(async (): Promise<void> => {
     const path = '/tests/navigation-protection-harness.tsx';
 
-    (await import(path)).command(true);
+    const resolved3 = await import(path);
+    const { command: resultCommand3 } = resolved3;
+
+    resultCommand3.bind(resolved3)(true);
   });
   await page
     .getByRole('dialog', { name: 'Несохранённые изменения' })
@@ -112,7 +131,9 @@ test('explicit discard after a failed flush continues native navigation without 
       page.evaluate(async (): Promise<string | undefined> => {
         const path = '/tests/navigation-protection-harness.tsx';
 
-        return (await import(path)).control.nativeOutcomes.at(-1);
+        const { control: resultControl5 } = await import(path);
+
+        return resultControl5.nativeOutcomes.at(-1);
       }),
     )
     .toBe('committed');
@@ -120,7 +141,9 @@ test('explicit discard after a failed flush continues native navigation without 
     await page.evaluate(async (): Promise<string> => {
       const path = '/tests/navigation-protection-harness.tsx';
 
-      return (await import(path)).control.stored;
+      const { control: resultControl6 } = await import(path);
+
+      return resultControl6.stored;
     }),
   ).toBe('');
 });

@@ -39,9 +39,15 @@ for (const [format, Client] of [
     const result = await api.adminGetUser({ path: { user_id: 'id /?#%' } });
 
     assert.equal(calls[0][0], '/api/admin/users/id%20%2F%3F%23%25');
-    assert.equal(result.data.user.disabled_at, null);
-    assert.equal(result.status, 200);
-    assert.ok(result.headers instanceof Headers);
+    const { data: resultData } = result;
+
+    assert.equal(resultData.user.disabled_at, null);
+    const { status: resultStatus } = result;
+
+    assert.equal(resultStatus, 200);
+    const { headers: resultHeaders } = result;
+
+    assert.ok(resultHeaders instanceof Headers);
     await api.adminListUsers({ query: { q: 'иван +&', limit: 5, offset: 0, status: 'all' } });
     const query = new URL(calls[1][0], 'https://test.invalid').searchParams;
 
@@ -68,10 +74,11 @@ for (const [format, Client] of [
       },
     });
 
-    assert.equal(
-      (await logout.authLogout({ body: { refresh_token: 'unchanged' } })).data,
-      undefined,
-    );
+    const { data: authLogoutResultData } = await logout.authLogout({
+      body: { refresh_token: 'unchanged' },
+    });
+
+    assert.equal(authLogoutResultData, undefined);
   });
 
   test(`${format}: Bearer follows security, tokens change, clients stay isolated`, async () => {
@@ -219,7 +226,9 @@ test('does not validate DTO responses at runtime', async () => {
   const body = { future: 'arbitrary JSON' };
   const api = new BackendApi({ baseUrl: '/api', fetch: async () => json(body) });
 
-  assert.deepEqual((await api.groupsList()).data, body);
+  const { data: groupsListResultData } = await api.groupsList();
+
+  assert.deepEqual(groupsListResultData, body);
 });
 
 test('HTTP error with a plain text body preserves it', async () => {

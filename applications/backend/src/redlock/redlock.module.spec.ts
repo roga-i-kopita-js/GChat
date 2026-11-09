@@ -35,10 +35,18 @@ describe('RedlockModule registration', (): void => {
       .compile();
 
     try {
-      expect(module.get(ConsumerService).redlock).toBeInstanceOf(RedlockService);
-      expect(module.get(ConsumerService).redis).toBe(module.get(RedisService));
+      const { get: moduleGet } = module;
+
+      expect(moduleGet.bind(module)(ConsumerService).redlock).toBeInstanceOf(RedlockService);
+      const { get: moduleGet2 } = module;
+
+      expect(moduleGet2.bind(module)(ConsumerService).redis).toBe(
+        moduleGet2.bind(module)(RedisService),
+      );
     } finally {
-      await module.close();
+      const { close: moduleClose } = module;
+
+      await moduleClose.bind(module)();
     }
   });
 
@@ -46,10 +54,20 @@ describe('RedlockModule registration', (): void => {
     const module = await Test.createTestingModule({ imports: [RedisModule] }).compile();
 
     try {
-      expect((): RedisService => module.get(RedisService)).toThrow();
-      expect((): void => module.get(REDIS_CLIENT)).toThrow();
+      expect((): RedisService => {
+        const { get: moduleGet3 } = module;
+
+        return moduleGet3.bind(module)(RedisService);
+      }).toThrow();
+      expect((): void => {
+        const { get: moduleGet4 } = module;
+
+        return moduleGet4.bind(module)(REDIS_CLIENT);
+      }).toThrow();
     } finally {
-      await module.close();
+      const { close: moduleClose2 } = module;
+
+      await moduleClose2.bind(module)();
     }
   });
 
@@ -57,9 +75,15 @@ describe('RedlockModule registration', (): void => {
     const module = await Test.createTestingModule({ imports: [RedlockModule] }).compile();
 
     try {
-      expect((): RedlockService => module.get(RedlockService)).toThrow();
+      expect((): RedlockService => {
+        const { get: moduleGet5 } = module;
+
+        return moduleGet5.bind(module)(RedlockService);
+      }).toThrow();
     } finally {
-      await module.close();
+      const { close: moduleClose3 } = module;
+
+      await moduleClose3.bind(module)();
     }
   });
 });

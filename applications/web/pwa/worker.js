@@ -14,23 +14,35 @@ self.addEventListener('install', (event) => {
           [...assetUrls].map(async (url) => {
             const response = await fetch(url, { cache: 'reload', credentials: 'omit' });
 
+            const {
+              ok: responseOk,
+              redirected: responseRedirected,
+              headers: responseHeaders,
+            } = response ?? {};
+
             if (
-              !response.ok ||
-              response.redirected ||
-              response.headers.get('content-type')?.includes('text/html')
+              !responseOk ||
+              responseRedirected ||
+              responseHeaders.get('content-type')?.includes('text/html')
             ) {
               throw new Error('Incomplete frontend deployment');
             }
 
-            await cache.put(url, response);
+            const { put: cachePut } = cache;
+
+            await cachePut.bind(cache)(url, response);
           }),
         );
 
-        if (results.some((result) => result.status === 'rejected')) {
+        const { some: resultsSome } = results;
+
+        if (resultsSome.bind(results)((result) => result.status === 'rejected')) {
           throw new Error('Incomplete frontend deployment');
         }
 
-        await cache.put(
+        const { put: cachePut2 } = cache;
+
+        await cachePut2.bind(cache)(
           startUrl,
           new Response(config.html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }),
         );
@@ -95,7 +107,9 @@ self.addEventListener('fetch', (event) => {
     (async () => {
       const cache = await caches.open(cacheName);
 
-      return (await cache.match(navigation ? startUrl : request)) ?? fetch(request);
+      const { match: cacheMatch } = cache;
+
+      return (await cacheMatch.bind(cache)(navigation ? startUrl : request)) ?? fetch(request);
     })(),
   );
 });
@@ -163,7 +177,9 @@ self.addEventListener('notificationclick', (event) => {
         try {
           const intents = await caches.open('gchat-launch-spike-intents');
 
-          await intents.put(
+          const { put: intentsPut } = intents;
+
+          await intentsPut.bind(intents)(
             new URL('/__gchat_launch_spike_intent', self.location.origin).href,
             new Response(JSON.stringify({ createdAt: Date.now() })),
           );
@@ -173,13 +189,16 @@ self.addEventListener('notificationclick', (event) => {
 
         const opened = await self.clients.openWindow(target.href);
 
-        opened?.postMessage({ type: 'gchat.launch-spike.clicked' });
+        const { postMessage: openedPostMessage } = opened ?? {};
+
+        openedPostMessage?.bind(opened)({ type: 'gchat.launch-spike.clicked' });
 
         return;
       }
 
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      const existing = windows.find((client) => {
+      const { find: windowsFind } = windows;
+      const existing = windowsFind.bind(windows)((client) => {
         const url = new URL(client.url);
 
         return (

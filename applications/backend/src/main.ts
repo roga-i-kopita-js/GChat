@@ -21,17 +21,27 @@ async function bootstrap(): Promise<void> {
     abortOnError: false,
     bodyParser: false,
   });
-  const logger = new LoggerService(app.get(LoggerSettings));
+  const { get: appGet } = app;
+  const logger = new LoggerService(appGet.bind(app)(LoggerSettings));
 
-  app.useLogger(logger);
+  const { useLogger: appUseLogger } = app;
+
+  appUseLogger.bind(app)(logger);
   setupDialogBodyLimit(app);
-  const config = app.get(ConfigService);
+  const { get: appGet2 } = app;
+  const config = appGet2.bind(app)(ConfigService);
 
-  app.useWebSocketAdapter(new SignalingAdapter(app, app.get(AuthService)));
+  const { get: appGet3, useWebSocketAdapter: appUseWebSocketAdapter } = app;
+
+  appUseWebSocketAdapter.bind(app)(new SignalingAdapter(app, appGet3.bind(app)(AuthService)));
   setupSwagger(app);
   setupServerWeb(app, process.env.GCHAT_WEB_ROOT);
-  app.enableShutdownHooks();
-  await app.listen(config.getOrThrow<number>('PORT'), config.getOrThrow<string>('HOST'));
+  const { enableShutdownHooks: appEnableShutdownHooks } = app;
+
+  appEnableShutdownHooks.bind(app)();
+  const { listen: appListen } = app;
+
+  await appListen.bind(app)(config.getOrThrow<number>('PORT'), config.getOrThrow<string>('HOST'));
   logger.log(
     'HTTP server started',
     { host: config.getOrThrow<string>('HOST'), port: config.getOrThrow<number>('PORT') },
@@ -39,7 +49,13 @@ async function bootstrap(): Promise<void> {
   );
 }
 
-bootstrap().catch((error: unknown): void => {
-  bootstrapLogger.error('Backend startup failed', { error }, 'Bootstrap');
-  process.exitCode = 1;
-});
+(async () => {
+  try {
+    return await bootstrap();
+  } catch (cause) {
+    const error: unknown = cause;
+
+    bootstrapLogger.error('Backend startup failed', { error }, 'Bootstrap');
+    process.exitCode = 1;
+  }
+})();

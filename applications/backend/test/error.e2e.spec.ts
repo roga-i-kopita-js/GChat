@@ -72,7 +72,9 @@ describe('Global ErrorModule HTTP contract', (): void => {
       imports: [LoggerModule.forRoot(), ErrorModule, ConsumerModule],
     }).compile();
 
-    app = module.createNestApplication();
+    const { createNestApplication: moduleCreateNestApplication } = module;
+
+    app = moduleCreateNestApplication.bind(module)();
     await app.init();
   });
   afterAll(async (): Promise<void> => {

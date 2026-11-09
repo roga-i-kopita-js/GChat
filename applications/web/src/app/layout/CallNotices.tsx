@@ -11,28 +11,45 @@ export function CallNotices(): JSX.Element {
   const { state, ongoing } = useCalls();
   const { callNotices } = useLayout();
 
+  let callNotice;
+
+  if (!state.owner) {
+    callNotice = (
+      <div role="status" className="tab-banner">
+        Звонками управляет другая вкладка GChat.
+        <button
+          onClick={(): void =>
+            void (async () => {
+              try {
+                return await device.calls.takeControl();
+              } catch (cause) {}
+            })()
+          }
+          disabled={ongoing}
+        >
+          Открыть здесь
+        </button>
+      </div>
+    );
+  } else if (presentation.callControls === 'host' && !presentation.callingAvailable) {
+    callNotice = (
+      <div role="status" className="tab-banner">
+        Звонки в этой сборке приложения пока недоступны.
+      </div>
+    );
+  } else if (state.connection !== 'online') {
+    callNotice = (
+      <div role="status" className="tab-banner">
+        Подключаем звонки… Кнопки станут доступны после подключения.
+      </div>
+    );
+  } else {
+    callNotice = null;
+  }
+
   return (
     <>
-      {callNotices &&
-        (!state.owner ? (
-          <div role="status" className="tab-banner">
-            Звонками управляет другая вкладка GChat.
-            <button
-              onClick={(): void => void device.calls.takeControl().catch((): void => {})}
-              disabled={ongoing}
-            >
-              Открыть здесь
-            </button>
-          </div>
-        ) : presentation.callControls === 'host' && !presentation.callingAvailable ? (
-          <div role="status" className="tab-banner">
-            Звонки в этой сборке приложения пока недоступны.
-          </div>
-        ) : state.connection !== 'online' ? (
-          <div role="status" className="tab-banner">
-            Подключаем звонки… Кнопки станут доступны после подключения.
-          </div>
-        ) : null)}
+      {callNotices && callNotice}
       {state.error && (
         <div role="alert" className="error-banner">
           {state.error}

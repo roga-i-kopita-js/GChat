@@ -74,7 +74,7 @@ describe('settings route loaders', (): void => {
       ReturnType<typeof loadDeviceSettings>
     >);
     const request = new Request('https://fixture.test/settings/general/files');
-    const data = await settingsFilesLoader({
+    const { entries: dataEntries } = await settingsFilesLoader({
       request,
       params: {},
       url: new URL(request.url),
@@ -82,7 +82,7 @@ describe('settings route loaders', (): void => {
       context: {} as RouterContextProvider,
     });
 
-    expect(data.entries).toEqual([{ id: 'a' }, { id: 'b' }]);
+    expect(dataEntries).toEqual([{ id: 'a' }, { id: 'b' }]);
     expect(listAccesses.mock.calls).toEqual([
       [{ cursor: null, limit: 100 }, { signal: request.signal }],
       [{ cursor: 'next', limit: 100 }, { signal: request.signal }],

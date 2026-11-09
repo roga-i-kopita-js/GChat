@@ -247,13 +247,17 @@ export class GChatClient {
 
       const generation = this.connectionGeneration;
 
-      this.events = this.events
-        .then(async (): Promise<void> => {
+      this.events = (async () => {
+        try {
+          await this.events;
+
           if (generation === this.connectionGeneration) {
             await this.event(type, payload);
           }
-        })
-        .catch((cause: unknown): void => this.fail(cause));
+        } catch (cause) {
+          return this.fail(cause);
+        }
+      })();
     });
 
     sync();
@@ -304,23 +308,25 @@ export class GChatClient {
         'Notification' in window &&
         Notification.permission === 'granted'
       ) {
-        void (async (): Promise<void> => {
-          const config = pushConfig.parse(await this.webPush('device.web_push_config', {}));
+        void (async () => {
+          try {
+            const config = pushConfig.parse(await this.webPush('device.web_push_config', {}));
 
-          if (!config.public_key || generation !== this.connectionGeneration) {
-            return;
-          }
+            if (!config.public_key || generation !== this.connectionGeneration) {
+              return;
+            }
 
-          await syncWebPush(
-            config.public_key,
-            (): boolean => generation === this.connectionGeneration && this.state.owner,
-            (subscription): Promise<unknown> => this.webPush('device.web_push', { subscription }),
-          );
-        })().catch((cause: unknown): void => {
-          if (generation === this.connectionGeneration) {
-            this.fail(cause);
+            await syncWebPush(
+              config.public_key,
+              (): boolean => generation === this.connectionGeneration && this.state.owner,
+              (subscription): Promise<unknown> => this.webPush('device.web_push', { subscription }),
+            );
+          } catch (cause) {
+            if (generation === this.connectionGeneration) {
+              this.fail(cause);
+            }
           }
-        });
+        })();
       }
 
       const current = currentResponse.parse(await this.transport.send('call.current', {})).call;
@@ -488,10 +494,12 @@ export class GChatClient {
         const answer = await this.pc!.createAnswer();
 
         await this.pc!.setLocalDescription(answer);
+        const { sdp: answerSdp } = answer;
+
         await this.transport.send('rtc.answer', {
           call_id: call.call_id,
           negotiation_id: this.negotiation,
-          sdp: answer.sdp,
+          sdp: answerSdp,
         });
         await this.flushLocalIce();
         await this.confirm();
@@ -545,9 +553,17 @@ export class GChatClient {
   }
 
   private queueMedia(action: () => Promise<void>): Promise<void> {
-    const next = this.mediaQueue.then(action);
+    const next = (async () => {
+      await this.mediaQueue;
 
-    this.mediaQueue = next.catch((): void => {});
+      return action();
+    })();
+
+    this.mediaQueue = (async () => {
+      try {
+        return await next;
+      } catch (cause) {}
+    })();
 
     return next;
   }
@@ -570,17 +586,21 @@ export class GChatClient {
     }
 
     const epoch = this.mediaEpoch;
-    const stream = await navigator.mediaDevices
-      .getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true },
-        video: false,
-      })
-      .catch((cause: unknown): never => {
+    const stream = await (async () => {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+          video: false,
+        });
+      } catch (cause) {
         throw new Error(audioError(cause));
-      });
+      }
+    })();
 
     if (epoch !== this.mediaEpoch) {
-      for (const track of stream.getTracks()) {
+      const { getTracks: streamGetTracks } = stream;
+
+      for (const track of streamGetTracks.bind(stream)()) {
         track.stop();
       }
 
@@ -678,9 +698,13 @@ export class GChatClient {
       if (!this.descriptionSent) {
         this.localIce.push(payload);
       } else {
-        void this.transport
-          .send('rtc.ice', payload)
-          .catch((cause: unknown): void => this.fail(cause));
+        void (async () => {
+          try {
+            return await this.transport.send('rtc.ice', payload);
+          } catch (cause) {
+            return this.fail(cause);
+          }
+        })();
       }
     };
     pc.onconnectionstatechange = (): void => {
@@ -691,16 +715,32 @@ export class GChatClient {
       this.set({ media: pc.connectionState });
 
       if (pc.connectionState === 'connected') {
-        void this.confirm().catch((cause: unknown): void => this.fail(cause));
+        void (async () => {
+          try {
+            return await this.confirm();
+          } catch (cause) {
+            return this.fail(cause);
+          }
+        })();
       }
 
       if (['failed', 'disconnected'].includes(pc.connectionState)) {
         void this.ping();
-        void this.restart().catch((cause: unknown): void => this.fail(cause));
+        void (async () => {
+          try {
+            return await this.restart();
+          } catch (cause) {
+            return this.fail(cause);
+          }
+        })();
       }
     };
     this.statsTimer = setInterval((): void => {
-      void this.collectStats().catch((): void => {});
+      void (async () => {
+        try {
+          return await this.collectStats();
+        } catch (cause) {}
+      })();
     }, 1000);
     this.iceRefresh = setTimeout(
       (): void => {
@@ -753,10 +793,12 @@ export class GChatClient {
     const offer = await this.pc.createOffer({ iceRestart: this.pc.localDescription !== null });
 
     await this.pc.setLocalDescription(offer);
+    const { sdp: offerSdp } = offer;
+
     await this.transport.send('rtc.offer', {
       call_id: this.state.call.call_id,
       negotiation_id: this.negotiation,
-      sdp: offer.sdp,
+      sdp: offerSdp,
     });
     await this.flushLocalIce();
     await this.confirm();
@@ -909,7 +951,9 @@ export class GChatClient {
     let received = 0;
     let relay = false;
 
-    stats.forEach((item): void => {
+    const { forEach: statsForEach } = stats;
+
+    statsForEach.bind(stats)((item): void => {
       if (item.type === 'outbound-rtp' && item.kind === 'audio') {
         sent += Number(item.bytesSent ?? 0);
       }
@@ -919,10 +963,12 @@ export class GChatClient {
       }
 
       if (item.type === 'transport' && item.selectedCandidatePairId) {
-        const pair = stats.get(item.selectedCandidatePairId);
+        const { get: statsGet } = stats;
+        const pair = statsGet.bind(stats)(item.selectedCandidatePairId);
 
         if (pair) {
-          const local = stats.get(pair.localCandidateId);
+          const { get: statsGet2 } = stats;
+          const local = statsGet2.bind(stats)(pair.localCandidateId);
 
           relay = local?.candidateType === 'relay';
         }
@@ -1060,7 +1106,17 @@ export class GChatClient {
         return;
       }
 
-      const type = reject ? 'call.reject' : call.state === 'ringing' ? 'call.cancel' : 'call.end';
+      let typeValue;
+
+      if (reject) {
+        typeValue = 'call.reject';
+      } else if (call.state === 'ringing') {
+        typeValue = 'call.cancel';
+      } else {
+        typeValue = 'call.end';
+      }
+
+      const type = typeValue;
 
       await this.update(
         callResponse.parse(await this.transport.send(type, { call_id: call.call_id })).call,

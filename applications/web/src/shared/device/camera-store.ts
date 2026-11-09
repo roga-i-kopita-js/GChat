@@ -30,7 +30,11 @@ export class CameraStore {
         expectedVersion: file.version,
       });
     } catch (cause) {
-      await this.files.remove(file.ref, { recursive: false }).catch((): void => {});
+      await (async () => {
+        try {
+          return await this.files.remove(file.ref, { recursive: false });
+        } catch (cause) {}
+      })();
 
       throw cause;
     }
@@ -46,9 +50,9 @@ export class CameraStore {
 
         for (let index = 0; index < chunk.size; index += 262144) {
           const bytes = new Uint8Array(await chunk.slice(index, index + 262144).arrayBuffer());
-          const result = await writer.write(offset, bytes);
+          const { bytesWritten: resultBytesWritten } = await writer.write(offset, bytes);
 
-          if (result.bytesWritten !== bytes.byteLength) {
+          if (resultBytesWritten !== bytes.byteLength) {
             throw new DeviceError('IO_ERROR');
           }
 
@@ -78,10 +82,18 @@ export class CameraStore {
         }
 
         done = true;
-        await writer.abort().catch((): void => {});
+        await (async () => {
+          try {
+            return await writer.abort();
+          } catch (cause) {}
+        })();
 
         if (file) {
-          await this.files.remove(file.ref, { recursive: false }).catch((): void => {});
+          await (async () => {
+            try {
+              return await this.files.remove(file.ref, { recursive: false });
+            } catch (cause) {}
+          })();
         }
 
         file = null;
@@ -93,11 +105,17 @@ export class CameraStore {
     const write = await this.begin('jpg', 'image/jpeg');
 
     try {
-      await write.write(blob);
+      const { write: writeWrite } = write;
 
-      return await write.commit();
+      await writeWrite.bind(write)(blob);
+
+      const { commit: writeCommit } = write;
+
+      return await writeCommit.bind(write)();
     } catch (cause) {
-      await write.abort();
+      const { abort: writeAbort } = write;
+
+      await writeAbort.bind(write)();
 
       throw cause;
     }

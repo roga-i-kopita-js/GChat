@@ -57,7 +57,9 @@ describe('device revision waits', (): void => {
       changed: ['camera'],
       timedOut: false,
     });
-    expect((await changes.wait(read, 1000)).changed).toEqual(['camera']);
+    const { changed: waitResultChanged } = await changes.wait(read, 1000);
+
+    expect(waitResultChanged).toEqual(['camera']);
   });
   it('rejects parallel waits, cancels exactly the pending waiter, then accepts a new one', async (): Promise<void> => {
     const changes = new DeviceChanges();
@@ -71,7 +73,9 @@ describe('device revision waits', (): void => {
     const next = changes.wait(0, 1000);
 
     changes.touch('audio');
-    expect((await next).changed).toEqual(['audio']);
+    const { changed: resultChanged } = await next;
+
+    expect(resultChanged).toEqual(['audio']);
   });
   it('times out without polling or fabricating a revision', async (): Promise<void> => {
     vi.useFakeTimers();

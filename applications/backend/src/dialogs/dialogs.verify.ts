@@ -42,7 +42,9 @@ async function verify(): Promise<void> {
             .orderBy(asc(dialogMessages.id))
             .limit(500);
 
-          if (!rows.length) {
+          const { length: rowsLength } = rows ?? {};
+
+          if (!rowsLength) {
             break;
           }
 
@@ -52,7 +54,9 @@ async function verify(): Promise<void> {
             verified++;
           }
 
-          last = rows.at(-1)!.id;
+          const { at: rowsAt } = rows;
+
+          last = rowsAt.bind(rows)(-1)!.id;
         }
 
         return { verified_messages: verified, key_ids: [...keys].sort() };
@@ -65,7 +69,11 @@ async function verify(): Promise<void> {
     await pool.end();
   }
 }
-verify().catch((): void => {
-  console.error('Dialog history verification failed; access must remain closed');
-  process.exitCode = 1;
-});
+(async () => {
+  try {
+    return await verify();
+  } catch (cause) {
+    console.error('Dialog history verification failed; access must remain closed');
+    process.exitCode = 1;
+  }
+})();

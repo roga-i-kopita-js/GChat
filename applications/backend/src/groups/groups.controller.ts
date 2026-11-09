@@ -28,7 +28,9 @@ export class GroupsController {
   @Header('Cache-Control', 'no-store')
   @ApiOperation({ operationId: 'groupsList' })
   async list(@Req() request: { user: AuthIdentity }): Promise<GroupsResponseDto> {
-    return { groups: await this.groups.list(request.user.userId) };
+    const groupsValue = await this.groups.list(request.user.userId);
+
+    return { groups: groupsValue };
   }
 
   /** Получить активных участников доступной по роли группы. */
@@ -43,6 +45,8 @@ export class GroupsController {
     @Req() request: { user: AuthIdentity },
     @Param('group_id', new ParseUUIDPipe()) id: string,
   ): Promise<GroupMembersResponseDto> {
-    return { members: await this.groups.members(request.user.userId, id) };
+    const membersValue = await this.groups.members(request.user.userId, id);
+
+    return { members: membersValue };
   }
 }

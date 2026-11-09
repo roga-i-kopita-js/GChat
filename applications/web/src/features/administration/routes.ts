@@ -66,19 +66,19 @@ export async function adminUsersLoader({
   }
 
   try {
+    const { data: runResultData } = await device.session.run(
+      (api, signal): ReturnType<BackendApi['adminListUsers']> =>
+        api.adminListUsers({
+          query: { ...filters, limit: 25 },
+          signal,
+        }),
+      { signal: input.signal },
+    );
+
     return {
       sid: user.sid,
       filters,
-      data: (
-        await device.session.run(
-          (api, signal): ReturnType<BackendApi['adminListUsers']> =>
-            api.adminListUsers({
-              query: { ...filters, limit: 25 },
-              signal,
-            }),
-          { signal: input.signal },
-        )
-      ).data,
+      data: runResultData,
       error: null,
     };
   } catch (error) {
@@ -109,15 +109,15 @@ export async function adminUserLoader({
   const id = parsed.data.userId;
 
   try {
+    const { data: runResultData2 } = await device.session.run(
+      (api, signal): ReturnType<BackendApi['adminGetUser']> =>
+        api.adminGetUser({ path: { user_id: id }, signal }),
+      { signal: input.signal },
+    );
+
     return {
       sid: user.sid,
-      data: (
-        await device.session.run(
-          (api, signal): ReturnType<BackendApi['adminGetUser']> =>
-            api.adminGetUser({ path: { user_id: id }, signal }),
-          { signal: input.signal },
-        )
-      ).data,
+      data: runResultData2,
       error: null,
     };
   } catch (error) {
@@ -141,22 +141,22 @@ export async function adminGroupsLoader({
   const query = readQuery(adminGroupsQuerySchema, input);
 
   try {
+    const { data: runResultData3 } = await device.session.run(
+      (api, signal): ReturnType<BackendApi['adminListGroups']> =>
+        api.adminListGroups({
+          query: {
+            ...query,
+            limit: 20,
+            offset: 0,
+          },
+          signal,
+        }),
+      { signal: input.signal },
+    );
+
     return {
       sid: user.sid,
-      data: (
-        await device.session.run(
-          (api, signal): ReturnType<BackendApi['adminListGroups']> =>
-            api.adminListGroups({
-              query: {
-                ...query,
-                limit: 20,
-                offset: 0,
-              },
-              signal,
-            }),
-          { signal: input.signal },
-        )
-      ).data,
+      data: runResultData3,
       error: null,
     };
   } catch (error) {
@@ -189,51 +189,54 @@ export async function adminAction({
   }
 
   try {
-    const saved = (
-      await device.session.run(
-        async (api, signal): ReturnType<BackendApi['adminCreateUser']> => {
-          const current = await device.session.getState({ signal });
+    const { data: runResultData4 } = await device.session.run(
+      async (api, signal): ReturnType<BackendApi['adminCreateUser']> => {
+        const {
+          status: currentStatus,
+          generation: currentGeneration,
+          identity: currentIdentity,
+        } = await device.session.getState({ signal });
 
-          if (
-            current.status !== 'authenticated' ||
-            String(current.generation) !== actor.sid ||
-            current.identity?.id !== actor.sub
-          ) {
-            throw new DeviceError('CANCELLED');
-          }
+        if (
+          currentStatus !== 'authenticated' ||
+          String(currentGeneration) !== actor.sid ||
+          currentIdentity?.id !== actor.sub
+        ) {
+          throw new DeviceError('CANCELLED');
+        }
 
-          signal.throwIfAborted();
+        signal.throwIfAborted();
 
-          if (form.operation === 'create') {
-            const { operation: _operation, ...body } = form;
+        if (form.operation === 'create') {
+          const { operation: _operation, ...body } = form;
 
-            return api.adminCreateUser({
-              body,
-              signal,
-            });
-          }
+          return api.adminCreateUser({
+            body,
+            signal,
+          });
+        }
 
-          if (form.operation === 'password') {
-            return api.adminChangeUserPassword({
-              path: { user_id: form.user_id },
-              body: { password: form.password },
-              signal,
-            });
-          }
+        if (form.operation === 'password') {
+          return api.adminChangeUserPassword({
+            path: { user_id: form.user_id },
+            body: { password: form.password },
+            signal,
+          });
+        }
 
-          if (form.operation === 'disable') {
-            return api.adminDisableUser({ path: { user_id: form.user_id }, body: {}, signal });
-          }
+        if (form.operation === 'disable') {
+          return api.adminDisableUser({ path: { user_id: form.user_id }, body: {}, signal });
+        }
 
-          if (form.operation === 'enable') {
-            return api.adminEnableUser({ path: { user_id: form.user_id }, body: {}, signal });
-          }
+        if (form.operation === 'enable') {
+          return api.adminEnableUser({ path: { user_id: form.user_id }, body: {}, signal });
+        }
 
-          throw new TypeError('Invalid operation');
-        },
-        { signal: input.signal },
-      )
-    ).data;
+        throw new TypeError('Invalid operation');
+      },
+      { signal: input.signal },
+    );
+    const saved = runResultData4;
 
     if (form.operation === 'create' || form.operation === 'password') {
       results.publish(

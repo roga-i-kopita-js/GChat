@@ -104,9 +104,13 @@ export function SettingsScreen({
               disabled={device.busy}
               onClick={(): void => {
                 device.setError('');
-                void device
-                  .refresh()
-                  .catch((cause: unknown): void => device.setError(deviceErrorMessage(cause)));
+                void (async () => {
+                  try {
+                    return await device.refresh();
+                  } catch (cause) {
+                    return device.setError(deviceErrorMessage(cause));
+                  }
+                })();
               }}
             >
               Обновить состояние

@@ -93,9 +93,11 @@ export function App(): JSX.Element {
           return;
         }
 
-        void deviceInternals(core)
-          .confirmSessionRevoked(Number(sid))
-          .catch((): void => {});
+        void (async () => {
+          try {
+            return await deviceInternals(core).confirmSessionRevoked(Number(sid));
+          } catch (cause) {}
+        })();
       }),
     [adminResults, core],
   );

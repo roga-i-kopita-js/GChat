@@ -805,7 +805,7 @@ button svg {
   margin: auto;
   padding: 0;
   border: 0;
-  border-radius: var(--ui-radius-16);
+  border-radius: var(--ui-radius-14);
   background: #fff;
   color: #111;
   overflow-y: auto;

@@ -117,7 +117,9 @@ export class DialogsService {
       .limit(limit)
       .offset(offset);
 
-    return rows.map(({ row, name, unread }): DialogDto => ({
+    const { map: rowsMap } = rows;
+
+    return rowsMap.bind(rows)(({ row, name, unread }): DialogDto => ({
       dialog_id: row.id,
       peer_id: this.peer(row, actor),
       peer_display_name: name,
@@ -163,7 +165,8 @@ export class DialogsService {
       tx,
       peerId ? [actor.userId, peerId] : [actor.userId],
     );
-    const me = accounts.find((a): boolean => a.id === actor.userId);
+    const { find: accountsFind } = accounts;
+    const me = accountsFind.bind(accounts)((a): boolean => a.id === actor.userId);
 
     if (!me || me.disabledAt) {
       throw this.error.sessionInvalid();
@@ -176,7 +179,8 @@ export class DialogsService {
       return { deviceId, can_read: false, can_send: false };
     }
 
-    const peer = accounts.find((a): boolean => a.id === peerId);
+    const { find: accountsFind2 } = accounts;
+    const peer = accountsFind2.bind(accounts)((a): boolean => a.id === peerId);
 
     if (!peer) {
       return { deviceId, can_read: false, can_send: false };
@@ -210,7 +214,9 @@ export class DialogsService {
     return this.transaction(async (tx): Promise<{ dialog: DialogDto; created: boolean }> => {
       const access = await this.access(tx, actor, peerId);
 
-      if (!access.can_send) {
+      const { can_send: accessCanSend } = access ?? {};
+
+      if (!accessCanSend) {
         this.denied();
       }
 
@@ -220,14 +226,11 @@ export class DialogsService {
         .values({ participantLowId: low!, participantHighId: high! })
         .onConflictDoNothing({ target: [dialogs.participantLowId, dialogs.participantHighId] })
         .returning();
-      const row =
-        inserted ??
-        (
-          await tx
-            .select()
-            .from(dialogs)
-            .where(and(eq(dialogs.participantLowId, low!), eq(dialogs.participantHighId, high!)))
-        )[0];
+      const { [0]: whereResultFirst } = await tx
+        .select()
+        .from(dialogs)
+        .where(and(eq(dialogs.participantLowId, low!), eq(dialogs.participantHighId, high!)));
+      const row = inserted ?? whereResultFirst;
 
       if (!row) {
         throw this.error.internal();
@@ -250,7 +253,9 @@ export class DialogsService {
       await this.access(tx, actor);
       const rows = await this.metadata(tx, actor.userId, limit + 1, offset);
 
-      return { dialogs: rows.slice(0, limit), has_more: rows.length > limit };
+      const { slice: rowsSlice, length: rowsLength } = rows;
+
+      return { dialogs: rowsSlice.bind(rows)(0, limit), has_more: rowsLength > limit };
     });
   }
 
@@ -276,9 +281,13 @@ export class DialogsService {
 
     return this.transaction(async (tx): Promise<PermissionsResponseDto> => {
       const row = await this.own(tx, actor.userId, id);
-      const rights = await this.access(tx, actor, this.peer(row, actor.userId));
+      const { can_read: rightsCanRead, can_send: rightsCanSend } = await this.access(
+        tx,
+        actor,
+        this.peer(row, actor.userId),
+      );
 
-      return { dialogs: { can_read: rights.can_read, can_send: rights.can_send } };
+      return { dialogs: { can_read: rightsCanRead, can_send: rightsCanSend } };
     });
   }
 
@@ -294,30 +303,40 @@ export class DialogsService {
     return this.transaction(async (tx): Promise<HistoryResponseDto> => {
       const row = await this.own(tx, actor.userId, id);
 
-      if (!(await this.access(tx, actor, this.peer(row, actor.userId), true)).can_read) {
+      const { can_read: accessResultCanRead } = await this.access(
+        tx,
+        actor,
+        this.peer(row, actor.userId),
+        true,
+      );
+
+      if (!accessResultCanRead) {
         this.denied();
       }
 
       // One statement snapshots messages and read positions together.
+      let sequenceFilter;
+
+      if (after !== undefined) {
+        sequenceFilter = gt(dialogMessages.sequence, after);
+      } else if (before !== undefined) {
+        sequenceFilter = lt(dialogMessages.sequence, before);
+      } else {
+        sequenceFilter = undefined;
+      }
+
       const rows = await tx
         .select({ message: dialogMessages, dialog: dialogs })
         .from(dialogMessages)
         .innerJoin(dialogs, eq(dialogs.id, dialogMessages.dialogId))
-        .where(
-          and(
-            eq(dialogMessages.dialogId, id),
-            after !== undefined
-              ? gt(dialogMessages.sequence, after)
-              : before !== undefined
-                ? lt(dialogMessages.sequence, before)
-                : undefined,
-          ),
-        )
+        .where(and(eq(dialogMessages.dialogId, id), sequenceFilter))
         .orderBy(after !== undefined ? asc(dialogMessages.sequence) : desc(dialogMessages.sequence))
         .limit(limit + 1);
       const messages: MessageDto[] = [];
 
-      for (const { message, dialog } of rows.slice(0, limit)) {
+      const { slice: rowsSlice2 } = rows;
+
+      for (const { message, dialog } of rowsSlice2.bind(rows)(0, limit)) {
         const dto = this.message(message, dialog);
         const candidate = { messages: [...messages, dto], has_more: true };
 
@@ -332,7 +351,9 @@ export class DialogsService {
         messages.push(dto);
       }
 
-      return { messages, has_more: rows.length > messages.length };
+      const { length: rowsLength2 } = rows;
+
+      return { messages, has_more: rowsLength2 > messages.length };
     });
   }
 
@@ -351,7 +372,9 @@ export class DialogsService {
         const initial = await this.own(tx, actor.userId, id);
         const access = await this.access(tx, actor, this.peer(initial, actor.userId));
 
-        if (!access.can_send) {
+        const { can_send: accessCanSend2 } = access ?? {};
+
+        if (!accessCanSend2) {
           this.denied();
         }
 
@@ -366,7 +389,11 @@ export class DialogsService {
               eq(dialogMessages.clientMessageId, input.client_message_id),
             ),
           );
-        const users = [dialog.participantLowId, dialog.participantHighId];
+        const {
+          participantLowId: dialogParticipantLowId,
+          participantHighId: dialogParticipantHighId,
+        } = dialog;
+        const users = [dialogParticipantLowId, dialogParticipantHighId];
 
         if (existing) {
           return { message: this.message(existing, dialog), created: false, users };
@@ -376,7 +403,9 @@ export class DialogsService {
           throw this.error.serviceUnavailable();
         }
 
-        if (dialog.lastSequence >= Number.MAX_SAFE_INTEGER) {
+        const { lastSequence: dialogLastSequence } = dialog;
+
+        if (dialogLastSequence >= Number.MAX_SAFE_INTEGER) {
           throw this.error.internal();
         }
 
@@ -391,13 +420,15 @@ export class DialogsService {
           throw this.error.internal();
         }
 
+        const { deviceId: accessDeviceId } = access;
+        const { lastSequence: dialogLastSequence2 } = dialog;
         const metadata = {
           id: randomUUID(),
           dialogId: id,
           senderId: actor.userId,
-          senderDeviceId: access.deviceId,
+          senderDeviceId: accessDeviceId,
           clientMessageId: input.client_message_id,
-          sequence: dialog.lastSequence + 1,
+          sequence: dialogLastSequence2 + 1,
           createdAt: clock.now,
           encryptionVersion: 1,
           encryptionKeyId: this.crypto.active,
@@ -421,18 +452,24 @@ export class DialogsService {
       },
     );
 
-    if (result.created) {
+    const { created: resultCreated } = result;
+
+    if (resultCreated) {
+      const { users: resultUsers, message: resultMessage } = result;
+
       this.events.publish({
-        users: result.users,
-        message: result.message,
+        users: resultUsers,
+        message: resultMessage,
         event: {
           type: 'dialog.messages_available',
-          payload: { dialog_id: id, last_sequence: result.message.sequence },
+          payload: { dialog_id: id, last_sequence: resultMessage.sequence },
         },
       });
     }
 
-    return { message: result.message, created: result.created };
+    const { message: resultMessage2, created: resultCreated2 } = result;
+
+    return { message: resultMessage2, created: resultCreated2 };
   }
 
   async read(
@@ -445,18 +482,29 @@ export class DialogsService {
       async (tx): Promise<{ sequence: number; changed: boolean; users: string[] }> => {
         const initial = await this.own(tx, actor.userId, id);
 
-        if (!(await this.access(tx, actor, this.peer(initial, actor.userId), true)).can_read) {
+        const { can_read: accessResultCanRead2 } = await this.access(
+          tx,
+          actor,
+          this.peer(initial, actor.userId),
+          true,
+        );
+
+        if (!accessResultCanRead2) {
           this.denied();
         }
 
         const row = await this.own(tx, actor.userId, id, true);
 
-        if (sequence > row.lastSequence) {
+        const { lastSequence: rowLastSequence } = row;
+
+        if (sequence > rowLastSequence) {
           throw this.error.validation({ fields: [{ field: 'sequence', code: 'INVALID' }] });
         }
 
-        const low = row.participantLowId === actor.userId;
-        const previous = low ? row.lowRead : row.highRead;
+        const { participantLowId: rowParticipantLowId } = row;
+        const low = rowParticipantLowId === actor.userId;
+        const { lowRead: rowLowRead, highRead: rowHighRead } = row;
+        const previous = low ? rowLowRead : rowHighRead;
         const maximum = Math.max(sequence, previous);
 
         if (maximum > previous) {
@@ -466,25 +514,34 @@ export class DialogsService {
             .where(eq(dialogs.id, id));
         }
 
+        const { participantLowId: rowParticipantLowId2, participantHighId: rowParticipantHighId } =
+          row;
+
         return {
           sequence: maximum,
           changed: maximum > previous,
-          users: [row.participantLowId, row.participantHighId],
+          users: [rowParticipantLowId2, rowParticipantHighId],
         };
       },
     );
 
-    if (result.changed) {
+    const { changed: resultChanged } = result;
+
+    if (resultChanged) {
+      const { users: resultUsers2, sequence: resultSequence } = result;
+
       this.events.publish({
-        users: result.users,
+        users: resultUsers2,
         event: {
           type: 'dialog.read_updated',
-          payload: { dialog_id: id, reader_id: actor.userId, last_read_sequence: result.sequence },
+          payload: { dialog_id: id, reader_id: actor.userId, last_read_sequence: resultSequence },
         },
       });
     }
 
-    return { last_read_sequence: result.sequence };
+    const { sequence: resultSequence2 } = result;
+
+    return { last_read_sequence: resultSequence2 };
   }
 
   /** Reauthorize each notification destination; no Redis bucket is consumed for delivery. */
@@ -497,9 +554,14 @@ export class DialogsService {
     try {
       return await this.transaction(async (tx): Promise<boolean> => {
         const row = await this.own(tx, userId, id);
-        const rights = await this.access(tx, { userId, sessionId }, this.peer(row, userId), true);
+        const { deviceId: rightsDeviceId, can_read: rightsCanRead2 } = await this.access(
+          tx,
+          { userId, sessionId },
+          this.peer(row, userId),
+          true,
+        );
 
-        return rights.deviceId === deviceId && rights.can_read;
+        return rightsDeviceId === deviceId && rightsCanRead2;
       });
     } catch {
       return false;

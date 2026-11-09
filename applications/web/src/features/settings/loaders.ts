@@ -22,11 +22,13 @@ export async function settingsProfileLoader({
 
   request.signal.throwIfAborted();
 
-  if (!state.identity) {
+  const { identity: stateIdentity } = state ?? {};
+
+  if (!stateIdentity) {
     throw new Response('Unauthorized', { status: 401 });
   }
 
-  return { device, profile: state.identity };
+  return { device, profile: stateIdentity };
 }
 
 export async function settingsLoader({
@@ -53,14 +55,19 @@ export async function settingsFilesLoader(args: LoaderFunctionArgs): Promise<Set
 
   try {
     do {
-      const page = await data.device.files.listAccesses(
+      const { device: dataDevice } = data;
+      const page = await dataDevice.files.listAccesses(
         { cursor, limit: 100 },
         { signal: args.request.signal },
       );
 
       args.request.signal.throwIfAborted();
-      entries.push(...page.entries);
-      cursor = page.nextCursor;
+      const { entries: pageEntries } = page;
+
+      entries.push(...pageEntries);
+      const { nextCursor: pageNextCursor } = page;
+
+      cursor = pageNextCursor;
     } while (cursor);
 
     return { ...data, entries };

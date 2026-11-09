@@ -136,29 +136,43 @@ export class ApiTransport {
 
     try {
       // Response.json() is intentionally used without DTO runtime validation.
+      const {
+        status: responseStatus,
+        ok: responseOk,
+        headers: responseHeaders,
+        json: responseJson,
+        text: responseText,
+      } = response;
+
       data =
-        response.status === 204 || operation.emptyResponses.includes(response.status)
+        responseStatus === 204 || operation.emptyResponses.includes(responseStatus)
           ? undefined
-          : await (response.ok ||
-            /(?:application\/json|[+]json)(?:;|$)/i.test(response.headers.get('Content-Type') ?? '')
-              ? response.json()
-              : response.text());
+          : await (responseOk ||
+            /(?:application\/json|[+]json)(?:;|$)/i.test(responseHeaders.get('Content-Type') ?? '')
+              ? responseJson.bind(response)()
+              : responseText.bind(response)());
     } catch (cause) {
       if (!(cause instanceof SyntaxError)) {
         throw cause;
       }
 
-      if (!response.ok) {
+      const { ok: responseOk2 } = response ?? {};
+
+      if (!responseOk2) {
         throw new ApiError(response, undefined, cause);
       }
 
       throw new ApiResponseParseError(response, cause);
     }
 
-    if (!response.ok) {
+    const { ok: responseOk3 } = response ?? {};
+
+    if (!responseOk3) {
       throw new ApiError(response, data);
     }
 
-    return { data, status: response.status, headers: response.headers };
+    const { status: responseStatus2, headers: responseHeaders2 } = response;
+
+    return { data, status: responseStatus2, headers: responseHeaders2 };
   }
 }

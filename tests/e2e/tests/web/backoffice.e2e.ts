@@ -12,7 +12,9 @@ test('layout has no top bar and nested settings keep their back navigation', asy
   await expect(page.getByRole('link', { name: /^Профиль:/ })).toHaveCount(0);
   const main = page.getByRole('main');
 
-  expect((await main.boundingBox())!.y).toBe(0);
+  const { y: boundingBoxResultY } = (await main.boundingBox()) ?? {};
+
+  expect(boundingBoxResultY).toBe(0);
   await page.getByRole('link', { name: 'Настройки', exact: true }).click();
   const settings = page.getByRole('region', { name: 'Настройки', exact: true });
 
@@ -232,9 +234,18 @@ test('confirms access changes and cancels without sending an operation', async (
     throw new Error('Confirmation buttons must be visible');
   }
 
-  expect(Math.abs(cancelBox.y - confirmBox.y)).toBeLessThan(1);
-  expect(Math.abs(cancelBox.width - confirmBox.width)).toBeLessThan(1);
-  expect(Math.abs(cancelBox.height - confirmBox.height)).toBeLessThan(1);
+  const { y: cancelBoxY } = cancelBox;
+  const { y: confirmBoxY } = confirmBox;
+
+  expect(Math.abs(cancelBoxY - confirmBoxY)).toBeLessThan(1);
+  const { width: cancelBoxWidth } = cancelBox;
+  const { width: confirmBoxWidth } = confirmBox;
+
+  expect(Math.abs(cancelBoxWidth - confirmBoxWidth)).toBeLessThan(1);
+  const { height: cancelBoxHeight } = cancelBox;
+  const { height: confirmBoxHeight } = confirmBox;
+
+  expect(Math.abs(cancelBoxHeight - confirmBoxHeight)).toBeLessThan(1);
   await page.getByRole('button', { name: 'Отмена', exact: true }).click();
   expect(posts).toBe(0);
   await detail.getByRole('button', { name: 'Отключить аккаунт', exact: true }).click();
@@ -897,9 +908,10 @@ test('layout loading bar covers file revalidation without navigating away', asyn
   const chooser = page.waitForEvent('filechooser');
 
   await page.getByRole('button', { name: 'Выбрать файл', exact: true }).click();
-  await (
-    await chooser
-  ).setFiles({
+  const resolved = await chooser;
+  const { setFiles: resultSetFiles } = resolved;
+
+  await resultSetFiles.bind(resolved)({
     name: 'loading-fixture.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('fixture'),
@@ -1117,10 +1129,18 @@ test('shows pending navigation while importing settings and resolves nested sett
     await expect(page.getByText('Загружаем страницу…', { exact: true })).toHaveCount(0);
     const bounds = await bar.boundingBox();
 
-    expect(bounds!.x).toBe(0);
-    expect(bounds!.y).toBe(0);
-    expect(bounds!.width).toBe(page.viewportSize()!.width);
-    expect(bounds!.height).toBe(2);
+    const { x: boundsX } = bounds!;
+
+    expect(boundsX).toBe(0);
+    const { y: boundsY } = bounds!;
+
+    expect(boundsY).toBe(0);
+    const { width: boundsWidth } = bounds!;
+
+    expect(boundsWidth).toBe(page.viewportSize()!.width);
+    const { height: boundsHeight } = bounds!;
+
+    expect(boundsHeight).toBe(2);
     const transform = await bar.evaluate(
       (element): string => getComputedStyle(element, '::after').transform,
     );

@@ -124,18 +124,19 @@ export class SignalingGateway implements OnModuleDestroy {
         return;
       }
 
-      connection.queue = connection.queue
-        .then(async (): Promise<void> => {
+      connection.queue = (async () => {
+        try {
+          await connection.queue;
+
           if (!connection.closed && socket.readyState === WebSocket.OPEN) {
             await this.receive(connection, data.toString());
           }
-        })
-        .catch((): void => {
+        } catch (cause) {
           socket.close(1011);
-        })
-        .finally((): void => {
+        } finally {
           connection.pending--;
-        });
+        }
+      })();
     });
 
     if (!this.timer) {
@@ -144,9 +145,13 @@ export class SignalingGateway implements OnModuleDestroy {
           return;
         }
 
-        this.checking = this.checkConnections().finally((): void => {
-          this.checking = undefined;
-        });
+        this.checking = (async () => {
+          try {
+            return await this.checkConnections();
+          } finally {
+            this.checking = undefined;
+          }
+        })();
       }, 5000);
       this.timer.unref();
     }
@@ -161,7 +166,9 @@ export class SignalingGateway implements OnModuleDestroy {
   private async access(connection: Connection): Promise<void> {
     const access = await this.auth.checkSession(connection.userId, connection.sessionId);
 
-    if (!access.accountActive || !access.sessionActive) {
+    const { accountActive: accessAccountActive, sessionActive: accessSessionActive } = access ?? {};
+
+    if (!accessAccountActive || !accessSessionActive) {
       throw this.error.sessionInvalid();
     }
   }
@@ -211,12 +218,17 @@ export class SignalingGateway implements OnModuleDestroy {
 
       this.send(connection, { type: 'response', request_id: requestId, payload });
     } catch (cause) {
-      const failure =
-        cause instanceof AppError
-          ? cause
-          : isDatabaseUnavailable(cause)
-            ? this.error.serviceUnavailable()
-            : this.error.internal();
+      let failureValue;
+
+      if (cause instanceof AppError) {
+        failureValue = cause;
+      } else if (isDatabaseUnavailable(cause)) {
+        failureValue = this.error.serviceUnavailable();
+      } else {
+        failureValue = this.error.internal();
+      }
+
+      const failure = failureValue;
 
       this.send(connection, {
         type: 'response',
@@ -240,11 +252,11 @@ export class SignalingGateway implements OnModuleDestroy {
     const { type, payload } = request;
 
     if (type === 'device.register') {
-      const input = await this.validate(payload, RegisterDeviceDto);
+      const { device_id: inputDeviceId } = await this.validate(payload, RegisterDeviceDto);
       const deviceId = await this.devices.bind(
         connection.userId,
         connection.sessionId,
-        input.device_id,
+        inputDeviceId,
       );
 
       for (const old of this.connections) {
@@ -279,56 +291,65 @@ export class SignalingGateway implements OnModuleDestroy {
     }
 
     if (type === 'device.web_push') {
-      const input = await this.validate(payload, WebPushDto);
+      const { subscription: inputSubscription } = await this.validate(payload, WebPushDto);
 
       await this.devices.setWebPush(
         actor.userId,
         actor.sessionId,
         actor.deviceId,
-        input.subscription,
+        inputSubscription,
       );
 
       return {};
     }
 
     if (type === 'device.apns_token') {
-      const input = await this.validate(payload, ApnsTokenDto);
+      const { token: inputToken, environment: inputEnvironment } = await this.validate(
+        payload,
+        ApnsTokenDto,
+      );
 
       await this.devices.setApnsToken(
         actor.userId,
         actor.sessionId,
         actor.deviceId,
-        input.token,
-        input.environment,
+        inputToken,
+        inputEnvironment,
       );
 
       return {};
     }
 
     if (type === 'device.push_token') {
-      const input = await this.validate(payload, PushTokenDto);
+      const { voip_token: inputVoipToken, environment: inputEnvironment2 } = await this.validate(
+        payload,
+        PushTokenDto,
+      );
 
       await this.devices.setPushToken(
         actor.userId,
         actor.sessionId,
         actor.deviceId,
-        input.voip_token,
-        input.environment,
+        inputVoipToken,
+        inputEnvironment2,
       );
 
       return {};
     }
 
     if (type === 'call.create') {
-      const input = await this.validate(payload, CallCreateDto);
+      const { recipient_id: inputRecipientId } = await this.validate(payload, CallCreateDto);
+      const callValue = await this.calls.create(actor, inputRecipientId);
 
-      return { call: await this.calls.create(actor, input.recipient_id) };
+      return { call: callValue };
     }
 
     if (type === 'call.current') {
       await this.validate(payload, EmptyDto);
 
-      return { call: await this.calls.current(actor) };
+      const callValue2 = await this.calls.current(actor);
+
+      return { call: callValue2 };
     }
 
     if (type === 'call.ping') {
@@ -339,11 +360,16 @@ export class SignalingGateway implements OnModuleDestroy {
       const input = await this.validate(payload, CallConnectedDto);
 
       return this.serializeNegotiation(async (): Promise<object> => {
-        if (this.negotiations.get(input.call_id)?.id !== input.negotiation_id) {
+        const { call_id: inputCallId, negotiation_id: inputNegotiationId } = input;
+
+        if (this.negotiations.get(inputCallId)?.id !== inputNegotiationId) {
           throw this.conflict();
         }
 
-        return { call: await this.calls.connected(actor, input.call_id, input.negotiation_id) };
+        const { call_id: inputCallId2, negotiation_id: inputNegotiationId2 } = input;
+        const callValue3 = await this.calls.connected(actor, inputCallId2, inputNegotiationId2);
+
+        return { call: callValue3 };
       });
     }
 
@@ -357,29 +383,51 @@ export class SignalingGateway implements OnModuleDestroy {
 
     switch (type) {
       case 'call.get':
-        return { call: await this.calls.get(actor, input.call_id) };
+        const { call_id: inputCallId3 } = input;
+        const callValue4 = await this.calls.get(actor, inputCallId3);
+
+        return { call: callValue4 };
       case 'call.accept':
-        return { call: await this.calls.accept(actor, input.call_id) };
+        const { call_id: inputCallId4 } = input;
+        const callValue5 = await this.calls.accept(actor, inputCallId4);
+
+        return { call: callValue5 };
       case 'call.reject':
-        return { call: await this.calls.reject(actor, input.call_id) };
+        const { call_id: inputCallId5 } = input;
+        const callValue6 = await this.calls.reject(actor, inputCallId5);
+
+        return { call: callValue6 };
       case 'call.cancel':
-        return { call: await this.calls.cancel(actor, input.call_id) };
+        const { call_id: inputCallId6 } = input;
+        const callValue7 = await this.calls.cancel(actor, inputCallId6);
+
+        return { call: callValue7 };
       case 'call.end':
-        return { call: await this.calls.end(actor, input.call_id) };
+        const { call_id: inputCallId7 } = input;
+        const callValue8 = await this.calls.end(actor, inputCallId7);
+
+        return { call: callValue8 };
       case 'call.ice_config':
-        return this.calls.iceConfig(actor, input.call_id);
+        const { call_id: inputCallId8 } = input;
+
+        return this.calls.iceConfig(actor, inputCallId8);
       default:
         throw this.error.validation();
     }
   }
 
   private serializeNegotiation<T>(action: () => Promise<T>): Promise<T> {
-    const result = this.negotiationQueue.then(action);
+    const result = (async () => {
+      await this.negotiationQueue;
 
-    this.negotiationQueue = result.then(
-      (): void => {},
-      (): void => {},
-    );
+      return action();
+    })();
+
+    this.negotiationQueue = (async () => {
+      try {
+        await result;
+      } catch (rejectedCause) {}
+    })();
 
     return result;
   }
@@ -397,14 +445,19 @@ export class SignalingGateway implements OnModuleDestroy {
     type: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    const input =
-      type === 'rtc.offer' || type === 'rtc.answer'
-        ? await this.validate(payload, RtcSdpDto)
-        : type === 'rtc.ice'
-          ? await this.validate(payload, RtcIceDto)
-          : type === 'rtc.restart'
-            ? await this.validate(payload, CallIdDto)
-            : undefined;
+    let inputValue;
+
+    if (type === 'rtc.offer' || type === 'rtc.answer') {
+      inputValue = await this.validate(payload, RtcSdpDto);
+    } else if (type === 'rtc.ice') {
+      inputValue = await this.validate(payload, RtcIceDto);
+    } else if (type === 'rtc.restart') {
+      inputValue = await this.validate(payload, CallIdDto);
+    } else {
+      inputValue = undefined;
+    }
+
+    const input = inputValue;
 
     if (!input) {
       throw this.error.validation();

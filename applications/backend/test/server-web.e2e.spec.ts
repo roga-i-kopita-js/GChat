@@ -23,7 +23,9 @@ describe('Server Web delivery', (): void => {
     writeFileSync(join(root, 'icons', 'icon.svg'), '<svg/>');
     const module = await Test.createTestingModule({}).compile();
 
-    app = module.createNestApplication<NestExpressApplication>();
+    const { createNestApplication: moduleCreateNestApplication } = module;
+
+    app = moduleCreateNestApplication.bind(module)<NestExpressApplication>();
     setupServerWeb(app, root);
     await app.init();
   });

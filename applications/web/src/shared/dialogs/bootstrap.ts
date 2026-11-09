@@ -57,14 +57,15 @@ export class DialogBootstrap {
         ? nativeRuntime.subscribe(this.connectionChanged)
         : browserTransport.subscribe(this.connectionChanged),
     );
-    void device.session
-      .getState()
-      .then(this.acceptSession)
-      .catch((cause: unknown): void => {
+    void (async () => {
+      try {
+        return await this.acceptSession(await device.session.getState());
+      } catch (cause) {
         if (!this.lifetime.signal.aborted) {
           this.set({ runtime: null, error: dialogError(cause) });
         }
-      });
+      }
+    })();
   }
 
   getSnapshot = (): DialogBootstrapSnapshot => this.state;
@@ -150,11 +151,15 @@ export class DialogBootstrap {
 
     const signal = this.scope.signal;
 
-    void this.open(claims.sid, user.id, deviceId ?? null, signal).catch((cause: unknown): void => {
-      if (!signal.aborted) {
-        this.set({ runtime: null, error: dialogError(cause) });
+    void (async () => {
+      try {
+        return await this.open(claims.sid, user.id, deviceId ?? null, signal);
+      } catch (cause) {
+        if (!signal.aborted) {
+          this.set({ runtime: null, error: dialogError(cause) });
+        }
       }
-    });
+    })();
   }
 
   private async open(
@@ -206,7 +211,9 @@ export class DialogBootstrap {
             throw new DeviceError('INTEGRATION_ERROR');
           }
 
-          return (await operation(api)).data;
+          const { data: resultData } = await operation(api);
+
+          return resultData;
         },
         { signal },
       );
@@ -237,7 +244,9 @@ export class DialogBootstrap {
     caller.throwIfAborted();
     this.acceptSession(session);
 
-    if (session.status !== 'authenticated') {
+    const { status: sessionStatus } = session;
+
+    if (sessionStatus !== 'authenticated') {
       throw new DeviceError('INVALID_STATE');
     }
 
@@ -255,7 +264,9 @@ export class DialogBootstrap {
         reject(signal.reason);
       };
       const check = (): void => {
-        if (this.session?.generation !== session.generation) {
+        const { generation: sessionGeneration } = session;
+
+        if (this.session?.generation !== sessionGeneration) {
           cleanup();
           reject(new DeviceError('CANCELLED'));
         } else if (this.state.error) {

@@ -82,9 +82,13 @@ export class DialogsController {
   ): Promise<DialogResponseDto> {
     const result = await this.dialogs.create(req.user, input.peer_id.toLowerCase());
 
-    res.status(result.created ? 201 : 200);
+    const { created: resultCreated } = result;
 
-    return { dialog: result.dialog };
+    res.status(resultCreated ? 201 : 200);
+
+    const { dialog: resultDialog } = result;
+
+    return { dialog: resultDialog };
   }
 
   @Get()
@@ -151,9 +155,13 @@ export class DialogsController {
       content,
     });
 
-    res.status(result.created ? 201 : 200);
+    const { created: resultCreated2 } = result;
 
-    return { message: result.message };
+    res.status(resultCreated2 ? 201 : 200);
+
+    const { message: resultMessage } = result;
+
+    return { message: resultMessage };
   }
 
   @Get(':dialog_id/messages')

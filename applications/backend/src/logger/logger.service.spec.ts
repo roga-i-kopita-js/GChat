@@ -19,10 +19,22 @@ describe('LoggerService', (): void => {
   it('does not register providers on a bare module import', async (): Promise<void> => {
     const module = await Test.createTestingModule({ imports: [LoggerModule] }).compile();
 
-    await module.init();
-    expect((): LoggerService => module.get(LoggerService)).toThrow();
-    expect((): LoggerSettings => module.get(LoggerSettings)).toThrow();
-    await module.close();
+    const { init: moduleInit } = module;
+
+    await moduleInit.bind(module)();
+    expect((): LoggerService => {
+      const { get: moduleGet } = module;
+
+      return moduleGet.bind(module)(LoggerService);
+    }).toThrow();
+    expect((): LoggerSettings => {
+      const { get: moduleGet2 } = module;
+
+      return moduleGet2.bind(module)(LoggerSettings);
+    }).toThrow();
+    const { close: moduleClose } = module;
+
+    await moduleClose.bind(module)();
   });
 
   it('is injected globally into a separate module', async (): Promise<void> => {
@@ -30,8 +42,12 @@ describe('LoggerService', (): void => {
       imports: [LoggerModule.forRoot(), ConsumerModule],
     }).compile();
 
-    expect(module.get(Consumer).logger).toBeInstanceOf(LoggerService);
-    await module.close();
+    const { get: moduleGet3 } = module;
+
+    expect(moduleGet3.bind(module)(Consumer).logger).toBeInstanceOf(LoggerService);
+    const { close: moduleClose2 } = module;
+
+    await moduleClose2.bind(module)();
   });
 
   it('writes one JSON record per event and routes errors to stderr', (): void => {
@@ -176,16 +192,33 @@ describe('Automatic logger ownership', (): void => {
       imports: [LoggerModule.forRoot(), FirstModule, SecondModule, ImportingModule, FactoryModule],
     }).compile();
 
-    await module.init();
+    const { init: moduleInit2 } = module;
+
+    await moduleInit2.bind(module)();
     const stdout = jest.spyOn(process.stdout, 'write').mockReturnValue(true);
-    const first = module.select(FirstModule).get(SharedConsumer, { strict: true });
-    const second = module.select(SecondModule).get(SharedConsumer, { strict: true });
-    const factory = module.get<{ logger: LoggerService }>(FACTORY);
+    const { select: moduleSelect } = module;
+    const first = moduleSelect.bind(module)(FirstModule).get(SharedConsumer, { strict: true });
+    const { select: moduleSelect2 } = module;
+    const second = moduleSelect2.bind(module)(SecondModule).get(SharedConsumer, { strict: true });
+    const { get: moduleGet4 } = module;
+    const factory = moduleGet4.bind(module)<{ logger: LoggerService }>(FACTORY);
 
     await Promise.all([
-      Promise.resolve().then((): void => first.logger.log('First')),
-      Promise.resolve().then((): void => second.logger.log('Second')),
-      Promise.resolve().then((): void => factory.logger.log('Factory')),
+      (async () => {
+        await Promise.resolve();
+
+        return first.logger.log('First');
+      })(),
+      (async () => {
+        await Promise.resolve();
+
+        return second.logger.log('Second');
+      })(),
+      (async () => {
+        await Promise.resolve();
+
+        return factory.logger.log('Factory');
+      })(),
     ]);
     const records = stdout.mock.calls.map((call): void => JSON.parse(call[0] as string));
 
@@ -205,6 +238,8 @@ describe('Automatic logger ownership', (): void => {
       ]),
     );
     expect(first.logger).not.toBe(second.logger);
-    await module.close();
+    const { close: moduleClose3 } = module;
+
+    await moduleClose3.bind(module)();
   });
 });

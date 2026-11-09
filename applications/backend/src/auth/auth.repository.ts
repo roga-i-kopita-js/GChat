@@ -24,7 +24,10 @@ export class AuthRepository {
   }
 
   async lockActiveAccounts(tx: DatabaseTransaction, userIds: string[]): Promise<string[]> {
-    return (await this.lockActiveAccountRoles(tx, userIds)).map((account): string => account.id);
+    const resolved = await this.lockActiveAccountRoles(tx, userIds);
+    const { map: lockActiveAccountRolesResultMap } = resolved;
+
+    return lockActiveAccountRolesResultMap.bind(resolved)((account): string => account.id);
   }
 
   async lockActiveAccountRoles(
@@ -39,8 +42,10 @@ export class AuthRepository {
         .orderBy(asc(users.id))
         .for('share');
 
-      return rows
-        .filter((row): boolean => row.disabledAt === null)
+      const { filter: rowsFilter } = rows;
+
+      return rowsFilter
+        .bind(rows)((row): boolean => row.disabledAt === null)
         .map(({ id, role }): { id: string; role: Account['role'] } => ({ id, role }));
     } catch (cause) {
       if (isDatabaseUnavailable(cause)) {
@@ -53,7 +58,13 @@ export class AuthRepository {
 
   private async find(where: ReturnType<typeof eq>): Promise<Account | undefined> {
     try {
-      return (await this.database.db.select().from(users).where(where).limit(1))[0];
+      const { [0]: limitResultFirst } = await this.database.db
+        .select()
+        .from(users)
+        .where(where)
+        .limit(1);
+
+      return limitResultFirst;
     } catch (cause) {
       if (isDatabaseUnavailable(cause)) {
         throw this.error.serviceUnavailable({ cause });

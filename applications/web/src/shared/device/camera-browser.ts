@@ -203,17 +203,22 @@ export class BrowserCamera implements CameraService {
     });
 
     if (epoch !== this.epoch || this.source !== source) {
-      for (const track of captured.getTracks()) {
+      const { getTracks: capturedGetTracks } = captured;
+
+      for (const track of capturedGetTracks.bind(captured)()) {
         track.stop();
       }
 
       throw new DeviceError('CANCELLED');
     }
 
-    const track = captured.getVideoTracks()[0];
+    const { getVideoTracks: capturedGetVideoTracks } = captured;
+    const track = capturedGetVideoTracks.bind(captured)()[0];
 
     if (!track) {
-      for (const item of captured.getTracks()) {
+      const { getTracks: capturedGetTracks2 } = captured;
+
+      for (const item of capturedGetTracks2.bind(captured)()) {
         item.stop();
       }
 
@@ -226,7 +231,9 @@ export class BrowserCamera implements CameraService {
       actual.facingMode &&
       actual.facingMode !== (facing === CameraFacing.Front ? 'user' : 'environment')
     ) {
-      for (const item of captured.getTracks()) {
+      const { getTracks: capturedGetTracks3 } = captured;
+
+      for (const item of capturedGetTracks3.bind(captured)()) {
         item.stop();
       }
 
@@ -238,7 +245,9 @@ export class BrowserCamera implements CameraService {
       source.stream.removeTrack(old);
     }
 
-    for (const item of captured.getVideoTracks()) {
+    const { getVideoTracks: capturedGetVideoTracks2 } = captured;
+
+    for (const item of capturedGetVideoTracks2.bind(captured)()) {
       source.stream.addTrack(item);
     }
 
@@ -276,7 +285,11 @@ export class BrowserCamera implements CameraService {
 
     for (const video of this.preview) {
       video.srcObject = source.stream;
-      void video.play().catch((): void => {});
+      void (async () => {
+        try {
+          return await video.play();
+        } catch (cause) {}
+      })();
     }
   }
 
@@ -331,14 +344,18 @@ export class BrowserCamera implements CameraService {
       });
       const value = source;
 
-      this.opening = this.capture(value, camera.facing).catch((cause): never => {
-        if (this.source === value) {
-          this.source = null;
-          this.set({ status: 'error', error: deviceFailure(cause, 'camera', 'open') });
-        }
+      this.opening = (async () => {
+        try {
+          return await this.capture(value, camera.facing);
+        } catch (cause) {
+          if (this.source === value) {
+            this.source = null;
+            this.set({ status: 'error', error: deviceFailure(cause, 'camera', 'open') });
+          }
 
-        throw cause;
-      });
+          throw cause;
+        }
+      })();
     }
 
     const current = source;
@@ -425,14 +442,17 @@ export class BrowserCamera implements CameraService {
         this.set({ status: 'starting' });
         const pending = this.capture(current, facing);
 
-        void pending.then(
-          (): void => {
+        void (async () => {
+          try {
+            await pending;
+          } catch (rejectedCause) {
             current.opening = false;
-          },
-          (): void => {
-            current.opening = false;
-          },
-        );
+
+            return;
+          }
+
+          current.opening = false;
+        })();
 
         try {
           await cancellable((): Promise<void> => pending, callOptions, context);
@@ -542,13 +562,22 @@ export class BrowserCamera implements CameraService {
       );
       const recorder = new MediaRecorder(source.stream, type ? { mimeType: type } : undefined);
       const mime = recorder.mimeType || type || 'video/webm';
-      const staged = await this.store.begin(
-        mime.includes('mp4') ? 'mp4' : mime.includes('webm') ? 'webm' : 'video',
-        mime,
-      );
+      let extension;
+
+      if (mime.includes('mp4')) {
+        extension = 'mp4';
+      } else if (mime.includes('webm')) {
+        extension = 'webm';
+      } else {
+        extension = 'video';
+      }
+
+      const staged = await this.store.begin(extension, mime);
 
       if (this.source !== source || options?.signal?.aborted) {
-        await staged.abort();
+        const { abort: stagedAbort } = staged;
+
+        await stagedAbort.bind(staged)();
 
         throw new DeviceError('CANCELLED');
       }
@@ -560,7 +589,11 @@ export class BrowserCamera implements CameraService {
         reject = no;
       });
 
-      void result.catch((): void => {});
+      void (async () => {
+        try {
+          return await result;
+        } catch (cause) {}
+      })();
       let queue: Promise<void> = Promise.resolve();
       let queued = 0;
       let size = 0;
@@ -599,15 +632,21 @@ export class BrowserCamera implements CameraService {
           return;
         }
 
-        queue = queue
-          .then(async (): Promise<void> => {
+        queue = (async () => {
+          try {
+            await queue;
+
             if (!failed) {
-              await staged.write(event.data);
+              const { write: stagedWrite } = staged;
+
+              await stagedWrite.bind(staged)(event.data);
             }
 
             queued -= event.data.size;
-          })
-          .catch(fail);
+          } catch (cause) {
+            return fail(cause);
+          }
+        })();
 
         if (size >= 256 * 1024 * 1024) {
           stop();
@@ -618,27 +657,32 @@ export class BrowserCamera implements CameraService {
         'stop',
         (): void => {
           clearTimeout(timer);
-          void queue
-            .then(async (): Promise<void> => {
+          void (async () => {
+            try {
+              await queue;
+
               if (failed) {
-                await staged.abort();
+                const { abort: stagedAbort2 } = staged;
+
+                await stagedAbort2.bind(staged)();
 
                 throw failed;
               }
 
-              const file = await staged.commit();
+              const { commit: stagedCommit } = staged;
+              const file = await stagedCommit.bind(staged)();
 
               this.events.emit(CameraEvent.RecordingSaved, {
                 revision: this.state.getSnapshot().revision,
                 file,
               });
               resolve(file);
-            })
-            .catch(async (cause): Promise<void> => {
-              await staged.abort();
+            } catch (cause) {
+              const { abort: stagedAbort3 } = staged;
+
+              await stagedAbort3.bind(staged)();
               reject(deviceFailure(cause, 'camera', 'record'));
-            })
-            .finally((): void => {
+            } finally {
               if (source.recording?.recorder === recorder) {
                 source.recording = null;
               }
@@ -646,7 +690,8 @@ export class BrowserCamera implements CameraService {
               if (this.source === source) {
                 this.set({ recording: 'idle' });
               }
-            });
+            }
+          })();
         },
         { once: true },
       );
@@ -658,7 +703,9 @@ export class BrowserCamera implements CameraService {
         timer = setTimeout(stop, 5 * 60 * 1000);
       } catch (cause) {
         source.recording = null;
-        await staged.abort();
+        const { abort: stagedAbort4 } = staged;
+
+        await stagedAbort4.bind(staged)();
 
         throw deviceFailure(cause, 'camera', 'startRecording');
       }
@@ -690,7 +737,11 @@ export class BrowserCamera implements CameraService {
     video.playsInline = true;
     video.srcObject = current.stream;
     this.preview.add(video);
-    void video.play().catch((): void => {});
+    void (async () => {
+      try {
+        return await video.play();
+      } catch (cause) {}
+    })();
 
     return (): void => {
       this.preview.delete(video);
@@ -735,7 +786,11 @@ export class BrowserCamera implements CameraService {
     this.preview.clear();
     const pending = (async (): Promise<void> => {
       try {
-        await (source.recording?.result.catch((): void => {}) ?? Promise.resolve());
+        await ((async () => {
+          try {
+            return await source.recording?.result;
+          } catch (cause) {}
+        })() ?? Promise.resolve());
       } finally {
         this.set({ status: 'released', recording: 'idle', format: null, error: null });
         this.events.clear();

@@ -73,12 +73,17 @@ export function sanitizeLogValue(
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
 
       // Do not invoke user-defined getters or toJSON while logging.
-      result[redaction ? redactText(key) : key.slice(0, 4096)] =
-        redaction && sensitiveKey.test(key.replace(/[-_]/g, ''))
-          ? '[REDACTED]'
-          : descriptor && 'value' in descriptor
-            ? sanitizeLogValue(descriptor.value, redaction, depth + 1, seen)
-            : '[Accessor]';
+      let sanitizedValue;
+
+      if (redaction && sensitiveKey.test(key.replace(/[-_]/g, ''))) {
+        sanitizedValue = '[REDACTED]';
+      } else if (descriptor && 'value' in descriptor) {
+        sanitizedValue = sanitizeLogValue(descriptor.value, redaction, depth + 1, seen);
+      } else {
+        sanitizedValue = '[Accessor]';
+      }
+
+      result[redaction ? redactText(key) : key.slice(0, 4096)] = sanitizedValue;
     }
 
     return result;

@@ -337,7 +337,11 @@ for (const viewport of [
         await expect(last).toBeInViewport();
         const box = await last.boundingBox();
 
-        expect(box!.y + box!.height).toBeLessThanOrEqual(menu!.y);
+        const { y: boxY } = box!;
+        const { height: boxHeight } = box!;
+        const { y: menuY } = menu!;
+
+        expect(boxY + boxHeight).toBeLessThanOrEqual(menuY);
       }
     }
 
@@ -381,8 +385,12 @@ for (const viewport of [
         elements.map((element): string => getComputedStyle(element).borderRadius),
       );
 
-    expect(radii.length).toBeGreaterThan(1);
-    expect(radii.every((radius): boolean => radius === '16px')).toBe(true);
+    const { length: radiiLength } = radii;
+
+    expect(radiiLength).toBeGreaterThan(1);
+    const { every: radiiEvery } = radii;
+
+    expect(radiiEvery.bind(radii)((radius): boolean => radius === '16px')).toBe(true);
     await expect(page.locator('.ui-page-surface')).toHaveCSS('border-radius', '0px');
     await page.getByRole('button', { name: 'Выйти из аккаунта', exact: true }).click();
     const modal = page.getByRole('dialog', { name: 'Выйти из GChat?', exact: true });
@@ -434,8 +442,12 @@ for (const viewport of [
       await expect(content).toHaveCSS('padding', '0px');
       const bounds = await surface.boundingBox();
 
-      expect(bounds!.x).toBe(0);
-      expect(bounds!.width).toBe(viewport.width);
+      const { x: boundsX } = bounds!;
+
+      expect(boundsX).toBe(0);
+      const { width: boundsWidth } = bounds!;
+
+      expect(boundsWidth).toBe(viewport.width);
       frames.push(
         await surface.evaluate((element): object => {
           const rect = element.getBoundingClientRect();
@@ -478,9 +490,10 @@ for (const viewport of [
     const chooser = page.waitForEvent('filechooser');
 
     await page.getByRole('button', { name: 'Выбрать файл', exact: true }).click();
-    await (
-      await chooser
-    ).setFiles({
+    const resolved = await chooser;
+    const { setFiles: resultSetFiles } = resolved;
+
+    await resultSetFiles.bind(resolved)({
       name: 'Очень длинное имя выбранного файла для проверки переноса текста и доступности.txt',
       mimeType: 'text/plain',
       buffer: Buffer.from('fixture'),
@@ -508,7 +521,11 @@ for (const viewport of [
 
     expect(bounds).not.toBeNull();
     expect(menu).not.toBeNull();
-    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(menu!.y);
+    const { y: boundsY } = bounds!;
+    const { height: boundsHeight } = bounds!;
+    const { y: menuY2 } = menu!;
+
+    expect(boundsY + boundsHeight).toBeLessThanOrEqual(menuY2);
     expect(
       await back.evaluate((element): boolean => element.scrollWidth <= element.clientWidth),
     ).toBe(true);

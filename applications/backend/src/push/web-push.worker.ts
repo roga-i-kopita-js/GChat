@@ -32,13 +32,15 @@ export class WebPushWorker implements OnApplicationBootstrap, OnModuleDestroy {
         return;
       }
 
-      this.running = this.tick()
-        .catch((): void => {
+      this.running = (async () => {
+        try {
+          return await this.tick();
+        } catch (cause) {
           this.logger.warn('Web Push delivery deferred');
-        })
-        .finally((): void => {
+        } finally {
           this.running = undefined;
-        });
+        }
+      })();
     }, 200);
     this.timer.unref();
   }
@@ -57,31 +59,43 @@ export class WebPushWorker implements OnApplicationBootstrap, OnModuleDestroy {
           continue;
         }
 
+        const { userId: targetUserId } = target;
         const call = await this.calls.get(
-          { userId: target.userId, sessionId: job.sessionId, deviceId: job.deviceId },
+          { userId: targetUserId, sessionId: job.sessionId, deviceId: job.deviceId },
           job.callId,
         );
 
+        const { state: callState, ringing_deadline: callRingingDeadline } = call ?? {};
+
         if (
-          call.state !== 'ringing' ||
-          !call.ringing_deadline ||
-          Date.parse(call.ringing_deadline) <= Date.now()
+          callState !== 'ringing' ||
+          !callRingingDeadline ||
+          Date.parse(callRingingDeadline) <= Date.now()
         ) {
           await this.store.complete(job.id, job.leaseToken, 'cancelled');
           continue;
         }
 
-        const result = await this.client.send(target, call.call_id, call.ringing_deadline);
+        const { call_id: callCallId, ringing_deadline: callRingingDeadline2 } = call;
+        const result = await this.client.send(target, callCallId, callRingingDeadline);
 
-        if (result.status >= 200 && result.status < 300) {
+        const { status: resultStatus } = result;
+
+        if (resultStatus >= 200 && resultStatus < 300) {
           await this.store.repeatWebPush(job.id, job.leaseToken);
-        } else if (result.status === 404 || result.status === 410) {
-          await this.devices.invalidateWebPushTarget(target.sessionId, target.version);
+        } else if (resultStatus === 404 || resultStatus === 410) {
+          const { sessionId: targetSessionId, version: targetVersion } = target;
+
+          await this.devices.invalidateWebPushTarget(targetSessionId, targetVersion);
           await this.store.complete(job.id, job.leaseToken, 'cancelled');
-        } else if (result.status === 429 || result.status >= 500) {
-          await this.store.retry(job.id, job.leaseToken, job.attempts, result.retryAfterSeconds);
+        } else if (resultStatus === 429 || resultStatus >= 500) {
+          const { retryAfterSeconds: resultRetryAfterSeconds } = result;
+
+          await this.store.retry(job.id, job.leaseToken, job.attempts, resultRetryAfterSeconds);
         } else {
-          this.logger.warn('Web Push request rejected', { status: result.status });
+          const { status: resultStatus2 } = result;
+
+          this.logger.warn('Web Push request rejected', { status: resultStatus2 });
           await this.store.complete(job.id, job.leaseToken, 'cancelled');
         }
       } catch {

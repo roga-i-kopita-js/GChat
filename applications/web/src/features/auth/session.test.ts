@@ -225,9 +225,15 @@ it('keeps SDK error metadata and Retry-After available to reconnect policy', asy
   const fetch = vi.fn(async (): Promise<Response> => json(body, 429, { 'Retry-After': '12' }));
 
   vi.stubGlobal('fetch', fetch);
-  const failure = await request((api): ReturnType<typeof api.authWsTicket> =>
-    api.authWsTicket({ body: {} }),
-  ).catch((cause: unknown): unknown => cause);
+  const failure = await (async () => {
+    try {
+      return await request((api): ReturnType<typeof api.authWsTicket> =>
+        api.authWsTicket({ body: {} }),
+      );
+    } catch (cause) {
+      return cause;
+    }
+  })();
 
   expect(failure).toBeInstanceOf(ApiError);
 
@@ -235,9 +241,15 @@ it('keeps SDK error metadata and Retry-After available to reconnect policy', asy
     throw new Error('Expected SDK error');
   }
 
-  expect(failure.status).toBe(429);
-  expect(failure.body).toEqual(body);
-  expect(failure.fields).toEqual(body.error.fields);
+  const { status: failureStatus } = failure;
+
+  expect(failureStatus).toBe(429);
+  const { body: failureBody } = failure;
+
+  expect(failureBody).toEqual(body);
+  const { fields: failureFields } = failure;
+
+  expect(failureFields).toEqual(body.error.fields);
   expect(retryAfter(failure)).toBe(12);
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(readSession()).not.toBeNull();
@@ -249,9 +261,17 @@ it('shares one proactive refresh through the browser lock and retains device bin
   vi.stubGlobal('navigator', {
     locks: {
       request: (_name: string, action: () => Promise<unknown>): Promise<unknown> => {
-        const next = tail.then(action);
+        const next = (async () => {
+          await tail;
 
-        tail = next.catch((): void => {});
+          return action();
+        })();
+
+        tail = (async () => {
+          try {
+            return await next;
+          } catch (cause) {}
+        })();
 
         return next;
       },
@@ -374,7 +394,13 @@ it('keeps the service fallback for HTTP errors without a backend envelope', asyn
     'fetch',
     vi.fn(async (): Promise<Response> => new Response('Unavailable', { status: 503 })),
   );
-  const failure = await groups().catch((cause: unknown): unknown => cause);
+  const failure = await (async () => {
+    try {
+      return await groups();
+    } catch (cause) {
+      return cause;
+    }
+  })();
 
   expect(failure).toBeInstanceOf(ApiError);
   expect(errorMessage(failure, 'Fallback')).toBe('Сервис временно недоступен');

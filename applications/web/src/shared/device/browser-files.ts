@@ -99,7 +99,8 @@ export class BrowserFiles {
     const db = await this.db();
 
     await new Promise<void>((resolve, reject): void => {
-      const tx = db.transaction('grants', 'readwrite');
+      const { transaction: dbTransaction } = db;
+      const tx = dbTransaction.bind(db)('grants', 'readwrite');
 
       action(tx.objectStore('grants'));
       tx.oncomplete = (): void => resolve();
@@ -112,7 +113,8 @@ export class BrowserFiles {
       try {
         const db = await this.db();
         const values = await new Promise<unknown[]>((resolve, reject): void => {
-          const request = db.transaction('grants').objectStore('grants').getAll();
+          const { transaction: dbTransaction2 } = db;
+          const request = dbTransaction2.bind(db)('grants').objectStore('grants').getAll();
 
           request.onsuccess = (): void => resolve(request.result);
           request.onerror = (): void => reject(new DeviceError('IO_ERROR'));
@@ -182,7 +184,9 @@ export class BrowserFiles {
         try {
           const root = await navigator.storage.getDirectory();
 
-          for await (const entry of root.values()) {
+          const { values: rootValues } = root;
+
+          for await (const entry of rootValues.bind(root)()) {
             if (!/^gchat-write-[0-9a-f-]{36}$/.test(entry.name)) {
               continue;
             }
@@ -194,7 +198,13 @@ export class BrowserFiles {
               { ifAvailable: true },
               async (lock): Promise<void> => {
                 if (lock) {
-                  await root.removeEntry(entry.name).catch((): void => {});
+                  const { removeEntry: rootRemoveEntry } = root;
+
+                  await (async () => {
+                    try {
+                      return await rootRemoveEntry.bind(root)(entry.name);
+                    } catch (cause) {}
+                  })();
                 }
               },
             );
@@ -224,7 +234,18 @@ export class BrowserFiles {
     await this.load();
 
     for (const entry of this.entries.values()) {
-      if (entry.handle && (await entry.handle.isSameEntry(handle).catch((): boolean => false))) {
+      const handleToCompare = entry.handle;
+
+      if (
+        handleToCompare &&
+        (await (async () => {
+          try {
+            return await handleToCompare.isSameEntry(handle);
+          } catch (cause) {
+            return false;
+          }
+        })())
+      ) {
         entry.handle = handle;
 
         await this.persist(entry);
@@ -357,12 +378,14 @@ export class BrowserFiles {
 
     const file = await this.file(entry);
 
+    const { size: fileSize, lastModified: fileLastModified, type: fileType } = file;
+
     return {
       ref: entry.ref,
-      size: file.size,
-      modifiedAt: new Date(file.lastModified).toISOString(),
-      mimeType: entry.captureMime || file.type || null,
-      version: `${file.size}:${file.lastModified}`,
+      size: fileSize,
+      modifiedAt: new Date(fileLastModified).toISOString(),
+      mimeType: entry.captureMime || fileType || null,
+      version: `${fileSize}:${fileLastModified}`,
     };
   }
 
@@ -409,17 +432,23 @@ export class BrowserFiles {
 
   private acquire(name: string): Promise<() => void> {
     return new Promise((resolve, reject): void => {
-      void navigator.locks
-        .request(`gchat-device-${name}`, { ifAvailable: true }, async (lock): Promise<void> => {
-          if (!lock) {
-            reject(new DeviceError('BUSY'));
+      void (async () => {
+        try {
+          return await navigator.locks.request(
+            `gchat-device-${name}`,
+            { ifAvailable: true },
+            async (lock): Promise<void> => {
+              if (!lock) {
+                reject(new DeviceError('BUSY'));
+              }
 
-            return;
-          }
-
-          await new Promise<void>((release): void => resolve(release));
-        })
-        .catch(reject);
+              await new Promise<void>((release): void => resolve(release));
+            },
+          );
+        } catch (cause) {
+          return reject(cause);
+        }
+      })();
     });
   }
 
@@ -500,13 +529,16 @@ export class BrowserFiles {
 
           current();
 
+          const { map: handlesMap } = handles;
+          const entriesValue = await Promise.all(
+            handlesMap.bind(handles)(async (handle): Promise<Metadata> =>
+              this.metadata(await this.retain(handle)),
+            ),
+          );
+
           return {
             outcome: 'completed',
-            entries: await Promise.all(
-              handles.map(async (handle): Promise<Metadata> =>
-                this.metadata(await this.retain(handle)),
-              ),
-            ),
+            entries: entriesValue,
           };
         }
 
@@ -553,7 +585,9 @@ export class BrowserFiles {
 
         this.touch();
 
-        return { outcome: files.length ? 'completed' : 'cancelled', entries };
+        const { length: filesLength } = files;
+
+        return { outcome: filesLength ? 'completed' : 'cancelled', entries };
       });
     }
 
@@ -567,7 +601,9 @@ export class BrowserFiles {
 
         current();
 
-        return { outcome: 'completed', entry: await this.metadata(await this.retain(handle)) };
+        const entryValue = await this.metadata(await this.retain(handle));
+
+        return { outcome: 'completed', entry: entryValue };
       });
     }
 
@@ -586,9 +622,16 @@ export class BrowserFiles {
         const source = await this.file(this.entry(args.sourceFileId));
 
         current();
-        await source.stream().pipeTo(await target.createWritable());
+        const { stream: sourceStream } = source;
+        const { createWritable: targetCreateWritable } = target;
 
-        return { outcome: 'completed', entry: await this.metadata(await this.retain(target)) };
+        await sourceStream
+          .bind(source)()
+          .pipeTo(await targetCreateWritable.bind(target)());
+
+        const entryValue2 = await this.metadata(await this.retain(target));
+
+        return { outcome: 'completed', entry: entryValue2 };
       });
     }
 
@@ -708,18 +751,25 @@ export class BrowserFiles {
       case 'file.read': {
         const a = argsSchemas[command].parse(raw);
         const file = await this.file(this.entry(a.fileId));
-        const bytes = new Uint8Array(await file.slice(a.offset, a.offset + a.length).arrayBuffer());
+        const { slice: fileSlice } = file;
+        const bytes = new Uint8Array(
+          await fileSlice
+            .bind(file)(a.offset, a.offset + a.length)
+            .arrayBuffer(),
+        );
         let binary = '';
 
         for (const byte of bytes) {
           binary += String.fromCharCode(byte);
         }
 
+        const { size: fileSize2, lastModified: fileLastModified2 } = file;
+
         return {
           dataBase64: btoa(binary),
           bytesRead: bytes.length,
-          eof: a.offset + bytes.length >= file.size,
-          version: `${file.size}:${file.lastModified}`,
+          eof: a.offset + bytes.length >= fileSize2,
+          version: `${fileSize2}:${fileLastModified2}`,
         };
       }
       case 'file.create':
@@ -755,7 +805,8 @@ export class BrowserFiles {
         }
 
         const source = await this.file(entry);
-        const version = `${source.size}:${source.lastModified}`;
+        const { size: sourceSize, lastModified: sourceLastModified } = source;
+        const version = `${sourceSize}:${sourceLastModified}`;
 
         if (a.expectedVersion !== null && version !== a.expectedVersion) {
           throw new DeviceError('CONFLICT');
@@ -773,28 +824,41 @@ export class BrowserFiles {
           releaseStage = await this.acquire(`write-${writeId}`);
           const root = await navigator.storage.getDirectory();
           const tempName = `gchat-write-${writeId}`;
-          const temp = await root.getFileHandle(tempName, { create: true });
+          const { getFileHandle: rootGetFileHandle } = root;
+          const temp = await rootGetFileHandle.bind(root)(tempName, { create: true });
 
           if (a.mode === 'update') {
-            await source.stream().pipeTo(await temp.createWritable());
+            const { stream: sourceStream2 } = source;
+            const { createWritable: tempCreateWritable } = temp;
+
+            await sourceStream2
+              .bind(source)()
+              .pipeTo(await tempCreateWritable.bind(temp)());
           }
 
-          const writer = await temp.createWritable({ keepExistingData: a.mode === 'update' });
+          const { createWritable: tempCreateWritable2 } = temp;
+          const writer = await tempCreateWritable2.bind(temp)({
+            keepExistingData: a.mode === 'update',
+          });
 
           if (epoch !== this.epoch) {
-            await writer.abort();
+            const { abort: writerAbort } = writer;
+
+            await writerAbort.bind(writer)();
 
             throw new DeviceError('CANCELLED');
           }
 
           const stage = releaseStage;
 
+          const { size: sourceSize2 } = source;
+
           this.writes.set(writeId, {
             entry,
             writer,
             temp,
             tempName,
-            size: a.mode === 'update' ? source.size : 0,
+            size: a.mode === 'update' ? sourceSize2 : 0,
             expected: a.expectedVersion,
             release: (): void => {
               stage();
@@ -837,10 +901,9 @@ export class BrowserFiles {
           throw new DeviceError('NOT_FOUND');
         }
 
-        if (
-          write.expected !== null &&
-          (await this.metadata(write.entry)).version !== write.expected
-        ) {
+        const { version: metadataResultVersion } = await this.metadata(write.entry);
+
+        if (write.expected !== null && metadataResultVersion !== write.expected) {
           throw new DeviceError('CONFLICT');
         }
 
@@ -855,17 +918,25 @@ export class BrowserFiles {
             throw new DeviceError('WRONG_TYPE');
           }
 
-          await (await write.temp.getFile()).stream().pipeTo(await handle.createWritable());
+          const resolved = await write.temp.getFile();
+          const { stream: getFileResultStream } = resolved;
+
+          await getFileResultStream
+            .bind(resolved)()
+            .pipeTo(await handle.createWritable());
         } catch {
           throw new DeviceError('OUTCOME_UNKNOWN');
         } finally {
           this.writes.delete(a.writeId);
           write.release();
-          await (
-            await navigator.storage.getDirectory()
-          )
-            .removeEntry(write.tempName)
-            .catch((): void => {});
+          const resolved2 = await navigator.storage.getDirectory();
+          const { removeEntry: getDirectoryResultRemoveEntry } = resolved2;
+
+          await (async () => {
+            try {
+              return await getDirectoryResultRemoveEntry.bind(resolved2)(write.tempName);
+            } catch (cause) {}
+          })();
         }
 
         this.touch();
@@ -881,7 +952,10 @@ export class BrowserFiles {
 
           try {
             await write.writer.abort();
-            await (await navigator.storage.getDirectory()).removeEntry(write.tempName);
+            const resolved3 = await navigator.storage.getDirectory();
+            const { removeEntry: getDirectoryResultRemoveEntry2 } = resolved3;
+
+            await getDirectoryResultRemoveEntry2.bind(resolved3)(write.tempName);
           } finally {
             write.release();
           }
@@ -1014,15 +1088,21 @@ export class BrowserFiles {
               : this.descends(value, entry.ref.id)),
         );
 
-        await this.transaction((store): void => {
-          for (const value of removed) {
-            store.delete(value.ref.id);
+        await (async () => {
+          try {
+            return await this.transaction((store): void => {
+              for (const value of removed) {
+                store.delete(value.ref.id);
+              }
+            });
+          } catch (cause) {
+            const error = cause;
+
+            if (entry.internal) {
+              throw error;
+            }
           }
-        }).catch((error): void => {
-          if (entry.internal) {
-            throw error;
-          }
-        });
+        })();
 
         for (const value of removed) {
           this.entries.delete(value.ref.id);
@@ -1106,7 +1186,13 @@ export class BrowserFiles {
         const target = await destination.getFileHandle(name, { create: true });
 
         created = await this.retain(target, parent);
-        await (await this.file(source)).stream().pipeTo(await target.createWritable());
+        const resolved4 = await this.file(source);
+        const { stream: fileResultStream } = resolved4;
+        const { createWritable: targetCreateWritable2 } = target;
+
+        await fileResultStream
+          .bind(resolved4)()
+          .pipeTo(await targetCreateWritable2.bind(target)());
       } else {
         const target = await destination.getDirectoryHandle(name, { create: true });
 
@@ -1135,7 +1221,11 @@ export class BrowserFiles {
     this.epoch++;
 
     for (const [writeId] of this.writes) {
-      void this.perform('file.write.abort', { writeId }).catch((): void => {});
+      void (async () => {
+        try {
+          return await this.perform('file.write.abort', { writeId });
+        } catch (cause) {}
+      })();
     }
   }
 }

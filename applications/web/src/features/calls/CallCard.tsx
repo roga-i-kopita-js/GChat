@@ -15,6 +15,107 @@ export function CallCard(): JSX.Element | null {
     return null;
   }
 
+  let callActions;
+
+  if (call.state === 'ended') {
+    callActions = (
+      <button
+        className="secondary"
+        onClick={(): void => {
+          setPerson(null);
+          setMobile(false);
+          void (async () => {
+            try {
+              return await device.calls.dismissEnded();
+            } catch (cause) {}
+          })();
+        }}
+      >
+        Вернуться к контактам
+        <ArrowRight size={17} />
+      </button>
+    );
+  } else if (presentation.callControls === 'host') {
+    callActions = null;
+  } else if (incoming) {
+    callActions = (
+      <>
+        <button
+          className="round-action decline"
+          disabled={!enabled}
+          onClick={(): void => {
+            void (async () => {
+              try {
+                return await device.calls.end();
+              } catch (cause) {}
+            })();
+          }}
+        >
+          <span>
+            <PhoneOff size={25} />
+          </span>
+          Отклонить
+        </button>
+        <button
+          className="round-action accept"
+          disabled={!enabled}
+          onClick={(): void => {
+            void (async () => {
+              try {
+                return await device.calls.accept();
+              } catch (cause) {}
+            })();
+          }}
+        >
+          <span>
+            <Phone size={25} />
+          </span>
+          Принять
+        </button>
+      </>
+    );
+  } else if (state.selected) {
+    callActions = (
+      <>
+        {call.state !== 'ringing' && (
+          <button
+            className={'round-action mute' + (state.muted ? ' muted' : '')}
+            aria-pressed={state.muted}
+            disabled={!state.owner}
+            onClick={(): void =>
+              void (async () => {
+                try {
+                  return await device.calls.setMuted(!state.muted);
+                } catch (cause) {}
+              })()
+            }
+          >
+            <span>{state.muted ? <MicOff size={25} /> : <Mic size={25} />}</span>
+            {state.muted ? 'Включить микрофон' : 'Микрофон'}
+          </button>
+        )}
+        <button
+          className="round-action decline"
+          disabled={!enabled}
+          onClick={(): void => {
+            void (async () => {
+              try {
+                return await device.calls.end();
+              } catch (cause) {}
+            })();
+          }}
+        >
+          <span>
+            <PhoneOff size={25} />
+          </span>
+          {call.state === 'ringing' ? 'Отменить' : 'Завершить'}
+        </button>
+      </>
+    );
+  } else {
+    callActions = null;
+  }
+
   return (
     <div className={'call-card ' + (call.state === 'ended' ? 'ended' : '')}>
       <div className="call-brand">
@@ -46,7 +147,11 @@ export function CallCard(): JSX.Element | null {
         <button
           className="secondary"
           onClick={(): void => {
-            void device.calls.activateAudio().catch((): void => {});
+            void (async () => {
+              try {
+                return await device.calls.activateAudio();
+              } catch (cause) {}
+            })();
           }}
         >
           <Volume2 size={18} /> Включить звук
@@ -56,74 +161,7 @@ export function CallCard(): JSX.Element | null {
       {presentation.callControls === 'host' && call.state !== 'ended' && (
         <p className="call-hint">Управление звонком доступно в приложении.</p>
       )}
-      <div className="call-controls">
-        {call.state === 'ended' ? (
-          <button
-            className="secondary"
-            onClick={(): void => {
-              setPerson(null);
-              setMobile(false);
-              void device.calls.dismissEnded().catch((): void => {});
-            }}
-          >
-            Вернуться к контактам
-            <ArrowRight size={17} />
-          </button>
-        ) : presentation.callControls === 'host' ? null : incoming ? (
-          <>
-            <button
-              className="round-action decline"
-              disabled={!enabled}
-              onClick={(): void => {
-                void device.calls.end().catch((): void => {});
-              }}
-            >
-              <span>
-                <PhoneOff size={25} />
-              </span>
-              Отклонить
-            </button>
-            <button
-              className="round-action accept"
-              disabled={!enabled}
-              onClick={(): void => {
-                void device.calls.accept().catch((): void => {});
-              }}
-            >
-              <span>
-                <Phone size={25} />
-              </span>
-              Принять
-            </button>
-          </>
-        ) : state.selected ? (
-          <>
-            {call.state !== 'ringing' && (
-              <button
-                className={'round-action mute' + (state.muted ? ' muted' : '')}
-                aria-pressed={state.muted}
-                disabled={!state.owner}
-                onClick={(): void => void device.calls.setMuted(!state.muted).catch((): void => {})}
-              >
-                <span>{state.muted ? <MicOff size={25} /> : <Mic size={25} />}</span>
-                {state.muted ? 'Включить микрофон' : 'Микрофон'}
-              </button>
-            )}
-            <button
-              className="round-action decline"
-              disabled={!enabled}
-              onClick={(): void => {
-                void device.calls.end().catch((): void => {});
-              }}
-            >
-              <span>
-                <PhoneOff size={25} />
-              </span>
-              {call.state === 'ringing' ? 'Отменить' : 'Завершить'}
-            </button>
-          </>
-        ) : null}
-      </div>
+      <div className="call-controls">{callActions}</div>
       <div className="call-bottom">
         <ShieldCheck size={14} />
         <span>Аудио передаётся в зашифрованном виде</span>

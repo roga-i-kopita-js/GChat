@@ -36,23 +36,36 @@ export class BrowserStorage {
 
     const root = await navigator.storage.getDirectory();
 
-    this.base = await root.getDirectoryHandle('gchat-device-storage-v1', { create: true });
+    const { getDirectoryHandle: rootGetDirectoryHandle } = root;
+
+    this.base = await rootGetDirectoryHandle.bind(root)('gchat-device-storage-v1', {
+      create: true,
+    });
     const owners = await this.base.getDirectoryHandle('temporary', { create: true });
 
     await new Promise<void>((resolve, reject): void => {
-      void navigator.locks
-        .request(`gchat-storage-owner-${this.owner}`, async (): Promise<void> => {
-          await new Promise<void>((release): void => {
-            this.release = release;
-            resolve();
-          });
-        })
-        .catch(reject);
+      void (async () => {
+        try {
+          return await navigator.locks.request(
+            `gchat-storage-owner-${this.owner}`,
+            async (): Promise<void> => {
+              await new Promise<void>((release): void => {
+                this.release = release;
+                resolve();
+              });
+            },
+          );
+        } catch (cause) {
+          return reject(cause);
+        }
+      })();
     });
 
     try {
       await navigator.locks.request('gchat-storage-namespace-v1', async (): Promise<void> => {
-        for await (const entry of owners.values()) {
+        const { values: ownersValues } = owners;
+
+        for await (const entry of ownersValues.bind(owners)()) {
           if (entry.kind !== 'directory' || !uuid.test(entry.name) || entry.name === this.owner) {
             continue;
           }
@@ -62,13 +75,17 @@ export class BrowserStorage {
             { ifAvailable: true },
             async (lock): Promise<void> => {
               if (lock) {
-                await owners.removeEntry(entry.name, { recursive: true });
+                const { removeEntry: ownersRemoveEntry } = owners;
+
+                await ownersRemoveEntry.bind(owners)(entry.name, { recursive: true });
               }
             },
           );
         }
 
-        this.temporary = await owners.getDirectoryHandle(this.owner, { create: true });
+        const { getDirectoryHandle: ownersGetDirectoryHandle } = owners;
+
+        this.temporary = await ownersGetDirectoryHandle.bind(owners)(this.owner, { create: true });
       });
     } catch (error) {
       this.release?.();
@@ -101,7 +118,9 @@ export class BrowserStorage {
         if (directoryHandle(handle)) {
           size += await count(handle);
         } else if (fileHandle(handle)) {
-          size += (await handle.getFile()).size;
+          const { size: getFileResultSize } = await handle.getFile();
+
+          size += getFileResultSize;
         } else {
           throw new DeviceError('WRONG_TYPE');
         }
@@ -114,7 +133,9 @@ export class BrowserStorage {
       return size;
     };
 
-    return { usedBytes: await count(await this.root(area)), quotaBytes: null };
+    const usedBytesValue = await count(await this.root(area));
+
+    return { usedBytes: usedBytesValue, quotaBytes: null };
   }
 
   async resolve(
@@ -144,9 +165,10 @@ export class BrowserStorage {
   private async cleanup(): Promise<void> {
     try {
       if (this.base) {
-        await (
-          await this.base.getDirectoryHandle('temporary')
-        ).removeEntry(this.owner, { recursive: true });
+        const resolved = await this.base.getDirectoryHandle('temporary');
+        const { removeEntry: getDirectoryHandleResultRemoveEntry } = resolved;
+
+        await getDirectoryHandleResultRemoveEntry.bind(resolved)(this.owner, { recursive: true });
       }
     } finally {
       this.release?.();

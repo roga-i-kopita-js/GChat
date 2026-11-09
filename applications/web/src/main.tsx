@@ -38,10 +38,12 @@ if (root && nativeLaunchSpike) {
     },
   });
 
-  void device.lifecycle
-    .start()
-    .catch((): void => {})
-    .finally((): void => {
+  void (async () => {
+    try {
+      return await device.lifecycle.start();
+    } catch (cause) {
+    } finally {
       createRoot(root).render(<DeviceProvider device={device} />);
-    });
+    }
+  })();
 }

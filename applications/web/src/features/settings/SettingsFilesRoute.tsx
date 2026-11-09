@@ -90,36 +90,42 @@ export function SettingsFilesRoute(): JSX.Element {
       </Group>
       {entries.length ? (
         <Group title="Предоставленный доступ">
-          {entries.map((entry): JSX.Element => (
-            <div key={entry.id}>
-              <Row
-                icon={entry.kind === 'directory' ? Folder : File}
-                color="#30b0c7"
-                title={entry.name}
-              >
-                <small>
-                  {lostAccess.has(entry.id)
-                    ? 'Нужно выбрать заново'
-                    : entry.persistence === 'persistent'
-                      ? 'Сохранённый доступ'
-                      : 'До закрытия приложения'}
-                </small>
-              </Row>
-              <div className="settings-file-actions">
-                <button
-                  disabled={busy}
-                  onClick={(): void => {
-                    void verifyAccess(entry);
-                  }}
+          {entries.map((entry): JSX.Element => {
+            let accessDescription;
+
+            if (lostAccess.has(entry.id)) {
+              accessDescription = 'Нужно выбрать заново';
+            } else if (entry.persistence === 'persistent') {
+              accessDescription = 'Сохранённый доступ';
+            } else {
+              accessDescription = 'До закрытия приложения';
+            }
+
+            return (
+              <div key={entry.id}>
+                <Row
+                  icon={entry.kind === 'directory' ? Folder : File}
+                  color="#30b0c7"
+                  title={entry.name}
                 >
-                  Проверить доступ
-                </button>
-                <button disabled={busy} onClick={(): void => setForget(entry)}>
-                  Забыть доступ
-                </button>
+                  <small>{accessDescription}</small>
+                </Row>
+                <div className="settings-file-actions">
+                  <button
+                    disabled={busy}
+                    onClick={(): void => {
+                      void verifyAccess(entry);
+                    }}
+                  >
+                    Проверить доступ
+                  </button>
+                  <button disabled={busy} onClick={(): void => setForget(entry)}>
+                    Забыть доступ
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </Group>
       ) : (
         <p className="settings-note">

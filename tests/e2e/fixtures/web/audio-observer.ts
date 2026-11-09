@@ -16,8 +16,10 @@ export function observePlayback(): void {
     if (input instanceof MediaStream && input !== stream) {
       stream = input;
       output = this;
-      void result
-        .then(async (): Promise<void> => {
+      void (async () => {
+        try {
+          await result;
+
           if (stream !== input || this.srcObject !== input) {
             return;
           }
@@ -42,10 +44,10 @@ export function observePlayback(): void {
           analyser = next.createAnalyser();
           analyser.fftSize = 8192;
           next.createMediaStreamSource(input).connect(analyser).connect(next.destination);
-        })
-        .catch((): void => {
+        } catch (cause) {
           errors.push('PLAYBACK_OBSERVER_FAILED');
-        });
+        }
+      })();
     }
 
     return result;

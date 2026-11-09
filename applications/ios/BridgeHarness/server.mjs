@@ -41,15 +41,19 @@ if (clientRoot && !backend) {
 }
 
 const clientHtml = clientRoot ? await readFile(join(clientRoot, 'index.html')) : null;
-const html = (await readFile(new URL('index.html', import.meta.url), 'utf8')).replace(
+const resolved = await readFile(new URL('index.html', import.meta.url), 'utf8');
+const { replace: resultReplace } = resolved;
+const html = resultReplace.bind(resolved)(
   '<html lang="ru">',
   `<html lang="ru" data-autorun="${process.env.GCHAT_BRIDGE_AUTORUN === '1'}" data-storage-autorun="${process.env.GCHAT_BRIDGE_STORAGE_AUTORUN === '1'}" data-navigation-autorun="${process.env.GCHAT_BRIDGE_NAVIGATION_AUTORUN === '1'}">`,
 );
 const js = await readFile(new URL('page.js', import.meta.url));
+const certValue = await readFile(process.env.GCHAT_BRIDGE_CERT_FILE);
+const keyValue = await readFile(process.env.GCHAT_BRIDGE_KEY_FILE);
 const server = createServer(
   {
-    cert: await readFile(process.env.GCHAT_BRIDGE_CERT_FILE),
-    key: await readFile(process.env.GCHAT_BRIDGE_KEY_FILE),
+    cert: certValue,
+    key: keyValue,
     minVersion: 'TLSv1.2',
   },
   async (req, res) => {
@@ -158,17 +162,31 @@ const server = createServer(
 
         if (!seen.has(event.eventId)) {
           const record = { at: new Date().toISOString(), ...event };
-          const write = journalWrites.then(async () => {
-            const size = (await stat(journal).catch(() => null))?.size ?? 0;
+          const write = (async () => {
+            await journalWrites;
+
+            const { size: catchResultSize } =
+              (await (async () => {
+                try {
+                  return await stat(journal);
+                } catch (cause) {
+                  return null;
+                }
+              })()) ?? {};
+            const size = catchResultSize ?? 0;
 
             if (size > 1024 * 1024) {
               await rename(journal, journal + '.previous');
             }
 
             await appendFile(journal, JSON.stringify(record) + '\n', { mode: 0o600 });
-          });
+          })();
 
-          journalWrites = write.catch(() => {});
+          journalWrites = (async () => {
+            try {
+              return await write;
+            } catch (cause) {}
+          })();
           await write;
           seen.add(event.eventId);
 

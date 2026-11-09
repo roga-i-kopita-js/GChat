@@ -120,25 +120,27 @@ export class DialogsCrypto implements OnModuleInit {
     try {
       const row = await this.database.db.transaction(
         async (tx): Promise<{ attempts: number } | undefined> => {
-          return (
-            await tx
-              .update(dialogEncryptionKeys)
-              .set({ attempts: sql`${dialogEncryptionKeys.attempts}+1` })
-              .where(
-                and(
-                  eq(dialogEncryptionKeys.keyId, this.active),
-                  lt(dialogEncryptionKeys.attempts, 16777216),
-                ),
-              )
-              .returning({ attempts: dialogEncryptionKeys.attempts })
-          )[0];
+          const { [0]: returningResultFirst } = await tx
+            .update(dialogEncryptionKeys)
+            .set({ attempts: sql`${dialogEncryptionKeys.attempts}+1` })
+            .where(
+              and(
+                eq(dialogEncryptionKeys.keyId, this.active),
+                lt(dialogEncryptionKeys.attempts, 16777216),
+              ),
+            )
+            .returning({ attempts: dialogEncryptionKeys.attempts });
+
+          return returningResultFirst;
         },
       );
 
-      if (row && row.attempts >= Math.floor(16777216 * 0.9)) {
+      const { attempts: rowAttempts } = row ?? {};
+
+      if (rowAttempts !== undefined && rowAttempts >= Math.floor(16777216 * 0.9)) {
         this.logger.warn('Dialogs encryption key budget low', {
           keyId: this.active,
-          attempts: row.attempts,
+          attempts: rowAttempts,
         });
       }
 

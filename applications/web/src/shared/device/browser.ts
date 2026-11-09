@@ -63,7 +63,11 @@ export class BrowserDevice {
     };
     const pagehide = (event: PageTransitionEvent): void => {
       if (!event.persisted) {
-        void this.files.stop().catch((): void => {});
+        void (async () => {
+          try {
+            return await this.files.stop();
+          } catch (cause) {}
+        })();
       }
     };
     const focus = (): void =>
@@ -95,12 +99,16 @@ export class BrowserDevice {
         previous?.status.removeEventListener('change', previous.changed);
         const changed = (): void => this.changes.touch(resource);
 
-        status.addEventListener('change', changed);
+        const { addEventListener: statusAddEventListener } = status;
+
+        statusAddEventListener.bind(status)('change', changed);
         this.statuses.set(resource, { status, changed });
       }
 
+      const { state: statusState } = status;
+
       return {
-        permission: status.state,
+        permission: statusState,
         settingsHint: 'siteSettings',
       };
     } catch {
@@ -125,16 +133,19 @@ export class BrowserDevice {
         await new Promise<void>((resolve, reject): void =>
           navigator.geolocation.getCurrentPosition(
             (): void => resolve(),
-            (error): void =>
-              reject(
-                new DeviceError(
-                  error.code === 1
-                    ? 'PERMISSION_DENIED'
-                    : error.code === 3
-                      ? 'TIMEOUT'
-                      : 'DEVICE_UNAVAILABLE',
-                ),
-              ),
+            (error): void => {
+              let geolocationErrorCode;
+
+              if (error.code === 1) {
+                geolocationErrorCode = 'PERMISSION_DENIED';
+              } else if (error.code === 3) {
+                geolocationErrorCode = 'TIMEOUT';
+              } else {
+                geolocationErrorCode = 'DEVICE_UNAVAILABLE';
+              }
+
+              return reject(new DeviceError(geolocationErrorCode));
+            },
             { enableHighAccuracy: false, maximumAge: 0, timeout: 10000 },
           ),
         );
@@ -148,7 +159,9 @@ export class BrowserDevice {
           video: resource === 'camera',
         });
 
-        for (const track of stream.getTracks()) {
+        const { getTracks: streamGetTracks } = stream;
+
+        for (const track of streamGetTracks.bind(stream)()) {
           track.stop();
         }
       }
@@ -169,10 +182,9 @@ export class BrowserDevice {
         return { permission: 'denied', settingsHint: 'siteSettings' };
       }
 
-      if (
-        resource === 'geolocation' &&
-        (await this.readPermission(resource)).permission === 'granted'
-      ) {
+      const { permission: readPermissionResultPermission } = await this.readPermission(resource);
+
+      if (resource === 'geolocation' && readPermissionResultPermission === 'granted') {
         return { permission: 'granted', settingsHint: 'siteSettings' };
       }
 
@@ -184,12 +196,17 @@ export class BrowserDevice {
   }
 
   private async pushState(): Promise<DeviceState['push']> {
-    const permission =
-      typeof Notification === 'undefined'
-        ? 'unknown'
-        : Notification.permission === 'default'
-          ? 'prompt'
-          : Notification.permission;
+    let permissionValue: DeviceState['push']['permission'];
+
+    if (typeof Notification === 'undefined') {
+      permissionValue = 'unknown';
+    } else if (Notification.permission === 'default') {
+      permissionValue = 'prompt';
+    } else {
+      permissionValue = Notification.permission;
+    }
+
+    const permission = permissionValue;
     const state: DeviceState['push'] = {
       permission,
       alert: 'unknown',
@@ -217,8 +234,8 @@ export class BrowserDevice {
         return state;
       }
 
-      const registration = await readyPwa();
-      const subscription = await registration.pushManager.getSubscription();
+      const { pushManager: registrationPushManager } = await readyPwa();
+      const subscription = await registrationPushManager.getSubscription();
 
       state.delivery =
         subscription && matchesVapid(subscription, config.public_key) && permission === 'granted'
@@ -276,8 +293,12 @@ export class BrowserDevice {
     const operation =
       kind === 'sound'
         ? this.host.testSound()
-        : this.readPermission('microphone').then(async (permission): Promise<void> => {
-            if (permission.permission !== 'granted') {
+        : (async () => {
+            const permission = await this.readPermission('microphone');
+
+            const { permission: permissionPermission } = permission;
+
+            if (permissionPermission !== 'granted') {
               throw new DeviceError('PERMISSION_DENIED');
             }
 
@@ -286,10 +307,12 @@ export class BrowserDevice {
             }
 
             await this.host.testMicrophone();
-          });
+          })();
 
-    void operation
-      .then((): void => {
+    void (async () => {
+      try {
+        await operation;
+
         if (this.test?.id !== testId || this.test.status !== 'running') {
           return;
         }
@@ -304,15 +327,17 @@ export class BrowserDevice {
           },
           kind === 'sound' ? 1000 : 0,
         );
-      })
-      .catch((error: unknown): void => {
+      } catch (cause) {
+        const error: unknown = cause;
+
         if (this.test?.id === testId && this.test.status === 'running') {
           this.host.stopAudio();
           this.test.status = 'failed';
           this.test.errorCode = failure(error).code;
           this.changes.touch('audio');
         }
-      });
+      }
+    })();
 
     return { testId };
   }
@@ -426,8 +451,12 @@ export class BrowserDevice {
 
         const device = await navigator.mediaDevices.selectAudioOutput();
 
-        await this.host.setOutput(device.deviceId);
-        this.routeName = device.label || 'Выбранный выход';
+        const { deviceId: deviceDeviceId } = device;
+
+        await this.host.setOutput(deviceDeviceId);
+        const { label: deviceLabel } = device;
+
+        this.routeName = deviceLabel || 'Выбранный выход';
         this.test = null;
         this.changes.touch('audio');
 
@@ -503,13 +532,16 @@ export class BrowserDevice {
             }
 
             await this.host.push('device.web_push', { subscription: null });
-            const subscription = await (await readyPwa()).pushManager.getSubscription();
+            const { pushManager: resultPushManager } = await readyPwa();
+            const subscription = await resultPushManager.getSubscription();
 
             if (!current()) {
               throw new DeviceError('CANCELLED');
             }
 
-            if (subscription && !(await subscription.unsubscribe())) {
+            const { unsubscribe: subscriptionUnsubscribe } = subscription ?? {};
+
+            if (subscription && !(await subscriptionUnsubscribe?.bind(subscription)())) {
               throw new DeviceError('NETWORK_ERROR');
             }
           });
@@ -521,7 +553,9 @@ export class BrowserDevice {
 
         this.changes.touch('push');
 
-        return { ...done, push: await this.pushState() };
+        const pushValue = await this.pushState();
+
+        return { ...done, push: pushValue };
       }
       default:
         throw new DeviceError('INVALID_ARGUMENT');

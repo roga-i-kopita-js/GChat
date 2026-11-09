@@ -32,7 +32,9 @@ export class DeviceObserver {
           }
 
           this.source.set({ ...this.source.getSnapshot(), value, error: null });
-          afterRevision = value.revision;
+          const { revision: valueRevision } = value;
+
+          afterRevision = valueRevision;
           const change = await this.bridge.execute({
             command: 'device.changes.wait',
             args: { afterRevision, timeoutMs: 30000 },
@@ -42,7 +44,9 @@ export class DeviceObserver {
             return;
           }
 
-          afterRevision = change.revision;
+          const { revision: changeRevision } = change;
+
+          afterRevision = changeRevision;
         }
       } catch (cause) {
         if (generation === this.generation) {
@@ -78,6 +82,10 @@ export class DeviceObserver {
     this.generation++;
     this.running = false;
     this.source.set({ ...this.source.getSnapshot(), value: null, error: null });
-    await this.bridge.execute({ command: 'device.changes.cancel', args: {} }).catch((): void => {});
+    await (async () => {
+      try {
+        return await this.bridge.execute({ command: 'device.changes.cancel', args: {} });
+      } catch (cause) {}
+    })();
   }
 }

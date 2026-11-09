@@ -5,9 +5,13 @@ import { useDevice, useDevicePresentation } from '../../shared/device/react';
 import { LazyPanel } from '../../shared/ui/LazyPanel';
 import { useCalls } from './CallsProvider';
 
-const Card = lazy(async (): Promise<{ default: typeof import('./CallCard').CallCard }> => ({
-  default: (await import('./CallCard')).CallCard,
-}));
+const Card = lazy(async (): Promise<{ default: typeof import('./CallCard').CallCard }> => {
+  const { CallCard: resultCallCard } = await import('./CallCard');
+
+  return {
+    default: resultCallCard,
+  };
+});
 
 /** Keep essential incoming/active call controls usable even if the UI chunk fails. */
 function CallCardFallback({ failed = false }: { failed?: boolean }): JSX.Element | null {
@@ -17,6 +21,16 @@ function CallCardFallback({ failed = false }: { failed?: boolean }): JSX.Element
 
   if (!call) {
     return null;
+  }
+
+  let endCallLabel;
+
+  if (incoming) {
+    endCallLabel = 'Отклонить';
+  } else if (call.state === 'ringing') {
+    endCallLabel = 'Отменить';
+  } else {
+    endCallLabel = 'Завершить';
   }
 
   return (
@@ -33,7 +47,11 @@ function CallCardFallback({ failed = false }: { failed?: boolean }): JSX.Element
               className="primary"
               disabled={!enabled}
               onClick={(): void => {
-                void device.calls.accept().catch((): void => {});
+                void (async () => {
+                  try {
+                    return await device.calls.accept();
+                  } catch (cause) {}
+                })();
               }}
             >
               Принять
@@ -44,10 +62,14 @@ function CallCardFallback({ failed = false }: { failed?: boolean }): JSX.Element
               className="secondary"
               disabled={!enabled}
               onClick={(): void => {
-                void device.calls.end().catch((): void => {});
+                void (async () => {
+                  try {
+                    return await device.calls.end();
+                  } catch (cause) {}
+                })();
               }}
             >
-              {incoming ? 'Отклонить' : call.state === 'ringing' ? 'Отменить' : 'Завершить'}
+              {endCallLabel}
             </button>
           )}
         </div>

@@ -134,9 +134,13 @@ class NativeDialogStorage implements DialogStorage {
       }
 
       if (!this.switching) {
-        this.switching = this.switchToIndexedDb().finally((): void => {
-          this.switching = null;
-        });
+        this.switching = (async () => {
+          try {
+            return await this.switchToIndexedDb();
+          } finally {
+            this.switching = null;
+          }
+        })();
       }
 
       await this.switching;
@@ -179,7 +183,9 @@ class NativeDialogStorage implements DialogStorage {
             );
 
           for (const entry of page.entries) {
-            await staging.change(entry.id, 'commitPage', (value): void => {
+            const { change: stagingChange } = staging;
+
+            await stagingChange.bind(staging)(entry.id, 'commitPage', (value): void => {
               value.record = entry.record;
               value.messages = [
                 ...value.messages,
@@ -204,8 +210,12 @@ class NativeDialogStorage implements DialogStorage {
       }
     } catch {
       // A partial export cannot carry a checkpoint for messages that never reached staging.
-      for (const dialog of await staging.list()) {
-        await staging.change(dialog.dialog_id, 'commitPage', ({ record }): void => {
+      const { list: stagingList } = staging;
+
+      for (const dialog of await stagingList.bind(staging)()) {
+        const { change: stagingChange2 } = staging;
+
+        await stagingChange2.bind(staging)(dialog.dialog_id, 'commitPage', ({ record }): void => {
           record.initialized = false;
           record.sync_sequence = 0;
           record.ranges = [];
@@ -216,7 +226,9 @@ class NativeDialogStorage implements DialogStorage {
 
       // Only data actually available to this Web cycle is recoverable from a failed SQLite snapshot.
       for (const [id, known] of this.known) {
-        await staging.change(id, 'commitPage', (value): void => {
+        const { change: stagingChange3 } = staging;
+
+        await stagingChange3.bind(staging)(id, 'commitPage', (value): void => {
           value.record = {
             ...known.record,
             initialized: false,
@@ -230,8 +242,12 @@ class NativeDialogStorage implements DialogStorage {
       }
     }
 
-    for (const dialog of await staging.list()) {
-      await staging.change(dialog.dialog_id, 'markAttempt', ({ record }): void => {
+    const { list: stagingList2 } = staging;
+
+    for (const dialog of await stagingList2.bind(staging)()) {
+      const { change: stagingChange4 } = staging;
+
+      await stagingChange4.bind(staging)(dialog.dialog_id, 'markAttempt', ({ record }): void => {
         for (const pending of record.outbox) {
           pending.state = 'unknown';
         }
@@ -245,7 +261,9 @@ class NativeDialogStorage implements DialogStorage {
       this.warning =
         'Переписка хранится в WebView. Недоступные в прежней базе черновики могли не перенестись.';
     } catch (error) {
-      staging.close();
+      const { close: stagingClose } = staging;
+
+      stagingClose.bind(staging)();
 
       throw error;
     }
@@ -329,23 +347,29 @@ class NativeDialogStorage implements DialogStorage {
       async (): Promise<StoredDialog> => {
         for (let attempt = 0; attempt < 4; attempt++) {
           const value = await this.read(id);
-          const expectedRevision = value.record.revision;
+          const { record: valueRecord } = value;
+          const expectedRevision = valueRecord.revision;
+          const { messages: valueMessages } = value;
           const previous = new Map(
-            value.messages.map((message): [string, string] => [
+            valueMessages.map((message): [string, string] => [
               message.message_id,
               JSON.stringify(message),
             ]),
           );
 
           update(value);
-          value.record.revision++;
+          const { record: valueRecord2 } = value;
+
+          valueRecord2.revision++;
 
           try {
+            const { record: valueRecord3, messages: valueMessages2 } = value;
+
             await this.command(command, {
               id,
               expectedRevision,
-              record: value.record,
-              messages: value.messages.filter(
+              record: valueRecord3,
+              messages: valueMessages2.filter(
                 (message): boolean => previous.get(message.message_id) !== JSON.stringify(message),
               ),
             });
@@ -409,7 +433,9 @@ export async function openNativeDialogs(): Promise<DialogStorage> {
 
     const cleaned = await IndexedDialogStorage.open(scope, context.epoch);
 
-    cleaned.close();
+    const { close: cleanedClose } = cleaned;
+
+    cleanedClose.bind(cleaned)();
     const response = z.object({ data: z.object({ purgePending: z.boolean() }) }).parse(
       await nativePlugin.dialogStorage({
         version: 1,
@@ -430,7 +456,7 @@ export async function openNativeDialogs(): Promise<DialogStorage> {
     const storage = await IndexedDialogStorage.open(scope, context.epoch);
 
     if (purgePending) {
-      storage.warning = 'Очистка прежнего локального кеша ещё не завершена.';
+      Object.assign(storage, { warning: 'Очистка прежнего локального кеша ещё не завершена.' });
     }
 
     return storage;

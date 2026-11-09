@@ -24,28 +24,32 @@ export async function contactsLoader({
   const { group: selected } = readQuery(contactsQuerySchema, input);
 
   try {
-    const groups = (
-      await device.session.run(
-        (api, signal): ReturnType<BackendApi['groupsList']> => api.groupsList({ signal }),
-        { signal: input.signal },
-      )
-    ).data.groups;
-    const groupId =
-      selected && selected !== 'all'
-        ? selected
-        : user.role === 'admin'
-          ? null
-          : (groups[0]?.id ?? null);
+    const { data: runResultData } = await device.session.run(
+      (api, signal): ReturnType<BackendApi['groupsList']> => api.groupsList({ signal }),
+      { signal: input.signal },
+    );
+    const groups = runResultData.groups;
+    let groupIdValue;
+
+    if (selected && selected !== 'all') {
+      groupIdValue = selected;
+    } else if (user.role === 'admin') {
+      groupIdValue = null;
+    } else {
+      groupIdValue = groups[0]?.id ?? null;
+    }
+
+    const groupId = groupIdValue;
     let members: GroupMembersResponseDto['members'] = [];
 
     if (groupId) {
-      members = (
-        await device.session.run(
-          (api, signal): ReturnType<BackendApi['groupsListMembers']> =>
-            api.groupsListMembers({ path: { group_id: groupId }, signal }),
-          { signal: input.signal },
-        )
-      ).data.members;
+      const { data: runResultData2 } = await device.session.run(
+        (api, signal): ReturnType<BackendApi['groupsListMembers']> =>
+          api.groupsListMembers({ path: { group_id: groupId }, signal }),
+        { signal: input.signal },
+      );
+
+      members = runResultData2.members;
     } else if (user.role === 'admin') {
       let offset = 0;
 
@@ -59,12 +63,18 @@ export async function contactsLoader({
           { signal: input.signal },
         );
 
-        members.push(
-          ...page.data.users.map(({ id, display_name }): Member => ({ id, display_name })),
-        );
-        offset += page.data.users.length;
+        const { data: pageData } = page;
 
-        if (!page.data.users.length || offset >= page.data.total) {
+        members.push(
+          ...pageData.users.map(({ id, display_name }): Member => ({ id, display_name })),
+        );
+        const { data: pageData2 } = page;
+
+        offset += pageData2.users.length;
+
+        const { data: pageData3 } = page ?? {};
+
+        if (!pageData3.users.length || offset >= pageData3.total) {
           break;
         }
       }

@@ -51,16 +51,25 @@ export class ErrorFilter implements ExceptionFilter {
       return;
     }
 
-    const status =
-      exception instanceof AppError
-        ? exception.status
-        : exception instanceof HttpException
-          ? exception.getStatus()
-          : exception instanceof Error && 'status' in exception && exception.status === 413
-            ? 413
-            : exception instanceof SyntaxError && 'status' in exception && exception.status === 400
-              ? 400
-              : 500;
+    let statusValue;
+
+    if (exception instanceof AppError) {
+      statusValue = exception.status;
+    } else if (exception instanceof HttpException) {
+      statusValue = exception.getStatus();
+    } else if (exception instanceof Error && 'status' in exception && exception.status === 413) {
+      statusValue = 413;
+    } else if (
+      exception instanceof SyntaxError &&
+      'status' in exception &&
+      exception.status === 400
+    ) {
+      statusValue = 400;
+    } else {
+      statusValue = 500;
+    }
+
+    const status = statusValue;
     const [code, message] = standardErrors[status] ?? ['HTTP_ERROR', 'Ошибка HTTP-запроса.'];
     const error =
       exception instanceof AppError

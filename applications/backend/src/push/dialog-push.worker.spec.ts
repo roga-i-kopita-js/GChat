@@ -107,8 +107,10 @@ describe('Best effort dialog push', (): void => {
     await jest.advanceTimersByTimeAsync(0);
     expect(f.apns.send).not.toHaveBeenCalled();
     f.dialogs.canDeliver.mockResolvedValue(true);
+    const awaitedValue = await f.devices.resolveApnsTarget();
+
     f.devices.resolveApnsTarget.mockResolvedValue({
-      ...(await f.devices.resolveApnsTarget()),
+      ...awaitedValue,
       version: 'v2',
     });
     f.events.publish(f.notice);
@@ -153,7 +155,8 @@ describe('Best effort dialog push', (): void => {
   });
   it('bounds simultaneous address requests within one message at four', async (): Promise<void> => {
     const f = fixture();
-    const target = (await f.devices.listApnsTargets())[0];
+    const { [0]: listApnsTargetsResultFirst } = await f.devices.listApnsTargets();
+    const target = listApnsTargetsResultFirst;
 
     f.devices.listApnsTargets.mockResolvedValue(Array.from({ length: 10 }, (): any => target));
     f.apns.send.mockImplementation((): Promise<never> => new Promise((): void => {}));

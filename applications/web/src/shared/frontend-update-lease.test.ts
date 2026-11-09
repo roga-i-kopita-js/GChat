@@ -43,9 +43,11 @@ describe('frontend update lease', (): void => {
     expect(request).toHaveBeenCalledTimes(1);
     let released = false;
 
-    void done.then((): void => {
+    void (async () => {
+      await done;
+
       released = true;
-    });
+    })();
     form.release();
     await Promise.resolve();
     expect(released).toBe(false);

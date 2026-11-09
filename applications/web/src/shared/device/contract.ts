@@ -241,26 +241,46 @@ export class DeviceError extends Error {
 
     super(deviceErrorMessage({ code }));
     this.code = code;
-    this.service =
-      typeof input === 'string'
-        ? typeof details.command === 'string'
-          ? details.command.split('.')[0]
-          : 'device'
-        : input.service;
-    this.operation =
-      typeof input === 'string'
-        ? typeof details.command === 'string'
-          ? details.command
-          : 'operation'
-        : input.operation;
+    let service;
+
+    if (typeof input === 'string') {
+      if (typeof details.command === 'string') {
+        service = details.command.split('.')[0];
+      } else {
+        service = 'device';
+      }
+    } else {
+      service = input.service;
+    }
+
+    this.service = service;
+    let operation;
+
+    if (typeof input === 'string') {
+      if (typeof details.command === 'string') {
+        operation = details.command;
+      } else {
+        operation = 'operation';
+      }
+    } else {
+      operation = input.operation;
+    }
+
+    this.operation = operation;
     details = typeof input === 'string' ? details : { ...input.details };
 
+    let outcomeDetails;
+
+    if (code === 'OUTCOME_UNKNOWN') {
+      outcomeDetails = { outcome: 'unknown' };
+    } else if (code === 'PARTIAL_FAILURE') {
+      outcomeDetails = { outcome: 'partial' };
+    } else {
+      outcomeDetails = {};
+    }
+
     this.details = {
-      ...(code === 'OUTCOME_UNKNOWN'
-        ? { outcome: 'unknown' }
-        : code === 'PARTIAL_FAILURE'
-          ? { outcome: 'partial' }
-          : {}),
+      ...outcomeDetails,
       ...details,
     };
     this.command = typeof details.command === 'string' ? details.command : undefined;

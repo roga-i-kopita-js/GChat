@@ -23,7 +23,9 @@ export class NativeWebsocketPolicyService {
       .limit(513);
 
     // Never deliver a truncated policy, which could silently remove a prohibition.
-    if (restrictions.length > 512) {
+    const { length: restrictionsLength } = restrictions;
+
+    if (restrictionsLength > 512) {
       throw this.error.serviceUnavailable();
     }
 

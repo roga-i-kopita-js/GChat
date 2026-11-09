@@ -50,8 +50,12 @@ class Participant {
   async login(login: string): Promise<void> {
     const tokens = await this.http('/auth/login', { login, password: 'gchat-web-test-password' });
 
-    this.access = tokens.access_token;
-    this.refresh = tokens.refresh_token;
+    const { access_token: tokensAccessToken } = tokens;
+
+    this.access = tokensAccessToken;
+    const { refresh_token: tokensRefreshToken } = tokens;
+
+    this.refresh = tokensRefreshToken;
     this.userId = JSON.parse(
       atob(this.access.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')),
     ).sub;
@@ -100,11 +104,17 @@ class Participant {
       body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-      throw new Error('HTTP_' + response.status);
+    const { ok: responseOk } = response ?? {};
+
+    if (!responseOk) {
+      const { status: responseStatus } = response;
+
+      throw new Error('HTTP_' + responseStatus);
     }
 
-    return response.status === 204 ? undefined : response.json();
+    const { status: responseStatus2, json: responseJson } = response;
+
+    return responseStatus2 === 204 ? undefined : responseJson.bind(response)();
   }
 
   async reconnect(): Promise<void> {
@@ -150,10 +160,18 @@ class Participant {
               sdpMLineIndex: candidate.sdp_mline_index,
             };
 
-            if (this.pc?.remoteDescription) {
-              void this.pc.addIceCandidate(ice).catch((error: Error): void => {
-                this.errors.push(error.message);
-              });
+            const pc = this.pc;
+
+            if (pc?.remoteDescription) {
+              void (async () => {
+                try {
+                  return await pc.addIceCandidate(ice);
+                } catch (cause) {
+                  const error = cause instanceof Error ? cause : new Error(String(cause));
+
+                  this.errors.push(error.message);
+                }
+              })();
             } else {
               this.remoteIce.push(ice);
             }
@@ -180,9 +198,11 @@ class Participant {
         reject(new Error('SOCKET_OPEN_FAILED'));
       };
     });
-    const result = await this.request('device.register', { device_id: this.deviceId });
+    const { device_id: resultDeviceId } = await this.request('device.register', {
+      device_id: this.deviceId,
+    });
 
-    this.deviceId = result.device_id;
+    this.deviceId = resultDeviceId;
     await this.request('call.current', {});
   }
 
@@ -264,7 +284,9 @@ class Participant {
   async prepare(callId: string, frequency: number, unavailableTurn = false): Promise<void> {
     this.closeMedia();
     this.callId = callId;
-    const config = await this.request('call.ice_config', { call_id: callId });
+    const { ice_servers: configIceServers } = await this.request('call.ice_config', {
+      call_id: callId,
+    });
     const pc = new RTCPeerConnection({
       iceTransportPolicy: 'relay',
       iceServers: unavailableTurn
@@ -275,7 +297,7 @@ class Participant {
               credential: 'unavailable',
             },
           ]
-        : config.ice_servers,
+        : configIceServers,
     });
 
     this.pc = pc;
@@ -318,9 +340,10 @@ class Participant {
       this.output = output;
       output.muted = true;
       output.srcObject = stream;
-      void output
-        .play()
-        .then((): void => {
+      void (async () => {
+        try {
+          await output.play();
+
           // A late playback completion must not attach to an ended/replaced call.
           if (this.pc !== pc || pc.connectionState === 'closed' || this.audio !== context) {
             return;
@@ -332,12 +355,12 @@ class Participant {
             .createMediaStreamSource(stream)
             .connect(this.analyser)
             .connect(context.destination);
-        })
-        .catch((): void => {
+        } catch (cause) {
           if (pc.connectionState !== 'closed') {
             this.errors.push('AUDIO_PLAY_FAILED');
           }
-        });
+        }
+      })();
     };
     this.localIce = [];
     this.remoteIce = [];
@@ -356,8 +379,10 @@ class Participant {
     const negotiationId = this.negotiation;
     const callId = this.callId;
 
-    this.iceWork = this.iceWork
-      .then(async (): Promise<void> => {
+    this.iceWork = (async () => {
+      try {
+        await this.iceWork;
+
         for (const candidate of candidates) {
           await this.request('rtc.ice', {
             call_id: callId,
@@ -371,10 +396,12 @@ class Participant {
               : null,
           });
         }
-      })
-      .catch((error: Error): void => {
+      } catch (cause) {
+        const error = cause instanceof Error ? cause : new Error(String(cause));
+
         this.errors.push(error.message);
-      });
+      }
+    })();
   }
 
   async offer(): Promise<string> {
@@ -520,28 +547,35 @@ class Participant {
     let receivedEnergy = 0;
     let sourceEnergy = 0;
 
-    stats?.forEach((stat): void => {
-      if (stat.type === 'outbound-rtp' && stat.kind === 'audio') {
-        sent += stat.bytesSent;
-      }
+    if (stats) {
+      const { forEach: statsForEach } = stats ?? {};
 
-      if (stat.type === 'inbound-rtp' && stat.kind === 'audio') {
-        received += stat.bytesReceived;
-        receivedEnergy += stat.totalAudioEnergy ?? 0;
-      }
+      statsForEach?.bind(stats)((stat): void => {
+        if (stat.type === 'outbound-rtp' && stat.kind === 'audio') {
+          sent += stat.bytesSent;
+        }
 
-      if (stat.type === 'media-source' && stat.kind === 'audio') {
-        sourceEnergy += stat.totalAudioEnergy ?? 0;
-      }
+        if (stat.type === 'inbound-rtp' && stat.kind === 'audio') {
+          received += stat.bytesReceived;
+          receivedEnergy += stat.totalAudioEnergy ?? 0;
+        }
 
-      if (stat.type === 'transport' && stat.selectedCandidatePairId) {
-        const pair = stats.get(stat.selectedCandidatePairId);
+        if (stat.type === 'media-source' && stat.kind === 'audio') {
+          sourceEnergy += stat.totalAudioEnergy ?? 0;
+        }
 
-        relay =
-          stats.get(pair.localCandidateId)?.candidateType === 'relay' &&
-          stats.get(pair.remoteCandidateId)?.candidateType === 'relay';
-      }
-    });
+        if (stat.type === 'transport' && stat.selectedCandidatePairId) {
+          const { get: statsGet } = stats;
+          const pair = statsGet.bind(stats)(stat.selectedCandidatePairId);
+
+          const { get: statsGet2 } = stats;
+
+          relay =
+            statsGet2.bind(stats)(pair.localCandidateId)?.candidateType === 'relay' &&
+            statsGet2.bind(stats)(pair.remoteCandidateId)?.candidateType === 'relay';
+        }
+      });
+    }
 
     return {
       calls: [...this.calls.values()],

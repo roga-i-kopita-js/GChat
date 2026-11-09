@@ -29,9 +29,13 @@ export class DialogsEvents {
 
   publish(notice: DialogNotice): void {
     for (const listener of this.listeners) {
-      void Promise.resolve()
-        .then((): Promise<void> => listener(notice))
-        .catch((): void => {});
+      void (async () => {
+        try {
+          await Promise.resolve();
+
+          return await listener(notice);
+        } catch (cause) {}
+      })();
     }
   }
 }

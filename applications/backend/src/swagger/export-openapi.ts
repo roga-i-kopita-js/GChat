@@ -20,7 +20,9 @@ async function discoverControllers(root: string): Promise<Type<unknown>[]> {
   const controllers: Type<unknown>[] = [];
   const files = await readdir(root, { recursive: true });
 
-  for (const file of files.sort()) {
+  const { sort: filesSort } = files;
+
+  for (const file of filesSort.bind(files)()) {
     if (!file.endsWith('.controller.js')) {
       continue;
     }
@@ -80,7 +82,8 @@ export async function exportOpenApiDocument(): Promise<OpenAPIObject> {
   }
 
   const module = await builder.compile();
-  const app = module.createNestApplication();
+  const { createNestApplication: moduleCreateNestApplication } = module;
+  const app = moduleCreateNestApplication.bind(module)();
 
   try {
     // No init/listen: no controller methods or infrastructure lifecycle hooks run.

@@ -88,40 +88,38 @@ if (component === 'backend') {
     throw new Error('Use a serverAuth certificate with matching IP SAN, not a CA certificate');
   }
 
-  const server = https.createServer(
-    { cert, key: await readFile(process.env.GCHAT_IOS_TLS_KEY), minVersion: 'TLSv1.2' },
-    (req, res) => {
-      const path = req.url ?? '';
+  const keyValue = await readFile(process.env.GCHAT_IOS_TLS_KEY);
+  const server = https.createServer({ cert, key: keyValue, minVersion: 'TLSv1.2' }, (req, res) => {
+    const path = req.url ?? '';
 
-      if (req.headers.host !== `${host}:8446` || !(path.startsWith('/api/') || path === '/ready')) {
-        res.writeHead(404);
-        res.end();
+    if (req.headers.host !== `${host}:8446` || !(path.startsWith('/api/') || path === '/ready')) {
+      res.writeHead(404);
+      res.end();
 
-        return;
+      return;
+    }
+
+    const request = http.request(
+      new URL(path === '/ready' ? path : path.slice(4), backendOrigin),
+      {
+        method: req.method,
+        headers: { ...req.headers, host: '127.0.0.1:3300' },
+      },
+      (response) => {
+        res.writeHead(response.statusCode, response.headers);
+        response.pipe(res);
+      },
+    );
+
+    request.on('error', () => {
+      if (!res.headersSent) {
+        res.writeHead(502);
       }
 
-      const request = http.request(
-        new URL(path === '/ready' ? path : path.slice(4), backendOrigin),
-        {
-          method: req.method,
-          headers: { ...req.headers, host: '127.0.0.1:3300' },
-        },
-        (response) => {
-          res.writeHead(response.statusCode, response.headers);
-          response.pipe(res);
-        },
-      );
-
-      request.on('error', () => {
-        if (!res.headersSent) {
-          res.writeHead(502);
-        }
-
-        res.end();
-      });
-      req.pipe(request);
-    },
-  );
+      res.end();
+    });
+    req.pipe(request);
+  });
 
   server.on('upgrade', (req, socket, head) => {
     if (req.url !== '/ws' || req.headers.host !== `${host}:8446`) {

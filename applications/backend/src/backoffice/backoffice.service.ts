@@ -50,36 +50,42 @@ export class BackofficeService {
       accounts.map((account): string => account.id),
     );
 
-    return accounts.map((account): AdminUserDto => ({
-      id: account.id,
-      login: account.login,
-      display_name: account.displayName,
-      role: account.role,
-      status: account.disabledAt ? 'disabled' : 'active',
-      disabled_at: account.disabledAt?.toISOString() ?? null,
-      created_at: account.createdAt.toISOString(),
-      updated_at: account.updatedAt.toISOString(),
-      groups: memberships
-        .filter((group): boolean => group.userId === account.id)
-        .map(({ id, name }): AdminGroupDto => ({ id, name })),
-    }));
+    return accounts.map((account): AdminUserDto => {
+      const { filter: membershipsFilter } = memberships;
+
+      return {
+        id: account.id,
+        login: account.login,
+        display_name: account.displayName,
+        role: account.role,
+        status: account.disabledAt ? 'disabled' : 'active',
+        disabled_at: account.disabledAt?.toISOString() ?? null,
+        created_at: account.createdAt.toISOString(),
+        updated_at: account.updatedAt.toISOString(),
+        groups: membershipsFilter
+          .bind(memberships)((group): boolean => group.userId === account.id)
+          .map(({ id, name }): AdminGroupDto => ({ id, name })),
+      };
+    });
   }
 
   list(query: AdminUsersQueryDto): Promise<AdminUsersResponseDto> {
     return this.transaction(async (tx): Promise<AdminUsersResponseDto> => {
-      const page = await this.accounts.list(tx, query);
+      const { accounts: pageAccounts, total: pageTotal } = await this.accounts.list(tx, query);
+      const usersValue = await this.project(tx, pageAccounts);
 
-      return { users: await this.project(tx, page.accounts), total: page.total };
+      return { users: usersValue, total: pageTotal };
     }, true);
   }
 
   get(id: string): Promise<AdminUserResponseDto> {
-    return this.transaction(
-      async (tx): Promise<AdminUserResponseDto> => ({
-        user: (await this.project(tx, [await this.accounts.get(tx, id)]))[0]!,
-      }),
-      true,
-    );
+    return this.transaction(async (tx): Promise<AdminUserResponseDto> => {
+      const { [0]: projectResultFirst } = await this.project(tx, [await this.accounts.get(tx, id)]);
+
+      return {
+        user: projectResultFirst!,
+      };
+    }, true);
   }
 
   listGroups(query: AdminGroupsQueryDto): Promise<AdminGroupsResponseDto> {
@@ -97,9 +103,13 @@ export class BackofficeService {
       await this.accounts.authorize(tx, actor);
       const account = await this.accounts.create(tx, prepared, 'user');
 
-      await this.groups.assign(tx, account.id, group);
+      const { id: accountId } = account;
 
-      return { user: (await this.project(tx, [account]))[0]! };
+      await this.groups.assign(tx, accountId, group);
+
+      const { [0]: projectResultFirst2 } = await this.project(tx, [account]);
+
+      return { user: projectResultFirst2! };
     });
   }
 
@@ -119,7 +129,9 @@ export class BackofficeService {
       await this.accounts.authorize(tx, actor, id);
       const account = await this.accounts.change(tx, id, action, hash);
 
-      return { user: (await this.project(tx, [account]))[0]! };
+      const { [0]: projectResultFirst3 } = await this.project(tx, [account]);
+
+      return { user: projectResultFirst3! };
     });
   }
 }

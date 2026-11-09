@@ -84,11 +84,13 @@ describe('dialog route loaders', (): void => {
   it('reads the list on each entry and waits for the first uncached attempt', async (): Promise<void> => {
     const f = fixture(false);
     let finished = false;
-    const loading = dialogsLoader(args()).then((data): typeof data => {
+    const loading = (async () => {
+      const data = await dialogsLoader(args());
+
       finished = true;
 
       return data;
-    });
+    })();
 
     await vi.waitFor((): void => expect(f.list).toHaveBeenCalledTimes(1));
     expect(finished).toBe(false);

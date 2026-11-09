@@ -40,9 +40,11 @@ integration('Native WebSocket restrictions storage', (): void => {
   });
 
   it('creates an empty table and applies the operator script without deleting custom rules', async (): Promise<void> => {
-    expect((await pool.query('SELECT * FROM gchat_native_websocket_restrictions')).rows).toEqual(
-      [],
+    const { rows: queryResultRows } = await pool.query(
+      'SELECT * FROM gchat_native_websocket_restrictions',
     );
+
+    expect(queryResultRows).toEqual([]);
     await pool.query(
       "INSERT INTO gchat_native_websocket_restrictions(direction, message_pattern) VALUES ('send', 'future.private')",
     );
@@ -50,13 +52,11 @@ integration('Native WebSocket restrictions storage', (): void => {
 
     await pool.query(script);
     await pool.query(script);
-    expect(
-      (
-        await pool.query(
-          'SELECT direction, message_pattern FROM gchat_native_websocket_restrictions ORDER BY direction, message_pattern',
-        )
-      ).rows,
-    ).toEqual([
+    const { rows: queryResultRows2 } = await pool.query(
+      'SELECT direction, message_pattern FROM gchat_native_websocket_restrictions ORDER BY direction, message_pattern',
+    );
+
+    expect(queryResultRows2).toEqual([
       { direction: 'receive', message_pattern: 'call.ice_config' },
       { direction: 'receive', message_pattern: 'device.*' },
       { direction: 'receive', message_pattern: 'rtc.*' },

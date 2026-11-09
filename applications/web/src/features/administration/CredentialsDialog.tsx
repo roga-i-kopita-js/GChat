@@ -31,12 +31,17 @@ export function CredentialsDialog({
         <button
           className="secondary"
           onClick={(): void => {
-            void navigator.clipboard
-              .writeText(`Логин: ${value.login}\nПароль: ${value.password}`)
-              .then(
-                (): void => setCopy('Скопировано'),
-                (): void => setCopy('Не удалось скопировать. Выделите данные вручную.'),
-              );
+            void (async () => {
+              try {
+                await navigator.clipboard.writeText(
+                  `Логин: ${value.login}\nПароль: ${value.password}`,
+                );
+              } catch (rejectedCause) {
+                return setCopy('Не удалось скопировать. Выделите данные вручную.');
+              }
+
+              return setCopy('Скопировано');
+            })();
           }}
         >
           <Copy size={16} /> Скопировать

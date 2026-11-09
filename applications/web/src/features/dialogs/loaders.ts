@@ -28,23 +28,39 @@ export async function dialogsLoader({
   const runtime = await dialogBootstrap(device).ready(request.signal);
 
   request.signal.throwIfAborted();
-  const local = await runtime.listModel().getState();
+  const { listModel: runtimeListModel } = runtime;
+  const local = await runtimeListModel.bind(runtime)().getState();
 
   request.signal.throwIfAborted();
-  const list = runtime.refreshList().catch((): void => {});
+  const { refreshList: runtimeRefreshList } = runtime;
+  const list = (async () => {
+    try {
+      return await runtimeRefreshList.bind(runtime)();
+    } catch (cause) {}
+  })();
+
+  const { items: localItems } = local ?? {};
 
   if (dialogId) {
-    const model = runtime.conversationModel(dialogId);
+    const { conversationModel: runtimeConversationModel } = runtime;
+    const model = runtimeConversationModel.bind(runtime)(dialogId);
     const stored = await model.getState();
 
     request.signal.throwIfAborted();
-    const sync = runtime.sync(dialogId, true);
+    const { sync: runtimeSync } = runtime;
+    const sync = runtimeSync.bind(runtime)(dialogId, true);
 
-    if (!stored.view?.record.dialog) {
-      await cancellable((): Promise<void> => sync, { signal: request.signal }, runtime.signal);
+    const { view: storedView } = stored ?? {};
+
+    if (!storedView?.record.dialog) {
+      const { signal: runtimeSignal } = runtime;
+
+      await cancellable((): Promise<void> => sync, { signal: request.signal }, runtimeSignal);
     }
-  } else if (!local.items.length) {
-    await cancellable((): Promise<void> => list, { signal: request.signal }, runtime.signal);
+  } else if (!localItems.length) {
+    const { signal: runtimeSignal2 } = runtime;
+
+    await cancellable((): Promise<void> => list, { signal: request.signal }, runtimeSignal2);
   }
 
   request.signal.throwIfAborted();

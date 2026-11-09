@@ -7,9 +7,14 @@ import { LazyPanel } from '../../shared/ui/LazyPanel';
 const DiagnosticsDialog = lazy(
   async (): Promise<{
     default: typeof import('../../features/calls/DiagnosticsDialog').DiagnosticsDialog;
-  }> => ({
-    default: (await import('../../features/calls/DiagnosticsDialog')).DiagnosticsDialog,
-  }),
+  }> => {
+    const { DiagnosticsDialog: resultDiagnosticsDialog } =
+      await import('../../features/calls/DiagnosticsDialog');
+
+    return {
+      default: resultDiagnosticsDialog,
+    };
+  },
 );
 
 export function LayoutOverlays(): JSX.Element | null {

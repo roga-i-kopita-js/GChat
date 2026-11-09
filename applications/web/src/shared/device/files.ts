@@ -111,20 +111,32 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
       const fixture = new Uint8Array([0, 255, 1, 128]);
 
       try {
-        await write.write(0, fixture, options);
-        await write.commit(options);
+        const { write: writeWrite } = write;
+
+        await writeWrite.bind(write)(0, fixture, options);
+        const { commit: writeCommit } = write;
+
+        await writeCommit.bind(write)(options);
       } catch (cause) {
-        await write.abort().catch((): void => {});
+        const { abort: writeAbort } = write;
+
+        await (async () => {
+          try {
+            return await writeAbort.bind(write)();
+          } catch (cause) {}
+        })();
 
         throw cause;
       }
 
       const read = await this.read(created.ref, { offset: 0, length: 4 }, options);
 
+      const { eof: readEof, data: readData } = read ?? {};
+
       if (
-        !read.eof ||
-        read.data.length !== 4 ||
-        !read.data.every((value, index): boolean => value === fixture[index])
+        !readEof ||
+        readData.length !== 4 ||
+        !readData.every((value, index): boolean => value === fixture[index])
       ) {
         throw new DeviceError('IO_ERROR');
       }
@@ -153,7 +165,11 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
         : { checks: [{ service: 'files', check: 'readWrite', status: CheckStatus.Failed, error }] };
     } finally {
       if (created) {
-        await this.remove(created.ref, { recursive: false }).catch((): void => {});
+        await (async () => {
+          try {
+            return await this.remove(created.ref, { recursive: false });
+          } catch (cause) {}
+        })();
       }
     }
   }
@@ -164,29 +180,39 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
   ): Promise<Selection<Metadata[]>> {
     const result = await this.call('file.pick', selection, options);
 
-    if (result.outcome === 'cancelled') {
+    const { outcome: resultOutcome } = result;
+
+    if (resultOutcome === 'cancelled') {
       return { outcome: 'cancelled' };
     }
 
-    this.access(result.entries.map((value): FileRef => value.ref));
+    const { entries: resultEntries } = result;
 
-    return { outcome: 'completed', value: result.entries };
+    this.access(resultEntries.map((value): FileRef => value.ref));
+
+    const { entries: resultEntries2 } = result;
+
+    return { outcome: 'completed', value: resultEntries2 };
   }
 
   async pickDirectory(options?: CallOptions): Promise<Selection<Metadata>> {
     const result = await this.call('directory.pick', {}, options);
 
-    if (result.outcome === 'cancelled') {
+    const { outcome: resultOutcome2 } = result;
+
+    if (resultOutcome2 === 'cancelled') {
       return { outcome: 'cancelled' };
     }
 
-    if (!result.entry) {
+    const { entry: resultEntry } = result ?? {};
+
+    if (!resultEntry) {
       throw new DeviceError('INTEGRATION_ERROR');
     }
 
-    this.access([result.entry.ref]);
+    this.access([resultEntry.ref]);
 
-    return { outcome: 'completed', value: result.entry };
+    return { outcome: 'completed', value: resultEntry };
   }
 
   listAccesses(page: PageRequest, options?: CallOptions): Promise<Page<FileRef>> {
@@ -197,7 +223,9 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
     try {
       const value = await this.call('file.access.restore', { id: ref.id }, options);
 
-      this.access([value.ref]);
+      const { ref: valueRef } = value;
+
+      this.access([valueRef]);
 
       return value;
     } catch (cause) {
@@ -230,20 +258,27 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
     range: { offset: number; length: number },
     options?: CallOptions,
   ): Promise<ReadChunk> {
-    const value = await this.call('file.read', { fileId: file.id, ...range }, options);
+    const {
+      dataBase64: valueDataBase64,
+      bytesRead: valueBytesRead,
+      eof: valueEof,
+      version: valueVersion,
+    } = await this.call('file.read', { fileId: file.id, ...range }, options);
 
     return {
-      data: decode(value.dataBase64),
-      bytesRead: value.bytesRead,
-      eof: value.eof,
-      version: value.version,
+      data: decode(valueDataBase64),
+      bytesRead: valueBytesRead,
+      eof: valueEof,
+      version: valueVersion,
     };
   }
 
   async create(directory: FileRef, name: string, options?: CallOptions): Promise<Metadata> {
     const value = await this.call('file.create', { directoryId: directory.id, name }, options);
 
-    this.changed(value.ref);
+    const { ref: valueRef2 } = value;
+
+    this.changed(valueRef2);
 
     return value;
   }
@@ -255,7 +290,9 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
   ): Promise<Metadata> {
     const value = await this.call('directory.create', { directoryId: directory.id, name }, options);
 
-    this.changed(value.ref);
+    const { ref: valueRef3 } = value;
+
+    this.changed(valueRef3);
 
     return value;
   }
@@ -294,14 +331,17 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
         throw cause;
       }
 
-      void pending.then(
-        (): void => {
+      void (async () => {
+        try {
+          await pending;
+        } catch (rejectedCause) {
           busy = false;
-        },
-        (): void => {
-          busy = false;
-        },
-      );
+
+          return;
+        }
+
+        busy = false;
+      })();
 
       return cancellable((): Promise<T> => pending, callOptions, context);
     };
@@ -370,7 +410,9 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
       options,
     );
 
-    this.changed(value.ref);
+    const { ref: valueRef4 } = value;
+
+    this.changed(valueRef4);
 
     return value;
   }
@@ -386,7 +428,9 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
       options,
     );
 
-    this.changed(value.ref);
+    const { ref: valueRef5 } = value;
+
+    this.changed(valueRef5);
 
     return value;
   }
@@ -394,7 +438,9 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
   async rename(ref: FileRef, name: string, options?: CallOptions): Promise<Metadata> {
     const value = await this.call('file.rename', { id: ref.id, name }, options);
 
-    this.changed(value.ref);
+    const { ref: valueRef6 } = value;
+
+    this.changed(valueRef6);
 
     return value;
   }
@@ -411,18 +457,23 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
   ): Promise<Selection<Metadata>> {
     const value = await this.call('file.saveAs', { sourceFileId: file.id, suggestedName }, options);
 
-    if (value.outcome === 'cancelled') {
+    const { outcome: valueOutcome } = value;
+
+    if (valueOutcome === 'cancelled') {
       return { outcome: 'cancelled' };
     }
 
-    if (!value.entry) {
+    const { entry: valueEntry } = value ?? {};
+
+    if (!valueEntry) {
       throw new DeviceError('INTEGRATION_ERROR');
     }
 
-    this.changed(value.entry.ref);
-    this.access([value.entry.ref]);
+    this.changed(valueEntry.ref);
 
-    return { outcome: 'completed', value: value.entry };
+    this.access([valueEntry.ref]);
+
+    return { outcome: 'completed', value: valueEntry };
   }
 
   async export(
@@ -432,7 +483,9 @@ export class DeviceFiles extends Events<FileEvents> implements FilesService {
   ): Promise<Selection<void>> {
     const value = await this.call('file.export', { sourceFileId: file.id, suggestedName }, options);
 
-    return value.outcome === 'cancelled'
+    const { outcome: valueOutcome2 } = value;
+
+    return valueOutcome2 === 'cancelled'
       ? { outcome: 'cancelled' }
       : { outcome: 'completed', value: undefined };
   }

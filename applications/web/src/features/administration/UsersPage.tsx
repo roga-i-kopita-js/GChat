@@ -130,14 +130,19 @@ function AccountOperation({
     }
   }, [mutation.data, mutation.state]);
   const groups = groupsFetcher.data?.data;
-  const title =
-    action === 'create'
-      ? 'Создать аккаунт'
-      : action === 'password'
-        ? 'Сменить пароль'
-        : action === 'disable'
-          ? 'Отключить аккаунт?'
-          : 'Включить аккаунт?';
+  let titleValue;
+
+  if (action === 'create') {
+    titleValue = 'Создать аккаунт';
+  } else if (action === 'password') {
+    titleValue = 'Сменить пароль';
+  } else if (action === 'disable') {
+    titleValue = 'Отключить аккаунт?';
+  } else {
+    titleValue = 'Включить аккаунт?';
+  }
+
+  const title = titleValue;
 
   function submit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -166,6 +171,32 @@ function AccountOperation({
     }
 
     void mutation.submit(form, { method: 'post', action: '/admin/users' });
+  }
+
+  let groupSearchMessage;
+
+  if (groupsFetcher.data?.error) {
+    groupSearchMessage = 'Подсказки групп недоступны. При создании сервер проверит название.';
+  } else if (groupsFetcher.state !== 'idle') {
+    groupSearchMessage = 'Ищем группы…';
+  } else if (
+    groups?.groups.some(
+      (item): boolean => item.name.toLocaleLowerCase() === group.trim().toLocaleLowerCase(),
+    )
+  ) {
+    groupSearchMessage = 'Пользователь будет добавлен в существующую группу.';
+  } else {
+    groupSearchMessage = 'Если группы с этим названием нет, она будет создана вместе с аккаунтом.';
+  }
+
+  let submitLabel;
+
+  if (busy) {
+    submitLabel = 'Выполняем…';
+  } else if (action === 'create') {
+    submitLabel = 'Создать аккаунт';
+  } else {
+    submitLabel = 'Подтвердить';
   }
 
   return (
@@ -222,16 +253,7 @@ function AccountOperation({
               </datalist>
               {group.trim() && (
                 <p className="admin-hint" role="status">
-                  {groupsFetcher.data?.error
-                    ? 'Подсказки групп недоступны. При создании сервер проверит название.'
-                    : groupsFetcher.state !== 'idle'
-                      ? 'Ищем группы…'
-                      : groups?.groups.some(
-                            (item): boolean =>
-                              item.name.toLocaleLowerCase() === group.trim().toLocaleLowerCase(),
-                          )
-                        ? 'Пользователь будет добавлен в существующую группу.'
-                        : 'Если группы с этим названием нет, она будет создана вместе с аккаунтом.'}
+                  {groupSearchMessage}
                 </p>
               )}
               <label>
@@ -338,7 +360,7 @@ function AccountOperation({
           </button>
           {!failed && (
             <button className={action === 'disable' ? 'danger-button' : 'primary'} disabled={busy}>
-              {busy ? 'Выполняем…' : action === 'create' ? 'Создать аккаунт' : 'Подтвердить'}
+              {submitLabel}
             </button>
           )}
         </div>
@@ -434,6 +456,97 @@ export function UsersPage({
     void revalidator.revalidate();
   }
 
+  let usersContent;
+
+  if (listError) {
+    usersContent = (
+      <div className="list-empty" role="alert">
+        <p>{listError}</p>
+        <button
+          className="secondary"
+          onClick={(): void => {
+            void revalidator.revalidate();
+          }}
+        >
+          Повторить
+        </button>
+      </div>
+    );
+  } else if (!list) {
+    usersContent = (
+      <div className="list-empty" role="status">
+        Загружаем аккаунты…
+      </div>
+    );
+  } else {
+    let emptyListMessage;
+
+    if (q.trim() || status !== 'all') {
+      emptyListMessage = 'Нет совпадений';
+    } else if (offset) {
+      emptyListMessage = 'На этой странице нет аккаунтов';
+    } else {
+      emptyListMessage = 'Аккаунтов пока нет';
+    }
+
+    usersContent = (
+      <>
+        <div className="admin-list-caption">
+          Найдено: {list.total} · активность означает доступ к входу
+        </div>
+        {!list.users.length && <div className="list-empty">{emptyListMessage}</div>}
+        {list.users.map((item): JSX.Element => (
+          <Link
+            to={accountUrl(item.id)}
+            className={'admin-row' + (selected === item.id ? ' selected' : '')}
+            key={item.id}
+            onClick={(): void => {
+              setNotice('');
+            }}
+          >
+            <Avatar name={item.display_name} />
+            <span className="admin-row-info">
+              <strong>{item.display_name}</strong>
+              <small>
+                @{item.login} · {item.role === 'admin' ? 'Администратор' : 'Пользователь'}
+              </small>
+              <small>
+                {item.groups.map((group): string => group.name).join(', ') || 'Без групп'}
+              </small>
+            </span>
+            <span className={'admin-status ' + item.status}>
+              {item.status === 'active' ? 'Активен' : 'Отключён'}
+            </span>
+            <ChevronRight size={15} />
+          </Link>
+        ))}
+        <div className="admin-pagination">
+          <span>
+            {list.users.length
+              ? `${offset + 1}–${Math.min(offset + 25, list.total)} из ${list.total}`
+              : '0 аккаунтов'}
+          </span>
+          <button
+            className="icon"
+            aria-label="Предыдущая страница"
+            disabled={!offset || loading}
+            onClick={(): void => changeParams({ offset: String(Math.max(0, offset - 25)) })}
+          >
+            <ChevronLeft size={19} />
+          </button>
+          <button
+            className="icon"
+            aria-label="Следующая страница"
+            disabled={offset + 25 >= list.total || loading}
+            onClick={(): void => changeParams({ offset: String(offset + 25) })}
+          >
+            <ChevronRight size={19} />
+          </button>
+        </div>
+      </>
+    );
+  }
+
   return (
     <section className="admin-workspace" aria-label="Управление аккаунтами">
       <div className="admin-page-actions">
@@ -492,86 +605,7 @@ export function UsersPage({
       )}
       <div className="admin-layout">
         <section className="admin-list" aria-label="Список аккаунтов" aria-busy={loading}>
-          {listError ? (
-            <div className="list-empty" role="alert">
-              <p>{listError}</p>
-              <button
-                className="secondary"
-                onClick={(): void => {
-                  void revalidator.revalidate();
-                }}
-              >
-                Повторить
-              </button>
-            </div>
-          ) : !list ? (
-            <div className="list-empty" role="status">
-              Загружаем аккаунты…
-            </div>
-          ) : (
-            <>
-              <div className="admin-list-caption">
-                Найдено: {list.total} · активность означает доступ к входу
-              </div>
-              {!list.users.length && (
-                <div className="list-empty">
-                  {q.trim() || status !== 'all'
-                    ? 'Нет совпадений'
-                    : offset
-                      ? 'На этой странице нет аккаунтов'
-                      : 'Аккаунтов пока нет'}
-                </div>
-              )}
-              {list.users.map((item): JSX.Element => (
-                <Link
-                  to={accountUrl(item.id)}
-                  className={'admin-row' + (selected === item.id ? ' selected' : '')}
-                  key={item.id}
-                  onClick={(): void => {
-                    setNotice('');
-                  }}
-                >
-                  <Avatar name={item.display_name} />
-                  <span className="admin-row-info">
-                    <strong>{item.display_name}</strong>
-                    <small>
-                      @{item.login} · {item.role === 'admin' ? 'Администратор' : 'Пользователь'}
-                    </small>
-                    <small>
-                      {item.groups.map((group): string => group.name).join(', ') || 'Без групп'}
-                    </small>
-                  </span>
-                  <span className={'admin-status ' + item.status}>
-                    {item.status === 'active' ? 'Активен' : 'Отключён'}
-                  </span>
-                  <ChevronRight size={15} />
-                </Link>
-              ))}
-              <div className="admin-pagination">
-                <span>
-                  {list.users.length
-                    ? `${offset + 1}–${Math.min(offset + 25, list.total)} из ${list.total}`
-                    : '0 аккаунтов'}
-                </span>
-                <button
-                  className="icon"
-                  aria-label="Предыдущая страница"
-                  disabled={!offset || loading}
-                  onClick={(): void => changeParams({ offset: String(Math.max(0, offset - 25)) })}
-                >
-                  <ChevronLeft size={19} />
-                </button>
-                <button
-                  className="icon"
-                  aria-label="Следующая страница"
-                  disabled={offset + 25 >= list.total || loading}
-                  onClick={(): void => changeParams({ offset: String(offset + 25) })}
-                >
-                  <ChevronRight size={19} />
-                </button>
-              </div>
-            </>
-          )}
+          {usersContent}
         </section>
       </div>
       <Outlet
@@ -629,6 +663,75 @@ export function UserDetailRoute(): JSX.Element {
   const revalidator = useRevalidator();
   const loading = revalidator.state === 'loading';
 
+  let detailContent;
+
+  if (detail?.error) {
+    detailContent = (
+      <div className="list-empty" role="alert">
+        <p>{detail.error}</p>
+        <button
+          className="secondary"
+          onClick={(): void => {
+            void revalidator.revalidate();
+          }}
+        >
+          Повторить
+        </button>
+      </div>
+    );
+  } else if (!user) {
+    detailContent = (
+      <div className="list-empty" role="status">
+        Загружаем карточку…
+      </div>
+    );
+  } else {
+    detailContent = (
+      <>
+        <Avatar name={user.display_name} large />
+        <h2>{user.display_name}</h2>
+        <p>@{user.login}</p>
+        <span className={'admin-status ' + user.status}>
+          {user.status === 'active' ? 'Активен' : 'Отключён'}
+        </span>
+        <dl className="admin-facts">
+          <dt>Роль</dt>
+          <dd>
+            {user.role === 'admin' ? 'Администратор' : 'Пользователь'}
+            {user.id === userId ? ' · это вы' : ''}
+          </dd>
+          <dt>Группы</dt>
+          <dd>{user.groups.map((group): string => group.name).join(', ') || 'Без групп'}</dd>
+          <dt>Создан</dt>
+          <dd>{new Date(user.created_at).toLocaleString('ru')}</dd>
+          {user.disabled_at && (
+            <>
+              <dt>Отключён</dt>
+              <dd>{new Date(user.disabled_at).toLocaleString('ru')}</dd>
+            </>
+          )}
+        </dl>
+        <button
+          className="secondary"
+          disabled={loading}
+          onClick={(): void => setOperation({ action: 'password', user })}
+        >
+          Сменить пароль
+        </button>
+        <button
+          className={user.status === 'active' ? 'danger-button' : 'primary'}
+          disabled={user.id === userId || loading}
+          onClick={(): void =>
+            setOperation({ action: user.status === 'active' ? 'disable' : 'enable', user })
+          }
+        >
+          {user.status === 'active' ? 'Отключить аккаунт' : 'Включить аккаунт'}
+        </button>
+        {user.id === userId && <p className="admin-hint">Собственный аккаунт отключить нельзя.</p>}
+      </>
+    );
+  }
+
   return (
     <>
       {showDetails && (
@@ -640,72 +743,7 @@ export function UserDetailRoute(): JSX.Element {
             });
           }}
         >
-          <div className="admin-detail">
-            {detail?.error ? (
-              <div className="list-empty" role="alert">
-                <p>{detail.error}</p>
-                <button
-                  className="secondary"
-                  onClick={(): void => {
-                    void revalidator.revalidate();
-                  }}
-                >
-                  Повторить
-                </button>
-              </div>
-            ) : !user ? (
-              <div className="list-empty" role="status">
-                Загружаем карточку…
-              </div>
-            ) : (
-              <>
-                <Avatar name={user.display_name} large />
-                <h2>{user.display_name}</h2>
-                <p>@{user.login}</p>
-                <span className={'admin-status ' + user.status}>
-                  {user.status === 'active' ? 'Активен' : 'Отключён'}
-                </span>
-                <dl className="admin-facts">
-                  <dt>Роль</dt>
-                  <dd>
-                    {user.role === 'admin' ? 'Администратор' : 'Пользователь'}
-                    {user.id === userId ? ' · это вы' : ''}
-                  </dd>
-                  <dt>Группы</dt>
-                  <dd>
-                    {user.groups.map((group): string => group.name).join(', ') || 'Без групп'}
-                  </dd>
-                  <dt>Создан</dt>
-                  <dd>{new Date(user.created_at).toLocaleString('ru')}</dd>
-                  {user.disabled_at && (
-                    <>
-                      <dt>Отключён</dt>
-                      <dd>{new Date(user.disabled_at).toLocaleString('ru')}</dd>
-                    </>
-                  )}
-                </dl>
-                <button
-                  className="secondary"
-                  disabled={loading}
-                  onClick={(): void => setOperation({ action: 'password', user })}
-                >
-                  Сменить пароль
-                </button>
-                <button
-                  className={user.status === 'active' ? 'danger-button' : 'primary'}
-                  disabled={user.id === userId || loading}
-                  onClick={(): void =>
-                    setOperation({ action: user.status === 'active' ? 'disable' : 'enable', user })
-                  }
-                >
-                  {user.status === 'active' ? 'Отключить аккаунт' : 'Включить аккаунт'}
-                </button>
-                {user.id === userId && (
-                  <p className="admin-hint">Собственный аккаунт отключить нельзя.</p>
-                )}
-              </>
-            )}
-          </div>
+          <div className="admin-detail">{detailContent}</div>
         </Modal>
       )}
     </>

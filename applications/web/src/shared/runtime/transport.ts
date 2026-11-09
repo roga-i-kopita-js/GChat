@@ -139,11 +139,13 @@ export class BrowserTransport {
     };
     const monitor = setInterval((): void => {
       if (this.updatePending) {
-        void updateRequested().then((pending): void => {
+        void (async () => {
+          const pending = await updateRequested();
+
           if (!pending) {
             this.updatePending = false;
           }
-        });
+        })();
       }
     }, 1000);
 
@@ -195,40 +197,46 @@ export class BrowserTransport {
     const controller = new AbortController();
 
     this.controller = controller;
-    void navigator.locks
-      .request('gchat-ws-owner', { signal: controller.signal }, async (): Promise<void> => {
-        if (sid !== this.sid || !this.running) {
-          return;
-        }
-
-        await navigator.locks.request(
-          updateLock,
-          { mode: 'shared', signal: controller.signal },
+    void (async () => {
+      try {
+        return await navigator.locks.request(
+          'gchat-ws-owner',
+          { signal: controller.signal },
           async (): Promise<void> => {
             if (sid !== this.sid || !this.running) {
               return;
             }
 
-            this.updatePending = false;
-            const lifetime = new Promise<void>((resolve): void => {
-              this.release = resolve;
-            });
+            await navigator.locks.request(
+              updateLock,
+              { mode: 'shared', signal: controller.signal },
+              async (): Promise<void> => {
+                if (sid !== this.sid || !this.running) {
+                  return;
+                }
 
-            this.set({ owner: true });
-            void this.connect();
-            await lifetime;
-            this.release = undefined;
-            this.closeSocket();
-            this.set({ owner: false });
+                this.updatePending = false;
+                const lifetime = new Promise<void>((resolve): void => {
+                  this.release = resolve;
+                });
+
+                this.set({ owner: true });
+                void this.connect();
+                await lifetime;
+                this.release = undefined;
+                this.closeSocket();
+                this.set({ owner: false });
+              },
+            );
           },
         );
-      })
-      .catch((): void => {})
-      .finally((): void => {
+      } catch (cause) {
+      } finally {
         if (this.running && sid === this.sid && !controller.signal.aborted) {
           this.retry = setTimeout((): void => this.elect(sid), 250);
         }
-      });
+      }
+    })();
   }
 
   reconnect(seconds = 0): void {

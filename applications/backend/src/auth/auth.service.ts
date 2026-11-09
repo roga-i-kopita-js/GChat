@@ -35,9 +35,12 @@ export class AuthService {
 
     this.limits.check(login, 'login');
     const account = await this.accounts.byLogin(login);
-    const valid = await this.crypto.verifyPassword(input.password, account?.passwordHash);
+    const { passwordHash: accountPasswordHash } = account ?? {};
+    const valid = await this.crypto.verifyPassword(input.password, accountPasswordHash);
 
-    if (!account || !valid || account.disabledAt) {
+    const { disabledAt: accountDisabledAt } = account ?? {};
+
+    if (!account || !valid || accountDisabledAt) {
       this.limits.check(login, 'login', true);
 
       throw this.error.invalidCredentials();
@@ -46,9 +49,13 @@ export class AuthService {
     this.limits.check(login, 'login');
 
     return this.sessions.transaction(async (tx): Promise<TokensDto> => {
-      const current = await this.sessions.lockAccount(tx, account.id);
+      const { id: accountId } = account;
+      const current = await this.sessions.lockAccount(tx, accountId);
 
-      if (!current || current.disabledAt || current.passwordHash !== account.passwordHash) {
+      const { disabledAt: currentDisabledAt, passwordHash: currentPasswordHash } = current ?? {};
+      const { passwordHash: accountPasswordHash2 } = account;
+
+      if (!current || currentDisabledAt || currentPasswordHash !== accountPasswordHash2) {
         this.limits.check(login, 'login', true);
 
         throw this.error.invalidCredentials();
@@ -57,9 +64,12 @@ export class AuthService {
       const sid = randomUUID();
       const tokens = await this.crypto.issue(current, sid);
 
+      const { id: currentId } = current;
+      const { refresh_token: tokensRefreshToken } = tokens;
+
       await tx
         .insert(authSessions)
-        .values({ id: sid, userId: current.id, refreshTokenHash: tokenHash(tokens.refresh_token) });
+        .values({ id: sid, userId: currentId, refreshTokenHash: tokenHash(tokensRefreshToken) });
 
       return tokens;
     });
@@ -79,22 +89,39 @@ export class AuthService {
       const account = await this.sessions.lockAccount(tx, initial.userId);
       const state = await this.sessions.read(sid, tx, true);
 
-      if (!account || account.disabledAt || !state || state.userId !== account.id) {
+      const { disabledAt: accountDisabledAt2 } = account ?? {};
+      const { userId: stateUserId } = state ?? {};
+      const { id: accountId2 } = account ?? {};
+
+      if (!account || accountDisabledAt2 || !state || stateUserId !== accountId2) {
         throw this.error.sessionInvalid();
       }
 
       const now = await this.sessions.now(tx);
 
+      const {
+        rotationExpiresAt: stateRotationExpiresAt,
+        rotationRequestId: stateRotationRequestId,
+        rotationTokenHash: stateRotationTokenHash,
+      } = state;
+
       if (
-        state.rotationExpiresAt &&
-        state.rotationExpiresAt > now &&
-        state.rotationRequestId === input.request_id &&
-        matches(state.rotationTokenHash!, hash)
+        stateRotationExpiresAt &&
+        stateRotationExpiresAt > now &&
+        stateRotationRequestId === input.request_id &&
+        matches(stateRotationTokenHash!, hash)
       ) {
-        return this.crypto.decrypt(state.rotationEncrypted!, sid, input.request_id);
+        const { rotationEncrypted: stateRotationEncrypted } = state;
+
+        return this.crypto.decrypt(stateRotationEncrypted!, sid, input.request_id);
       }
 
-      if (!matches(state.refreshTokenHash, hash) || state.rotationRequestId === input.request_id) {
+      const {
+        refreshTokenHash: stateRefreshTokenHash,
+        rotationRequestId: stateRotationRequestId2,
+      } = state;
+
+      if (!matches(stateRefreshTokenHash, hash) || stateRotationRequestId2 === input.request_id) {
         throw this.error.sessionInvalid();
       }
 
@@ -102,10 +129,12 @@ export class AuthService {
       const tokens = await this.crypto.issue(account, sid);
       const encrypted = await this.crypto.encrypt(tokens, sid, input.request_id);
 
+      const { refresh_token: tokensRefreshToken2 } = tokens;
+
       await tx
         .update(authSessions)
         .set({
-          refreshTokenHash: tokenHash(tokens.refresh_token),
+          refreshTokenHash: tokenHash(tokensRefreshToken2),
           updatedAt: sql`clock_timestamp()`,
           rotationRequestId: input.request_id,
           rotationTokenHash: hash,
@@ -132,17 +161,25 @@ export class AuthService {
       await this.sessions.lockAccount(tx, initial.userId);
       const state = await this.sessions.read(sid, tx, true);
 
-      if (!state || state.userId !== initial.userId) {
+      const { userId: stateUserId2 } = state ?? {};
+
+      if (!state || stateUserId2 !== initial.userId) {
         return;
       }
 
       const now = await this.sessions.now(tx);
 
+      const {
+        refreshTokenHash: stateRefreshTokenHash2,
+        rotationExpiresAt: stateRotationExpiresAt2,
+        rotationTokenHash: stateRotationTokenHash2,
+      } = state;
+
       if (
-        matches(state.refreshTokenHash, hash) ||
-        (state.rotationExpiresAt &&
-          state.rotationExpiresAt > now &&
-          matches(state.rotationTokenHash!, hash))
+        matches(stateRefreshTokenHash2, hash) ||
+        (stateRotationExpiresAt2 &&
+          stateRotationExpiresAt2 > now &&
+          matches(stateRotationTokenHash2!, hash))
       ) {
         await tx.delete(authSessions).where(eq(authSessions.id, sid));
       }
@@ -155,7 +192,12 @@ export class AuthService {
   ): Promise<{ accountActive: boolean; sessionActive: boolean }> {
     const state = await this.sessions.access(userId, sid);
 
-    return { accountActive: !!state && !state.account.disabledAt, sessionActive: !!state?.session };
+    const { account: stateAccount, session: stateSession } = state ?? {};
+
+    return {
+      accountActive: !!stateAccount && !stateAccount.disabledAt,
+      sessionActive: !!stateSession,
+    };
   }
 
   lockActiveAccounts(tx: DatabaseTransaction, userIds: string[]): Promise<string[]> {
@@ -195,17 +237,20 @@ export class AuthService {
 
   async authenticate(token: string): Promise<AuthIdentity> {
     const identity = await this.crypto.verifyAccess(token);
-    const state = await this.sessions.access(identity.userId, identity.sessionId);
+    const { userId: identityUserId, sessionId: identitySessionId } = identity;
+    const state = await this.sessions.access(identityUserId, identitySessionId);
 
-    if (!state || state.account.disabledAt || !state.session) {
+    const { account: stateAccount2, session: stateSession2 } = state ?? {};
+
+    if (!stateAccount2 || stateAccount2.disabledAt || !stateSession2) {
       throw this.error.sessionInvalid();
     }
 
     return {
       ...identity,
-      login: state.account.login,
-      displayName: state.account.displayName,
-      role: state.account.role,
+      login: stateAccount2.login,
+      displayName: stateAccount2.displayName,
+      role: stateAccount2.role,
     };
   }
 }

@@ -55,7 +55,9 @@ export function subscribeUpdate(listener: () => void): () => void {
 export async function updateRequested(): Promise<boolean> {
   const locks = await navigator.locks.query();
 
-  return [...(locks.held ?? []), ...(locks.pending ?? [])].some(
+  const { held: locksHeld, pending: locksPending } = locks;
+
+  return [...(locksHeld ?? []), ...(locksPending ?? [])].some(
     (lock): boolean => lock.name === updateLock && lock.mode === 'exclusive',
   );
 }
@@ -77,13 +79,15 @@ export function startUpdates(): void {
   };
   const heartbeat = setInterval((): void => {
     if (state.pending) {
-      void updateRequested()
-        .then((pending): void => {
+      void (async () => {
+        try {
+          const pending = await updateRequested();
+
           if (!pending) {
             set({ pending: false });
           }
-        })
-        .catch((): void => {});
+        } catch (cause) {}
+      })();
     }
   }, 1000);
 
@@ -106,20 +110,30 @@ export function startUpdates(): void {
   cleanup.push((): void =>
     navigator.serviceWorker.removeEventListener('controllerchange', controlledChange),
   );
-  void registerPwa()
-    .then((registration): void => {
+  void (async () => {
+    try {
+      const registration = await registerPwa();
+
       if (current !== generation) {
         return;
       }
 
       const inspect = (): void => {
-        waiting = registration.waiting;
+        const { waiting: registrationWaiting } = registration;
+
+        waiting = registrationWaiting;
         set({ available: !!waiting });
       };
 
       inspect();
       const update = (): void => {
-        void registration.update().catch((): void => {});
+        void (async () => {
+          try {
+            const { update: registrationUpdate } = registration;
+
+            return await registrationUpdate.bind(registration)();
+          } catch (cause) {}
+        })();
       };
       const visible = (): void => {
         if (document.visibilityState === 'visible') {
@@ -127,28 +141,33 @@ export function startUpdates(): void {
         }
       };
       const found = (): void => {
-        const installing = registration.installing;
+        const { installing: registrationInstalling } = registration;
+        const installing = registrationInstalling;
 
         installing?.addEventListener('statechange', inspect);
         cleanup.push((): void => installing?.removeEventListener('statechange', inspect));
       };
 
-      registration.addEventListener('updatefound', found);
+      const { addEventListener: registrationAddEventListener } = registration;
+
+      registrationAddEventListener.bind(registration)('updatefound', found);
       window.addEventListener('online', update);
       document.addEventListener('visibilitychange', visible);
       cleanup.push((): void => {
-        registration.removeEventListener('updatefound', found);
+        const { removeEventListener: registrationRemoveEventListener } = registration;
+
+        registrationRemoveEventListener.bind(registration)('updatefound', found);
         window.removeEventListener('online', update);
         document.removeEventListener('visibilitychange', visible);
       });
-    })
-    .catch((): void => {
+    } catch (cause) {
       if (current !== generation) {
         return;
       }
 
       set({ error: 'Не удалось подготовить офлайн-режим. Перезагрузите страницу для повтора.' });
-    });
+    }
+  })();
 }
 
 export async function applyUpdate(): Promise<void> {

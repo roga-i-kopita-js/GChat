@@ -143,12 +143,12 @@ export async function runNavigationChecks(waitForNative = false): Promise<void> 
 
   await until((): boolean => router.state.navigation.state === 'loading');
   result = await navigation.navigate('/calls');
-  const previous = await old;
+  const { outcome: previousOutcome } = await old;
 
   check(
     'superseded',
-    previous.outcome === 'superseded' && result.outcome === 'committed',
-    previous.outcome,
+    previousOutcome === 'superseded' && result.outcome === 'committed',
+    previousOutcome,
   );
   hold = false;
   release?.();
@@ -176,10 +176,13 @@ export async function runNavigationChecks(waitForNative = false): Promise<void> 
   result = await proceed;
   check('blocker-proceeded', result.outcome === 'redirected', result.outcome);
   router.deleteBlocker('harness-dirty-form');
-  const revision = (await navigation.getState()).revision;
+  const { revision: getStateResultRevision } = await navigation.getState();
+  const revision = getStateResultRevision;
 
   await navigation.revalidate();
-  check('revision-preserved', (await navigation.getState()).revision >= revision);
+  const { revision: getStateResultRevision2 } = await navigation.getState();
+
+  check('revision-preserved', getStateResultRevision2 >= revision);
   const controller = new AbortController();
 
   controller.abort();
@@ -219,39 +222,56 @@ export async function runFetchChecks(
     }
   };
   const bytes = await request('/api/bridge-fixture/bytes');
-  const clone = bytes.clone();
+  const { clone: bytesClone } = bytes;
+  const clone = bytesClone.bind(bytes)();
+
+  const {
+    url: bytesUrl,
+    type: bytesType,
+    redirected: bytesRedirected,
+    headers: bytesHeaders,
+  } = bytes ?? {};
 
   check(
     'response-clone',
     bytes instanceof Response &&
-      bytes.url.endsWith('/api/bridge-fixture/bytes') &&
-      bytes.type === 'basic' &&
+      bytesUrl.endsWith('/api/bridge-fixture/bytes') &&
+      bytesType === 'basic' &&
       clone.type === 'basic' &&
-      clone.url === bytes.url &&
-      !bytes.redirected &&
-      !bytes.headers.has('set-cookie'),
+      clone.url === bytesUrl &&
+      !bytesRedirected &&
+      !bytesHeaders.has('set-cookie'),
   );
+  const { arrayBuffer: bytesArrayBuffer } = bytes;
+
   check(
     'binary-body',
-    [...new Uint8Array(await bytes.arrayBuffer())].join(',') === '0,1,2,255' &&
+    [...new Uint8Array(await bytesArrayBuffer.bind(bytes)())].join(',') === '0,1,2,255' &&
       [...new Uint8Array(await clone.arrayBuffer())].join(',') === '0,1,2,255',
   );
   const empty = await request('/api/bridge-fixture/empty');
   const notModified = await request('/api/bridge-fixture/not-modified-large');
   const head = await request('/api/bridge-fixture/head-large', { method: 'HEAD' });
 
+  const { status: emptyStatus, body: emptyBody } = empty;
+  const { status: notModifiedStatus, body: notModifiedBody } = notModified;
+  const { status: headStatus, body: headBody } = head;
+
   check(
     'bodyless',
-    empty.status === 204 &&
-      empty.body === null &&
-      notModified.status === 304 &&
-      notModified.body === null &&
-      head.status === 200 &&
-      head.body === null,
+    emptyStatus === 204 &&
+      emptyBody === null &&
+      notModifiedStatus === 304 &&
+      notModifiedBody === null &&
+      headStatus === 200 &&
+      headBody === null,
   );
   const invalid = await request('/api/bridge-fixture/error');
 
-  check('http-error', invalid.status === 422 && (await invalid.json()).fixture === true);
+  const { status: invalidStatus, json: invalidJson } = invalid;
+  const { fixture: resultFixture } = await invalidJson.bind(invalid)();
+
+  check('http-error', invalidStatus === 422 && resultFixture === true);
 
   for (const [name, url, code] of [
     ['redirect-rejected', '/api/bridge-fixture/redirect', 'NETWORK_ERROR'],
@@ -270,11 +290,15 @@ export async function runFetchChecks(
   }
 
   let cancelled = false;
-  const pending = request('/api/bridge-fixture/slow', { signal: controller.signal }).catch(
-    (error: unknown): void => {
+  const pending = (async () => {
+    try {
+      return await request('/api/bridge-fixture/slow', { signal: controller.signal });
+    } catch (cause) {
+      const error: unknown = cause;
+
       cancelled = error instanceof DOMException && error.name === 'AbortError';
-    },
-  );
+    }
+  })();
 
   await new Promise<void>((resolve): void => {
     setTimeout(resolve, 100);
@@ -283,5 +307,7 @@ export async function runFetchChecks(
   await pending;
   check('cancelled', cancelled);
   nativeHttp.activate(cycle!, location.origin, new AbortController().signal);
-  check('usable-after-cancel', (await request('/api/bridge-fixture/empty')).status === 204);
+  const { status: resultStatus } = await request('/api/bridge-fixture/empty');
+
+  check('usable-after-cancel', resultStatus === 204);
 }

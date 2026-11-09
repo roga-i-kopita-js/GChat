@@ -92,13 +92,17 @@ export class DialogModel<
       return;
     }
 
-    this.running = this.refresh().finally((): void => {
-      this.running = undefined;
+    this.running = (async () => {
+      try {
+        return await this.refresh();
+      } finally {
+        this.running = undefined;
 
-      if (this.dirty && !this.stopped) {
-        this.invalidate();
+        if (this.dirty && !this.stopped) {
+          this.invalidate();
+        }
       }
-    });
+    })();
   }
 
   private async refresh(): Promise<void> {
@@ -159,13 +163,17 @@ export class DialogModels {
         storageWarning: null,
       },
       DialogModelEvent.ListChanged,
-      async (): Promise<Omit<DialogListState, 'revision'>> => ({
-        status: 'ready',
-        items: await runtime.list(),
-        hasMore: runtime.listHasMore,
-        error: null,
-        storageWarning: runtime.getSnapshot().storageWarning,
-      }),
+      async (): Promise<Omit<DialogListState, 'revision'>> => {
+        const itemsValue = await runtime.list();
+
+        return {
+          status: 'ready',
+          items: itemsValue,
+          hasMore: runtime.listHasMore,
+          error: null,
+          storageWarning: runtime.getSnapshot().storageWarning,
+        };
+      },
     );
   }
 
@@ -178,12 +186,16 @@ export class DialogModels {
       model = new DialogModel(
         { revision: 0, dialogId: id, status: 'starting', view: null, error: null },
         DialogModelEvent.ConversationChanged,
-        async (): Promise<Omit<DialogConversationState, 'revision'>> => ({
-          dialogId: id,
-          status: 'ready',
-          view: await this.runtime.view(id),
-          error: null,
-        }),
+        async (): Promise<Omit<DialogConversationState, 'revision'>> => {
+          const viewValue = await this.runtime.view(id);
+
+          return {
+            dialogId: id,
+            status: 'ready',
+            view: viewValue,
+            error: null,
+          };
+        },
         (): void => {
           queueMicrotask((): void => {
             if (!model?.hasSubscribers) {

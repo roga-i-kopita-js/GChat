@@ -8,6 +8,7 @@ const search = z
   .max(80)
   .regex(/^[^\x00-\x1f\x7f]*$/);
 
+/* oxlint-disable gchat/no-promise-chains -- Zod .catch supplies validation fallbacks, not Promise handlers. */
 export const adminUsersQuerySchema = z.object({
   q: search.catch(''),
   status: z.enum(['all', 'active', 'disabled']).catch('all'),
@@ -20,6 +21,7 @@ export const adminUsersQuerySchema = z.object({
 });
 
 export const adminGroupsQuerySchema = z.object({ q: search.catch('') });
+/* oxlint-enable gchat/no-promise-chains */
 
 export const adminUserParamsSchema = z.object({ userId: z.uuid() });
 

@@ -61,12 +61,17 @@ export class NavigationError extends DeviceError implements NavigationFailure {
     readonly operation: 'navigate' | 'revalidate' = 'navigate',
   ) {
     super(code);
-    this.message =
-      code === 'CANCELLED'
-        ? 'Переход отменён'
-        : code === 'INVALID_ARGUMENT'
-          ? 'Недопустимый адрес перехода'
-          : 'Не удалось выполнить переход';
+    let errorMessage;
+
+    if (code === 'CANCELLED') {
+      errorMessage = 'Переход отменён';
+    } else if (code === 'INVALID_ARGUMENT') {
+      errorMessage = 'Недопустимый адрес перехода';
+    } else {
+      errorMessage = 'Не удалось выполнить переход';
+    }
+
+    this.message = errorMessage;
   }
 }
 
@@ -202,17 +207,22 @@ export class DeviceNavigation {
       this.emit(NavigationEvent.Started, { revision: this.version(), id, to: target });
 
       try {
-        void this.originalNavigate(target, { replace: options.replace ?? false }).then(
-          (): void => {
-            pending.returned = true;
-            this.checkPending();
-          },
-          (): void => {
+        void (async () => {
+          try {
+            await this.originalNavigate(target, {
+              replace: options.replace ?? false,
+            });
+          } catch (rejectedCause) {
             if (this.pending === pending) {
               this.finish(NavigationOutcome.Failed);
             }
-          },
-        );
+
+            return;
+          }
+
+          pending.returned = true;
+          this.checkPending();
+        })();
       } catch {
         if (this.pending === pending) {
           this.finish(NavigationOutcome.Failed);
@@ -232,18 +242,21 @@ export class DeviceNavigation {
       const current = this.router.revalidate();
 
       this.revalidating = current;
-      void current.then(
-        (): void => {
+      void (async () => {
+        try {
+          await current;
+        } catch (rejectedCause) {
           if (this.revalidating === current) {
             this.revalidating = undefined;
           }
-        },
-        (): void => {
-          if (this.revalidating === current) {
-            this.revalidating = undefined;
-          }
-        },
-      );
+
+          return;
+        }
+
+        if (this.revalidating === current) {
+          this.revalidating = undefined;
+        }
+      })();
     }
 
     const operation = this.revalidating;
@@ -260,16 +273,19 @@ export class DeviceNavigation {
 
       options.signal?.addEventListener('abort', cancelled, { once: true });
       this.stoppedSignal.signal.addEventListener('abort', cancelled, { once: true });
-      void operation.then(
-        (): void => {
-          clean();
-          resolve();
-        },
-        (): void => {
+      void (async () => {
+        try {
+          await operation;
+        } catch (rejectedCause) {
           clean();
           reject(new NavigationError('INTEGRATION_ERROR', 'revalidate'));
-        },
-      );
+
+          return;
+        }
+
+        clean();
+        resolve();
+      })();
     });
   }
 
@@ -325,12 +341,20 @@ export class DeviceNavigation {
   }
 
   private status(): NavigationState['status'] {
-    return this.router.state.navigation.state === 'submitting'
-      ? 'submitting'
-      : this.router.state.navigation.state === 'loading' ||
-          this.router.state.revalidation === 'loading'
-        ? 'loading'
-        : 'idle';
+    let navigationStatus: NavigationState['status'];
+
+    if (this.router.state.navigation.state === 'submitting') {
+      navigationStatus = 'submitting';
+    } else if (
+      this.router.state.navigation.state === 'loading' ||
+      this.router.state.revalidation === 'loading'
+    ) {
+      navigationStatus = 'loading';
+    } else {
+      navigationStatus = 'idle';
+    }
+
+    return navigationStatus;
   }
 
   private version(): number {

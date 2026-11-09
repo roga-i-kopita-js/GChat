@@ -28,13 +28,21 @@ export class AuthSessions {
   }
 
   async now(tx: DatabaseTransaction): Promise<Date> {
-    const result = await tx.execute<{ now: Date }>(sql`select clock_timestamp() as now`);
+    const { rows: resultRows } = await tx.execute<{ now: Date }>(
+      sql`select clock_timestamp() as now`,
+    );
 
-    return new Date(result.rows[0]!.now);
+    return new Date(resultRows[0]!.now);
   }
 
   async lockAccount(tx: DatabaseTransaction, id: string): Promise<Account | undefined> {
-    return (await tx.select().from(users).where(eq(users.id, id)).for('share'))[0];
+    const { [0]: forResultFirst } = await tx
+      .select()
+      .from(users)
+      .where(eq(users.id, id))
+      .for('share');
+
+    return forResultFirst;
   }
 
   async read(
@@ -50,7 +58,9 @@ export class AuthSessions {
 
     const query = tx.select().from(authSessions).where(eq(authSessions.id, sid));
 
-    return (await (lock ? query.for('update') : query))[0];
+    const { [0]: resultFirst } = await (lock ? query.for('update') : query);
+
+    return resultFirst;
   }
 
   /** Account and session are read by one statement, hence one PostgreSQL snapshot. */

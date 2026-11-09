@@ -39,7 +39,8 @@ export async function syncWebPush(
       return false;
     }
 
-    let subscription = await registration.pushManager.getSubscription();
+    const { pushManager: registrationPushManager } = registration;
+    let subscription = await registrationPushManager.getSubscription();
 
     if (!current()) {
       return false;
@@ -65,7 +66,9 @@ export async function syncWebPush(
     }
 
     if (!subscription && create && Notification.permission === 'granted') {
-      subscription = await registration.pushManager.subscribe({
+      const { pushManager: registrationPushManager2 } = registration;
+
+      subscription = await registrationPushManager2.subscribe({
         userVisibleOnly: true,
         applicationServerKey: vapidKey(key),
       });

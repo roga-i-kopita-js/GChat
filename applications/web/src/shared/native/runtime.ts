@@ -99,11 +99,17 @@ export class NativeRuntime {
     const cycle = this.state.cycleId;
 
     this.navigationCycle = cycle;
-    void this.navigationBinding.start(cycle).catch((cause): void => {
-      if (this.state.cycleId === cycle) {
-        this.fail(cause);
+    const navigationBinding = this.navigationBinding;
+
+    void (async () => {
+      try {
+        return await navigationBinding.start(cycle);
+      } catch (cause) {
+        if (this.state.cycleId === cycle) {
+          this.fail(cause);
+        }
       }
-    });
+    })();
   }
 
   private token: string | null = null;
@@ -391,7 +397,13 @@ export class NativeRuntime {
 
     this.handles = [];
     await Promise.all(
-      previous.map((handle): Promise<void> => handle.remove().catch((): void => {})),
+      previous.map((handle): Promise<void> =>
+        (async () => {
+          try {
+            return await handle.remove();
+          } catch (cause) {}
+        })(),
+      ),
     );
 
     try {
@@ -429,7 +441,9 @@ export class NativeRuntime {
         );
 
         if (generation !== this.generation) {
-          await handle.remove();
+          const { remove: handleRemove } = handle;
+
+          await handleRemove.bind(handle)();
 
           return;
         }
@@ -453,7 +467,11 @@ export class NativeRuntime {
     this.generation++;
 
     for (const handle of this.handles) {
-      void handle.remove().catch((): void => {});
+      void (async () => {
+        try {
+          return await handle.remove();
+        } catch (cause) {}
+      })();
     }
 
     this.handles = [];
