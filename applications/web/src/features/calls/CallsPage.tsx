@@ -57,7 +57,7 @@ export function CallsPage(): JSX.Element {
   const preparingRef = useRef(false);
 
   useEffect(
-    (): (() => void) => (): void => {
+    () => () => {
       attempt.current++;
     },
     [],

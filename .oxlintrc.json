@@ -4,11 +4,19 @@
   "categories": {
     "correctness": "off"
   },
-  "jsPlugins": ["@stylistic/eslint-plugin", "eslint-plugin-simple-import-sort"],
+  "jsPlugins": [
+    "@stylistic/eslint-plugin",
+    "eslint-plugin-simple-import-sort",
+    "./scripts/oxlint-plugin.mjs"
+  ],
   "ignorePatterns": ["**/dist/**", ".pnpm-store/**"],
   "rules": {
     "curly": ["error", "all"],
     "one-var": ["error", "never"],
+    "no-nested-ternary": "error",
+    "gchat/no-await-in-object": "error",
+    "gchat/no-promise-chains": "error",
+    "gchat/no-await-call-member": "error",
     "@stylistic/lines-between-class-members": [
       "error",
       {
@@ -85,8 +93,8 @@
         "typescript/explicit-function-return-type": [
           "error",
           {
-            "allowExpressions": false,
-            "allowTypedFunctionExpressions": false,
+            "allowExpressions": true,
+            "allowTypedFunctionExpressions": true,
             "allowHigherOrderFunctions": false,
             "allowDirectConstAssertionInArrowFunctions": false,
             "allowConciseArrowFunctionExpressionsStartingWithVoid": false,

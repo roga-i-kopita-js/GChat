@@ -22,6 +22,7 @@
 | Изменить проверки готовности           | [Healthcheck](backend/modules/healthcheck.md) → [Database](backend/modules/database.md) и [Redis](backend/modules/redis.md)                                                                                     |
 | Восстановить доступ после сбоя         | [Ограничения восстановления](backend/operations/recovery.md) → контракт владельца данных                                                                                                                        |
 | Работать над веб-клиентом              | [Веб-клиент](web/README.md) → [D005](architecture/decisions/D005-web-client.md) → контракты Auth, Groups и Signaling                                                                                            |
+| Понять паттерн архитектуры Web | [Архитектурный паттерн](web/architecture-pattern.md) → профильные контракты по ссылкам в документе |
 | Проектировать общий API device для Web | [Спецификация device](web/device-api.md) → [Веб-клиент](web/README.md) → [Bootstrap](web/bootstrap.md) → [Device bridge](web/device-bridge.md) |
 | Проектировать поток данных и роутер Web | [Поток данных](web/data-flow.md) → [API device](web/device-api.md) → [D007](architecture/decisions/D007-web-routing.md) → [Bootstrap](web/bootstrap.md) |
 | Планировать Capacitor bridge           | [D008: Capacitor bridge и нативные звонки](architecture/decisions/D008-capacitor-bridge.md) → [Web](web/README.md) → [iOS](../applications/ios/README.md)                                                       |
