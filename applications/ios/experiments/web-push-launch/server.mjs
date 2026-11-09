@@ -19,7 +19,9 @@ const origin = `https://${host}:8444`;
 const root = new URL('../../../web/dist/', import.meta.url);
 const worker = await readFile(new URL('sw.js', root), 'utf8');
 
-if (!worker.includes('"nativeLaunchSpike":true')) {
+const { includes: workerIncludes } = worker ?? {};
+
+if (!workerIncludes?.bind(worker)('"nativeLaunchSpike":true')) {
   throw new Error('Build Web with VITE_GCHAT_IOS_LAUNCH_SPIKE=true first');
 }
 
@@ -108,7 +110,7 @@ async function send() {
   status = { state: 'sending' };
 
   try {
-    const result = await webPush.sendNotification(
+    const { statusCode: resultStatusCode } = await webPush.sendNotification(
       subscription,
       JSON.stringify({
         call_id: '00000000-0000-0000-0000-000000000001',
@@ -122,17 +124,18 @@ async function send() {
       },
     );
 
-    status = { state: 'provider-accepted', code: result.statusCode };
+    status = { state: 'provider-accepted', code: resultStatusCode };
   } catch (cause) {
     // Never print provider bodies, subscription endpoints or keys.
     status = { state: 'provider-error', code: Number(cause.statusCode) || 0 };
   }
 }
 
+const keyValue = await readFile(process.env.GCHAT_SPIKE_KEY_FILE);
 const server = createServer(
   {
     cert: certificate,
-    key: await readFile(process.env.GCHAT_SPIKE_KEY_FILE),
+    key: keyValue,
     minVersion: 'TLSv1.2',
   },
   async (req, res) => {

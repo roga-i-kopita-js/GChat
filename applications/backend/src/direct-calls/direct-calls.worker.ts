@@ -23,13 +23,15 @@ export class DirectCallsWorker implements OnApplicationBootstrap, OnModuleDestro
         return;
       }
 
-      this.running = this.tick()
-        .catch((): void => {
+      this.running = (async () => {
+        try {
+          return await this.tick();
+        } catch (cause) {
           this.logger.warn('Direct calls maintenance failed');
-        })
-        .finally((): void => {
+        } finally {
           this.running = undefined;
-        });
+        }
+      })();
     }, 1000);
     this.timer.unref();
   }

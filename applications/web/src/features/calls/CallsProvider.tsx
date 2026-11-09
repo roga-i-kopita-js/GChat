@@ -61,7 +61,12 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
   }, [state.call?.call_id, state.call?.state, user?.sub]);
   const call = state.call;
   const incoming = !!call && call.recipient_id === user?.sub && call.state === 'ringing';
-  const peerId = call ? (call.caller_id === user?.sub ? call.recipient_id : call.caller_id) : null;
+  let peerId: string | null = null;
+
+  if (call) {
+    peerId = call.caller_id === user?.sub ? call.recipient_id : call.caller_id;
+  }
+
   const loadedName =
     contacts?.sid === user?.sid
       ? contacts?.members.find((member): boolean => member.id === peerId)?.display_name
@@ -71,25 +76,30 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
     const controller = new AbortController();
 
     if (peerId && !loadedName && person?.id !== peerId) {
-      void resolvePeerName(device, peerId, controller.signal)
-        .then((name): void => {
+      void (async () => {
+        try {
+          const name = await resolvePeerName(device, peerId, controller.signal);
+
           if (!controller.signal.aborted && name) {
             setResolvedPeer({ id: peerId, name });
           }
-        })
-        .catch((): void => {});
+        } catch (cause) {}
+      })();
     }
 
     return (): void => controller.abort();
   }, [device, peerId, user?.sid, loadedName, person?.id]);
-  const peerName = peerId
-    ? (loadedName ??
-      (person?.id === peerId
-        ? person.display_name
-        : resolvedPeer?.id === peerId
-          ? resolvedPeer.name
-          : 'Собеседник'))
-    : '';
+  let fallbackPeerName;
+
+  if (person?.id === peerId) {
+    fallbackPeerName = person.display_name;
+  } else if (resolvedPeer?.id === peerId) {
+    fallbackPeerName = resolvedPeer.name;
+  } else {
+    fallbackPeerName = 'Собеседник';
+  }
+
+  const peerName = peerId ? (loadedName ?? fallbackPeerName) : '';
   const ongoing = !!call && call.state !== 'ended';
   const seconds = call?.started_at
     ? Math.max(
@@ -101,18 +111,23 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
     : 0;
   const duration =
     String(Math.floor(seconds / 60)).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0');
-  const status =
-    call?.state === 'ended'
-      ? (reasons[call.end_reason ?? ''] ?? 'Звонок завершён')
-      : call?.recovery_id
-        ? 'Восстанавливаем соединение…'
-        : call?.state === 'active'
-          ? 'Разговор'
-          : call?.state === 'connecting'
-            ? 'Соединяем…'
-            : incoming
-              ? 'Входящий звонок'
-              : 'Вызываем…';
+  let callStatus;
+
+  if (call?.state === 'ended') {
+    callStatus = reasons[call.end_reason ?? ''] ?? 'Звонок завершён';
+  } else if (call?.recovery_id) {
+    callStatus = 'Восстанавливаем соединение…';
+  } else if (call?.state === 'active') {
+    callStatus = 'Разговор';
+  } else if (call?.state === 'connecting') {
+    callStatus = 'Соединяем…';
+  } else if (incoming) {
+    callStatus = 'Входящий звонок';
+  } else {
+    callStatus = 'Вызываем…';
+  }
+
+  const status = callStatus;
   const enabled = state.owner && state.connection === 'online' && !state.busy;
 
   const value: CallsRuntime = {

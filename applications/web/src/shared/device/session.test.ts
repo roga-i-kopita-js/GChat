@@ -57,14 +57,22 @@ describe('public session owner', (): void => {
 
     runtime.claims = { ...runtime.claims!, display_name: 'Updated' };
     window.dispatchEvent(new Event('gchat-session'));
-    expect((await session.getState()).generation).toBe(initial.generation);
-    expect((await session.getState()).identity?.displayName).toBe('Updated');
+    const { generation: getStateResultGeneration } = await session.getState();
+    const { generation: initialGeneration } = initial;
+
+    expect(getStateResultGeneration).toBe(initialGeneration);
+    const { identity: getStateResultIdentity } = await session.getState();
+
+    expect(getStateResultIdentity?.displayName).toBe('Updated');
     const old = session.signal();
 
     runtime.claims = { ...runtime.claims, sid: 'two' };
     window.dispatchEvent(new Event('gchat-session'));
     expect(old.aborted).toBe(true);
-    expect((await session.getState()).generation).toBe(initial.generation + 1);
+    const { generation: getStateResultGeneration2 } = await session.getState();
+    const { generation: initialGeneration2 } = initial;
+
+    expect(getStateResultGeneration2).toBe(initialGeneration2 + 1);
     session.stop();
   });
   it('gives concurrent SDK calls independent caller cancellation and preserves callback failures', async (): Promise<void> => {

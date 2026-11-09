@@ -38,7 +38,11 @@ export function request<T>(
   operation: (api: BackendApi) => Promise<ApiResult<T>>,
   signal?: AbortSignal,
 ): Promise<T> {
-  return run(async (api): Promise<T> => (await operation(api)).data, signal);
+  return run(async (api): Promise<T> => {
+    const { data: resultData } = await operation(api);
+
+    return resultData;
+  }, signal);
 }
 
 export async function run<T>(

@@ -66,15 +66,23 @@ for (const server of [false, true]) {
       .toBe(true);
     const other = await context.newPage();
 
-    await other.goto(route);
+    const { goto: otherGoto } = other;
+
+    await otherGoto.bind(other)(route);
     const manifest = await request.get(base + 'site.webmanifest');
 
-    expect((await manifest.json()).start_url).toBe(server ? '/apps/client/calls' : '/calls');
+    const { json: manifestJson } = manifest;
+    const { start_url: resultStartUrl } = await manifestJson.bind(manifest)();
+
+    expect(resultStartUrl).toBe(server ? '/apps/client/calls' : '/calls');
     const keys = await page.evaluate(async (): Promise<string[]> => {
       const result: string[] = [];
 
       for (const name of await caches.keys()) {
-        for (const entry of await (await caches.open(name)).keys()) {
+        const resolved = await caches.open(name);
+        const { keys: openResultKeys } = resolved;
+
+        for (const entry of await openResultKeys.bind(resolved)()) {
           result.push(entry.url);
         }
       }
@@ -82,13 +90,19 @@ for (const server of [false, true]) {
       return result;
     });
 
-    expect(keys.some((key): boolean => key.includes('/api/') || key.includes('/ws'))).toBe(false);
+    const { some: keysSome } = keys;
+
+    expect(
+      keysSome.bind(keys)((key): boolean => key.includes('/api/') || key.includes('/ws')),
+    ).toBe(false);
     await context.setOffline(true);
     await page.goto(server ? '/apps/client/admin/users/example' : '/admin/users/example');
     await expect(page.getByRole('heading', { name: 'Вход в GChat' })).toBeVisible();
     await context.setOffline(false);
     // A real shared browser lock represents another window's ongoing call.
-    await other.evaluate((): void => {
+    const { evaluate: otherEvaluate } = other;
+
+    await otherEvaluate.bind(other)((): void => {
       void navigator.locks.request(
         'gchat-frontend-update',
         { mode: 'shared' },
@@ -99,19 +113,26 @@ for (const server of [false, true]) {
       );
     });
     await expect
-      .poll((): Promise<number> =>
-        other.evaluate(
-          async (): Promise<number> =>
-            (await navigator.locks.query()).held?.filter(
-              (lock): boolean => lock.name === 'gchat-frontend-update',
-            ).length ?? 0,
-        ),
-      )
+      .poll((): Promise<number> => {
+        const { evaluate: otherEvaluate3 } = other;
+
+        return otherEvaluate3.bind(other)(async (): Promise<number> => {
+          const { held: queryResultHeld } = await navigator.locks.query();
+
+          return (
+            queryResultHeld?.filter((lock): boolean => lock.name === 'gchat-frontend-update')
+              .length ?? 0
+          );
+        });
+      })
       .toBe(1);
     await callState(page, true, false);
     await request.get('/__revision?value=two');
     await page.evaluate(async (): Promise<void> => {
-      await (await navigator.serviceWorker.ready).update();
+      const resolved2 = await navigator.serviceWorker.ready;
+      const { update: resultUpdate } = resolved2;
+
+      await resultUpdate.bind(resolved2)();
     });
     const dialog = page.getByRole('dialog', { name: 'Обновление GChat' });
 
@@ -188,8 +209,12 @@ for (const server of [false, true]) {
         await page.setViewportSize(viewport);
         const bounds = await dialog.boundingBox();
 
-        expect(bounds?.width).toBe(300);
-        expect(Math.abs((bounds?.x ?? 0) - (viewport.width - 300) / 2)).toBeLessThan(1);
+        const { width: boundsWidth } = bounds ?? {};
+
+        expect(boundsWidth).toBe(300);
+        const { x: boundsX } = bounds ?? {};
+
+        expect(Math.abs((boundsX ?? 0) - (viewport.width - 300) / 2)).toBeLessThan(1);
         await dialog.getByRole('button', { name: 'Позже' }).focus();
         await page.keyboard.press('Tab');
         await page.keyboard.press('Shift+Tab');
@@ -266,19 +291,26 @@ for (const server of [false, true]) {
         'Обновление запрошено. GChat перезапустится после завершения звонков во всех окнах.',
       ),
     ).toBeVisible();
-    await expect(other.getByRole('dialog', { name: 'Обновление GChat' })).toHaveCount(0);
+    const { getByRole: otherGetByRole } = other;
+
+    await expect(otherGetByRole.bind(other)('dialog', { name: 'Обновление GChat' })).toHaveCount(0);
     await expect
       .poll((): Promise<string | undefined> =>
-        page.evaluate(
-          async (): Promise<string | undefined> =>
-            (await navigator.serviceWorker.getRegistration())?.waiting?.state,
-        ),
+        page.evaluate(async (): Promise<string | undefined> => {
+          const { waiting: getRegistrationResultWaiting } =
+            (await navigator.serviceWorker.getRegistration()) ?? {};
+
+          return getRegistrationResultWaiting?.state;
+        }),
       )
       .toBe('installed');
     const navigation = page.waitForEvent('load');
-    const otherNavigation = other.waitForEvent('load');
+    const { waitForEvent: otherWaitForEvent } = other;
+    const otherNavigation = otherWaitForEvent.bind(other)('load');
 
-    await other.evaluate((): void => {
+    const { evaluate: otherEvaluate2 } = other;
+
+    await otherEvaluate2.bind(other)((): void => {
       window.dispatchEvent(new Event('finish-test-call'));
     });
     await Promise.all([navigation, otherNavigation]);
@@ -289,14 +321,19 @@ for (const server of [false, true]) {
     // Failed publication leaves the previous complete version active.
     await request.get('/__revision?value=broken&incomplete=1');
     await page.evaluate(async (): Promise<void> => {
-      await (await navigator.serviceWorker.ready).update();
+      const resolved3 = await navigator.serviceWorker.ready;
+      const { update: resultUpdate2 } = resolved3;
+
+      await resultUpdate2.bind(resolved3)();
     });
     await expect
       .poll((): Promise<boolean> =>
-        page.evaluate(
-          async (): Promise<boolean> =>
-            !(await navigator.serviceWorker.getRegistration())?.installing,
-        ),
+        page.evaluate(async (): Promise<boolean> => {
+          const { installing: getRegistrationResultInstalling } =
+            (await navigator.serviceWorker.getRegistration()) ?? {};
+
+          return !getRegistrationResultInstalling;
+        }),
       )
       .toBe(true);
     expect(await page.evaluate((): Promise<string[]> => caches.keys())).toEqual([
@@ -305,10 +342,14 @@ for (const server of [false, true]) {
     // Rollback follows exactly the same explicit update lifecycle.
     await request.get('/__revision?value=one');
     await page.evaluate(async (): Promise<void> => {
-      await (await navigator.serviceWorker.ready).update();
+      const resolved4 = await navigator.serviceWorker.ready;
+      const { update: resultUpdate3 } = resolved4;
+
+      await resultUpdate3.bind(resolved4)();
     });
     const rollbackNavigation = page.waitForEvent('load');
-    const otherRollbackNavigation = other.waitForEvent('load');
+    const { waitForEvent: otherWaitForEvent2 } = other;
+    const otherRollbackNavigation = otherWaitForEvent2.bind(other)('load');
 
     await page
       .getByRole('dialog', { name: 'Обновление GChat' })

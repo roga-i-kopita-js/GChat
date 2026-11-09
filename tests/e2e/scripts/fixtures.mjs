@@ -60,19 +60,21 @@ try {
     ['elena', 'Елена Соколова'],
   ]) {
     const password = await hashPassword('gchat-web-test-password', pepper);
-    const result = await database.query(
+    const { rows: resultRows } = await database.query(
       `INSERT INTO gchat_users(login,display_name,password_hash) VALUES($1,$2,$3) ON CONFLICT(login) DO UPDATE SET display_name=excluded.display_name,password_hash=excluded.password_hash,disabled_at=null RETURNING id`,
       [login, name, password],
     );
 
-    users.push(result.rows[0].id);
+    users.push(resultRows[0].id);
   }
 
-  const group =
-    (await database.query("SELECT id FROM gchat_groups WHERE name='близкие' ORDER BY id LIMIT 1"))
-      .rows[0]?.id ??
-    (await database.query("INSERT INTO gchat_groups(name) VALUES('близкие') RETURNING id")).rows[0]
-      .id;
+  const { rows: queryResultRows } = await database.query(
+    "SELECT id FROM gchat_groups WHERE name='близкие' ORDER BY id LIMIT 1",
+  );
+  const { rows: queryResultRows2 } = await database.query(
+    "INSERT INTO gchat_groups(name) VALUES('близкие') RETURNING id",
+  );
+  const group = queryResultRows[0]?.id ?? queryResultRows2[0].id;
 
   for (const id of users) {
     await database.query(

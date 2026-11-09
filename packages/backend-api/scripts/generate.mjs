@@ -35,7 +35,9 @@ const members = operations.map(
     const prefix = id[0].toUpperCase() + id.slice(1);
 
     for (const suffix of ['Data', 'Response']) {
-      if (!typeSource.includes(`export type ${prefix}${suffix} =`)) {
+      const { includes: typeSourceIncludes } = typeSource ?? {};
+
+      if (!typeSourceIncludes?.bind(typeSource)(`export type ${prefix}${suffix} =`)) {
         throw new Error(`Missing Hey API type: ${prefix}${suffix}`);
       }
     }
@@ -124,8 +126,10 @@ execFileSync(
   { cwd: root, stdio: 'pipe' },
 );
 const backend = `${repository}/applications/backend`;
-const sourceFiles = (await readdir(`${backend}/src`, { recursive: true }))
-  .filter(
+const resolved = await readdir(`${backend}/src`, { recursive: true });
+const { filter: resultFilter } = resolved;
+const sourceFiles = resultFilter
+  .bind(resolved)(
     (file) =>
       file.endsWith('.controller.ts') || file.endsWith('.dto.ts') || file.startsWith('swagger/'),
   )

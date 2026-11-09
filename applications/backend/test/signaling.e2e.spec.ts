@@ -94,11 +94,20 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
       ],
     }).compile();
 
-    dialogEvents = module.get(DialogsEvents);
-    app = module.createNestApplication();
-    app.useWebSocketAdapter(new SignalingAdapter(app, module.get(AuthService)));
+    const { get: moduleGet } = module;
+
+    dialogEvents = moduleGet.bind(module)(DialogsEvents);
+    const { createNestApplication: moduleCreateNestApplication } = module;
+
+    app = moduleCreateNestApplication.bind(module)();
+    const { get: moduleGet2 } = module;
+
+    app.useWebSocketAdapter(new SignalingAdapter(app, moduleGet2.bind(module)(AuthService)));
     await app.listen(0, '127.0.0.1');
-    url = (await app.getUrl()).replace('http:', 'ws:') + '/ws';
+    const resolved = await app.getUrl();
+    const { replace: getUrlResultReplace } = resolved;
+
+    url = getUrlResultReplace.bind(resolved)('http:', 'ws:') + '/ws';
   });
 
   beforeEach((): void => {
@@ -133,7 +142,11 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
     await once(socket, 'open');
 
     if (register) {
-      expect((await message(socket, 'device.register', { device_id: id })).payload).toEqual({
+      const { payload: resultPayload } = await message(socket, 'device.register', {
+        device_id: id,
+      });
+
+      expect(resultPayload).toEqual({
         device_id: id,
       });
     }
@@ -150,7 +163,9 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
     const frame = once(socket, 'message');
 
     dialogEvents.publish({ users: [userId, randomUUID()], event });
-    expect(JSON.parse(String((await frame)[0]))).toEqual(event);
+    const { [0]: resultFirst } = await frame;
+
+    expect(JSON.parse(String(resultFirst))).toEqual(event);
     expect(dialogs.canDeliver).toHaveBeenCalledWith(
       userId,
       sessionId,
@@ -164,17 +179,23 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
     const readFrame = once(socket, 'message');
 
     dialogEvents.publish({ users: [userId], event: read });
-    expect(JSON.parse(String((await readFrame)[0]))).toEqual(read);
-    expect((await message(socket, 'dialog.sync', {})).error).toBeDefined();
+    const { [0]: resultFirst2 } = await readFrame;
+
+    expect(JSON.parse(String(resultFirst2))).toEqual(read);
+    const { error: resultError } = await message(socket, 'dialog.sync', {});
+
+    expect(resultError).toBeDefined();
   });
 
   it('registers an ordinary APNs token using the authenticated device and validates it separately from VoIP', async (): Promise<void> => {
     const socket = await connect();
 
-    expect(
-      (await message(socket, 'device.apns_token', { token: 'AABB', environment: 'sandbox' }))
-        .payload,
-    ).toEqual({});
+    const { payload: resultPayload2 } = await message(socket, 'device.apns_token', {
+      token: 'AABB',
+      environment: 'sandbox',
+    });
+
+    expect(resultPayload2).toEqual({});
     expect(devices.setApnsToken).toHaveBeenCalledWith(
       userId,
       sessionId,
@@ -182,30 +203,38 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
       'AABB',
       'sandbox',
     );
-    expect(
-      (await message(socket, 'device.apns_token', { token: 'not-hex', environment: 'sandbox' }))
-        .error.code,
-    ).toBe('VALIDATION_ERROR');
+    const { error: resultError2 } = await message(socket, 'device.apns_token', {
+      token: 'not-hex',
+      environment: 'sandbox',
+    });
+
+    expect(resultError2.code).toBe('VALIDATION_ERROR');
   });
 
   it('delivers current native bridge policy only after device registration and validates payload', async (): Promise<void> => {
     const socket = await connect(false);
 
-    expect((await message(socket, 'native.bridge_policy', {})).error.code).toBe('FORBIDDEN');
+    const { error: resultError3 } = await message(socket, 'native.bridge_policy', {});
+
+    expect(resultError3.code).toBe('FORBIDDEN');
     expect(policy.read).not.toHaveBeenCalled();
     await message(socket, 'device.register', { device_id: deviceId });
     policy.read.mockResolvedValueOnce({
       restrictions: [{ direction: 'send', message_pattern: 'rtc.*' }],
     });
-    expect((await message(socket, 'native.bridge_policy', {})).payload).toEqual({
+    const { payload: resultPayload3 } = await message(socket, 'native.bridge_policy', {});
+
+    expect(resultPayload3).toEqual({
       restrictions: [{ direction: 'send', message_pattern: 'rtc.*' }],
     });
-    expect((await message(socket, 'native.bridge_policy', {})).payload).toEqual({
+    const { payload: resultPayload4 } = await message(socket, 'native.bridge_policy', {});
+
+    expect(resultPayload4).toEqual({
       restrictions: [],
     });
-    expect((await message(socket, 'native.bridge_policy', { extra: true })).error.code).toBe(
-      'VALIDATION_ERROR',
-    );
+    const { error: resultError4 } = await message(socket, 'native.bridge_policy', { extra: true });
+
+    expect(resultError4.code).toBe('VALIDATION_ERROR');
   });
 
   it('closes the native connection when bridge policy cannot be read', async (): Promise<void> => {
@@ -214,10 +243,12 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
     policy.read.mockRejectedValueOnce(error.serviceUnavailable());
     const closed = once(socket, 'close');
 
-    expect((await message(socket, 'native.bridge_policy', {})).error.code).toBe(
-      'SERVICE_UNAVAILABLE',
-    );
-    expect((await closed)[0]).toBe(1011);
+    const { error: resultError5 } = await message(socket, 'native.bridge_policy', {});
+
+    expect(resultError5.code).toBe('SERVICE_UNAVAILABLE');
+    const { [0]: resultFirst3 } = await closed;
+
+    expect(resultFirst3).toBe(1011);
   });
 
   it('routes SDP/ICE only to the selected peer and rejects stale or conflicting attempts', async (): Promise<void> => {
@@ -254,53 +285,68 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
     const sdp = 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n';
     const received = once(peer, 'message');
 
-    expect(
-      (await message(caller, 'rtc.offer', { call_id: id, negotiation_id: attempt, sdp })).payload,
-    ).toEqual({});
-    expect(JSON.parse((await received)[0].toString())).toEqual({
+    const { payload: resultPayload5 } = await message(caller, 'rtc.offer', {
+      call_id: id,
+      negotiation_id: attempt,
+      sdp,
+    });
+
+    expect(resultPayload5).toEqual({});
+    const { [0]: resultFirst4 } = await received;
+
+    expect(JSON.parse(resultFirst4.toString())).toEqual({
       type: 'rtc.offer',
       payload: { call_id: id, negotiation_id: attempt, sdp },
     });
-    expect(
-      (
-        await message(caller, 'rtc.offer', {
-          call_id: id,
-          negotiation_id: attempt,
-          sdp: sdp + 'a=changed\r\n',
-        })
-      ).error.code,
-    ).toBe('CALL_STATE_CONFLICT');
-    expect(
-      (await message(peer, 'rtc.offer', { call_id: id, negotiation_id: randomUUID(), sdp })).error
-        .code,
-    ).toBe('FORBIDDEN');
+    const { error: resultError6 } = await message(caller, 'rtc.offer', {
+      call_id: id,
+      negotiation_id: attempt,
+      sdp: sdp + 'a=changed\r\n',
+    });
+
+    expect(resultError6.code).toBe('CALL_STATE_CONFLICT');
+    const { error: resultError7 } = await message(peer, 'rtc.offer', {
+      call_id: id,
+      negotiation_id: randomUUID(),
+      sdp,
+    });
+
+    expect(resultError7.code).toBe('FORBIDDEN');
     const answered = once(caller, 'message');
 
-    expect(
-      (await message(peer, 'rtc.answer', { call_id: id, negotiation_id: attempt, sdp })).payload,
-    ).toEqual({});
-    expect(JSON.parse((await answered)[0].toString()).type).toBe('rtc.answer');
-    expect(
-      (
-        await message(peer, 'rtc.ice', {
-          call_id: id,
-          negotiation_id: randomUUID(),
-          candidate: null,
-        })
-      ).error.code,
-    ).toBe('CALL_STATE_CONFLICT');
+    const { payload: resultPayload6 } = await message(peer, 'rtc.answer', {
+      call_id: id,
+      negotiation_id: attempt,
+      sdp,
+    });
+
+    expect(resultPayload6).toEqual({});
+    const { [0]: resultFirst5 } = await answered;
+
+    expect(JSON.parse(resultFirst5.toString()).type).toBe('rtc.answer');
+    const { error: resultError8 } = await message(peer, 'rtc.ice', {
+      call_id: id,
+      negotiation_id: randomUUID(),
+      candidate: null,
+    });
+
+    expect(resultError8.code).toBe('CALL_STATE_CONFLICT');
     const next = randomUUID();
 
     await message(caller, 'rtc.offer', { call_id: id, negotiation_id: next, sdp });
-    expect(
-      (await message(caller, 'call.connected', { call_id: id, negotiation_id: attempt })).error
-        .code,
-    ).toBe('CALL_STATE_CONFLICT');
+    const { error: resultError9 } = await message(caller, 'call.connected', {
+      call_id: id,
+      negotiation_id: attempt,
+    });
+
+    expect(resultError9.code).toBe('CALL_STATE_CONFLICT');
     calls.connected.mockResolvedValue({ state: 'connecting' } as any);
-    expect(
-      (await message(caller, 'call.connected', { call_id: id, negotiation_id: next })).payload.call
-        .state,
-    ).toBe('connecting');
+    const { payload: resultPayload7 } = await message(caller, 'call.connected', {
+      call_id: id,
+      negotiation_id: next,
+    });
+
+    expect(resultPayload7.call.state).toBe('connecting');
     expect(calls.connected).toHaveBeenCalledWith({ userId, sessionId, deviceId }, id, next);
   });
 
@@ -320,35 +366,35 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
   it('requires device registration and preserves request correlation', async (): Promise<void> => {
     const socket = await connect(false);
 
-    expect((await message(socket, 'call.current', {})).error.code).toBe('FORBIDDEN');
+    const { error: resultError10 } = await message(socket, 'call.current', {});
+
+    expect(resultError10.code).toBe('FORBIDDEN');
     await message(socket, 'device.register', { device_id: null });
-    expect((await message(socket, 'call.current', {})).payload).toEqual({ call: null });
+    const { payload: resultPayload8 } = await message(socket, 'call.current', {});
+
+    expect(resultPayload8).toEqual({ call: null });
   });
 
   it('strictly validates payloads before executing a command', async (): Promise<void> => {
     const socket = await connect();
 
-    expect(
-      (
-        await message(socket, 'call.create', {
-          recipient_id: randomUUID(),
-          caller_id: randomUUID(),
-        })
-      ).error.code,
-    ).toBe('VALIDATION_ERROR');
-    expect((await message(socket, 'call.connected', { call_id: callId })).error.code).toBe(
-      'VALIDATION_ERROR',
-    );
-    expect(
-      (
-        await message(socket, 'call.ping', {
-          call_id: callId,
-          sequence: 1,
-          audio_connected: 'true',
-          recovery_id: null,
-        })
-      ).error.code,
-    ).toBe('VALIDATION_ERROR');
+    const { error: resultError11 } = await message(socket, 'call.create', {
+      recipient_id: randomUUID(),
+      caller_id: randomUUID(),
+    });
+
+    expect(resultError11.code).toBe('VALIDATION_ERROR');
+    const { error: resultError12 } = await message(socket, 'call.connected', { call_id: callId });
+
+    expect(resultError12.code).toBe('VALIDATION_ERROR');
+    const { error: resultError13 } = await message(socket, 'call.ping', {
+      call_id: callId,
+      sequence: 1,
+      audio_connected: 'true',
+      recovery_id: null,
+    });
+
+    expect(resultError13.code).toBe('VALIDATION_ERROR');
     expect(calls.create).not.toHaveBeenCalled();
     expect(calls.connected).not.toHaveBeenCalled();
   });
@@ -356,10 +402,12 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
   it('rejects a confirmation before a new offer after process restart', async (): Promise<void> => {
     const socket = await connect();
 
-    expect(
-      (await message(socket, 'call.connected', { call_id: callId, negotiation_id: randomUUID() }))
-        .error.code,
-    ).toBe('CALL_STATE_CONFLICT');
+    const { error: resultError14 } = await message(socket, 'call.connected', {
+      call_id: callId,
+      negotiation_id: randomUUID(),
+    });
+
+    expect(resultError14.code).toBe('CALL_STATE_CONFLICT');
     expect(calls.connected).not.toHaveBeenCalled();
   });
 
@@ -367,13 +415,19 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
     const socket = await connect();
 
     auth.authenticate.mockRejectedValue(error.accessTokenExpired());
-    expect((await message(socket, 'call.current', {})).payload).toEqual({ call: null });
+    const { payload: resultPayload9 } = await message(socket, 'call.current', {});
+
+    expect(resultPayload9).toEqual({ call: null });
     expect(auth.authenticate).toHaveBeenCalledTimes(1);
     const closed = once(socket, 'close');
 
     auth.checkSession.mockResolvedValue({ accountActive: true, sessionActive: false });
-    expect((await message(socket, 'call.current', {})).error.code).toBe('SESSION_INVALID');
-    expect((await closed)[0]).toBe(1008);
+    const { error: resultError15 } = await message(socket, 'call.current', {});
+
+    expect(resultError15.code).toBe('SESSION_INVALID');
+    const { [0]: resultFirst6 } = await closed;
+
+    expect(resultFirst6).toBe(1008);
   });
 
   it('replaces an old connection for the same device/session pair', async (): Promise<void> => {
@@ -381,8 +435,12 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
     const closed = once(first, 'close');
     const second = await connect();
 
-    expect((await closed)[0]).toBe(1008);
-    expect((await message(second, 'call.current', {})).payload.call).toBeNull();
+    const { [0]: resultFirst7 } = await closed;
+
+    expect(resultFirst7).toBe(1008);
+    const { payload: resultPayload10 } = await message(second, 'call.current', {});
+
+    expect(resultPayload10.call).toBeNull();
   });
 
   it.each([
@@ -392,24 +450,36 @@ describe('WSS protocol over the Nest ws adapter', (): void => {
     const socket = await connect();
     const closed = once(socket, 'close');
 
-    socket.send(raw);
-    expect((await closed)[0]).toBe(code);
+    const { send: socketSend } = socket;
+
+    socketSend.bind(socket)(raw);
+    const { [0]: resultFirst8 } = await closed;
+
+    expect(resultFirst8).toBe(code);
   });
 
   it('rejects binary and oversized messages using protocol close codes', async (): Promise<void> => {
     const binary = await connect();
     const binaryClosed = once(binary, 'close');
 
-    binary.send(Buffer.from('binary'));
-    expect((await binaryClosed)[0]).toBe(1003);
+    const { send: binarySend } = binary;
+
+    binarySend.bind(binary)(Buffer.from('binary'));
+    const { [0]: resultFirst9 } = await binaryClosed;
+
+    expect(resultFirst9).toBe(1003);
     const large = await connect();
     const largeClosed = new Promise<number>((resolve): void => {
-      large.on('close', (code): void => {
+      const { on: largeOn } = large;
+
+      largeOn.bind(large)('close', (code): void => {
         resolve(code);
       });
     });
 
-    large.send('a'.repeat(131073));
+    const { send: largeSend } = large;
+
+    largeSend.bind(large)('a'.repeat(131073));
     expect(await largeClosed).toBe(1009);
   });
 });

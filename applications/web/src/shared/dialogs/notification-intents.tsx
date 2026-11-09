@@ -27,60 +27,64 @@ export function NotificationIntents(): JSX.Element {
     running.current = true;
     const generation = session.generation;
 
-    void (async (): Promise<void> => {
-      let path = '/calls';
+    void (async () => {
+      try {
+        let path = '/calls';
 
-      if (pending.kind === 'dialog') {
-        path = '/dialogs';
+        if (pending.kind === 'dialog') {
+          path = '/dialogs';
 
-        try {
-          await runtime.metadata(pending.dialogId);
-          path += '/' + pending.dialogId;
-        } catch (cause) {
-          if (!(
-            cause instanceof ApiError &&
-            ['NOT_FOUND', 'DIALOG_NOT_ALLOWED'].includes(cause.code ?? '')
-          )) {
-            throw cause;
+          try {
+            await runtime.metadata(pending.dialogId);
+            path += '/' + pending.dialogId;
+          } catch (cause) {
+            if (!(
+              cause instanceof ApiError &&
+              ['NOT_FOUND', 'DIALOG_NOT_ALLOWED'].includes(cause.code ?? '')
+            )) {
+              throw cause;
+            }
+          }
+        } else {
+          const calls = await device.calls.getState();
+
+          const { call: callsCall } = calls;
+
+          if (callsCall?.call_id !== pending.callId) {
+            path = '/calls';
           }
         }
-      } else {
-        const calls = await device.calls.getState();
 
-        if (calls.call?.call_id !== pending.callId) {
-          path = '/calls';
+        const current = await device.session.getState();
+
+        const { generation: currentGeneration } = current;
+
+        if (
+          runtime.signal.aborted ||
+          currentGeneration !== generation ||
+          latest.current?.id !== pending.id
+        ) {
+          return;
         }
-      }
 
-      const current = await device.session.getState();
+        await device.navigation.navigate(path);
 
-      if (
-        runtime.signal.aborted ||
-        current.generation !== generation ||
-        latest.current?.id !== pending.id
-      ) {
-        return;
-      }
-
-      await device.navigation.navigate(path);
-
-      if (!runtime.signal.aborted) {
-        await device.notifications.acknowledge(pending.id);
-        setError(null);
-      }
-    })()
-      .catch((): void => {
+        if (!runtime.signal.aborted) {
+          await device.notifications.acknowledge(pending.id);
+          setError(null);
+        }
+      } catch (cause) {
         if (!runtime.signal.aborted) {
           setError('Не удалось открыть диалог из уведомления.');
         }
-      })
-      .finally((): void => {
+      } finally {
         running.current = false;
 
         if (latest.current && latest.current.id !== pending.id && !runtime.signal.aborted) {
           setWake((value): number => value + 1);
         }
-      });
+      }
+    })();
   }, [pending?.id, runtime, session.generation, session.status, wake, device]);
 
   return error ? (

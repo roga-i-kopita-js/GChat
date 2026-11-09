@@ -104,13 +104,19 @@ export class AuthAccounts {
     query: AccountQuery,
   ): Promise<{ accounts: SafeAccount[]; total: number }> {
     const pattern = literalPattern(query.q ?? '');
+    let statusFilter;
+
+    if (query.status === 'active') {
+      statusFilter = isNull(users.disabledAt);
+    } else if (query.status === 'disabled') {
+      statusFilter = isNotNull(users.disabledAt);
+    } else {
+      statusFilter = undefined;
+    }
+
     const where = and(
       or(ilike(users.displayName, pattern), ilike(users.login, pattern)),
-      query.status === 'active'
-        ? isNull(users.disabledAt)
-        : query.status === 'disabled'
-          ? isNotNull(users.disabledAt)
-          : undefined,
+      statusFilter,
     );
     const [{ total }] = await tx.select({ total: count() }).from(users).where(where);
     const accounts = await tx
@@ -143,7 +149,8 @@ export class AuthAccounts {
       .where(or(eq(users.id, actor.userId), target ? eq(users.id, target) : undefined))
       .orderBy(asc(users.id))
       .for('update');
-    const current = rows.find((row): boolean => row.id === actor.userId);
+    const { find: rowsFind } = rows;
+    const current = rowsFind.bind(rows)((row): boolean => row.id === actor.userId);
 
     if (!current || current.disabledAt) {
       throw this.error.sessionInvalid();
@@ -151,7 +158,9 @@ export class AuthAccounts {
 
     const session = await this.sessions.read(actor.sessionId, tx, true);
 
-    if (session?.userId !== current.id) {
+    const { userId: sessionUserId } = session ?? {};
+
+    if (sessionUserId !== current.id) {
       throw this.error.sessionInvalid();
     }
 
@@ -159,7 +168,9 @@ export class AuthAccounts {
       throw this.error.forbidden();
     }
 
-    if (target && !rows.some((row): boolean => row.id === target)) {
+    const { some: rowsSome } = rows ?? {};
+
+    if (target && !rowsSome?.bind(rows)((row): boolean => row.id === target)) {
       throw this.error.notFound();
     }
   }
@@ -172,11 +183,14 @@ export class AuthAccounts {
   ): Promise<SafeAccount> {
     const current = await this.get(tx, id);
 
-    if (action === 'enable' && current.disabledAt === null) {
+    const { disabledAt: currentDisabledAt } = current;
+
+    if (action === 'enable' && currentDisabledAt === null) {
       return current;
     }
 
     await this.sessions.revokeAll(tx, id);
+    const { disabledAt: currentDisabledAt2 } = current;
     const [account] = await tx
       .update(users)
       .set({
@@ -185,7 +199,7 @@ export class AuthAccounts {
           ? { passwordHash }
           : {
               disabledAt:
-                action === 'disable' ? (current.disabledAt ?? sql`clock_timestamp()`) : null,
+                action === 'disable' ? (currentDisabledAt2 ?? sql`clock_timestamp()`) : null,
             }),
       })
       .where(eq(users.id, id))

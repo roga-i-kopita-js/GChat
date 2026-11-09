@@ -71,12 +71,13 @@ export class SignalingAdapter extends WsAdapter {
         identity = Promise.reject(cause);
       }
 
-      void identity
-        .then((identity): void => {
-          wsIdentities.set(info.req, identity);
+      void (async () => {
+        try {
+          const resolvedIdentity = await identity;
+
+          wsIdentities.set(info.req, resolvedIdentity);
           done(true);
-        })
-        .catch((cause: unknown): void => {
+        } catch (cause) {
           const failure = cause instanceof AppError ? cause : this.error.serviceUnavailable();
 
           done(
@@ -85,7 +86,8 @@ export class SignalingAdapter extends WsAdapter {
             JSON.stringify({ error: { code: failure.code, message: failure.message } }),
             { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
           );
-        });
+        }
+      })();
     };
     const server: WebSocketServer = super.create(port, {
       ...options,

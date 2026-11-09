@@ -86,7 +86,11 @@ async function boundedBody(request: Request, signal: AbortSignal): Promise<Uint8
   const chunks: Uint8Array[] = [];
   let length = 0;
   const cancelled = (): void => {
-    void reader.cancel().catch((): void => {});
+    void (async () => {
+      try {
+        return await reader.cancel();
+      } catch (cause) {}
+    })();
   };
 
   signal.addEventListener('abort', cancelled, { once: true });
@@ -103,19 +107,29 @@ async function boundedBody(request: Request, signal: AbortSignal): Promise<Uint8
         throw abort();
       }
 
-      if (next.done) {
+      const { done: nextDone } = next;
+
+      if (nextDone) {
         break;
       }
 
-      length += next.value.byteLength;
+      const { value: nextValue } = next;
+
+      length += nextValue.byteLength;
 
       if (length > limit) {
-        void reader.cancel().catch((): void => {});
+        void (async () => {
+          try {
+            return await reader.cancel();
+          } catch (cause) {}
+        })();
 
         throw error('UNSUPPORTED');
       }
 
-      chunks.push(next.value);
+      const { value: nextValue2 } = next;
+
+      chunks.push(nextValue2);
     }
 
     const bytes = new Uint8Array(length);
@@ -187,10 +201,19 @@ export class NativeHttpTransport {
       throw error('UNSUPPORTED');
     }
 
-    const signal = AbortSignal.any([
-      context.signal,
-      ...(init.signal ? [init.signal] : init.signal === null ? [] : from ? [from.signal] : []),
-    ]);
+    let requestSignals: AbortSignal[];
+
+    if (init.signal) {
+      requestSignals = [init.signal];
+    } else if (init.signal === null) {
+      requestSignals = [];
+    } else if (from) {
+      requestSignals = [from.signal];
+    } else {
+      requestSignals = [];
+    }
+
+    const signal = AbortSignal.any([context.signal, ...requestSignals]);
 
     if (signal.aborted) {
       throw abort();
@@ -264,7 +287,11 @@ export class NativeHttpTransport {
         operation();
       };
       const cancelNative = (): void => {
-        void this.port.httpCancel(identity).catch((): void => {});
+        void (async () => {
+          try {
+            return await this.port.httpCancel(identity);
+          } catch (cause) {}
+        })();
       };
       const cancelled = (): void => {
         cancelNative();
@@ -301,92 +328,98 @@ export class NativeHttpTransport {
         return;
       }
 
-      void pending.then(
-        (raw): void =>
-          finish((): void => {
-            try {
-              if (this.context !== context || signal.aborted) {
+      void (async () => {
+        let fulfilledValue;
+
+        try {
+          fulfilledValue = await pending;
+        } catch (rejectedCause) {
+          return finish((): void => reject(error('BRIDGE_UNAVAILABLE')));
+        }
+
+        const raw = fulfilledValue;
+
+        return finish((): void => {
+          try {
+            if (this.context !== context || signal.aborted) {
+              throw abort();
+            }
+
+            const parsed = response.safeParse(raw);
+
+            if (
+              !parsed.success ||
+              parsed.data.cycleId !== context.cycle ||
+              parsed.data.requestId !== requestId
+            ) {
+              throw error('BRIDGE_UNAVAILABLE');
+            }
+
+            if (parsed.data.error) {
+              if (parsed.data.error.kind === 'aborted') {
                 throw abort();
               }
 
-              const parsed = response.safeParse(raw);
+              const allowed = [
+                'UNSUPPORTED',
+                'INVALID_ARGUMENT',
+                'TIMEOUT',
+                'NETWORK_ERROR',
+                'UNAUTHENTICATED',
+                'FORBIDDEN',
+                'UNSUPPORTED_VERSION',
+              ];
 
-              if (
-                !parsed.success ||
-                parsed.data.cycleId !== context.cycle ||
-                parsed.data.requestId !== requestId
-              ) {
-                throw error('BRIDGE_UNAVAILABLE');
-              }
-
-              if (parsed.data.error) {
-                if (parsed.data.error.kind === 'aborted') {
-                  throw abort();
-                }
-
-                const allowed = [
-                  'UNSUPPORTED',
-                  'INVALID_ARGUMENT',
-                  'TIMEOUT',
-                  'NETWORK_ERROR',
-                  'UNAUTHENTICATED',
-                  'FORBIDDEN',
-                  'UNSUPPORTED_VERSION',
-                ];
-
-                throw error(
-                  allowed.includes(parsed.data.error.code)
-                    ? parsed.data.error.code
-                    : 'NETWORK_ERROR',
-                );
-              }
-
-              const result = parsed.data.result!;
-              const url = new URL(result.url);
-
-              if (
-                url.origin !== context.origin ||
-                url.username ||
-                url.password ||
-                url.hash ||
-                [301, 302, 303, 307, 308].includes(result.status)
-              ) {
-                throw error('NETWORK_ERROR');
-              }
-
-              const binary = atob(result.bodyBase64);
-
-              if (binary.length > limit) {
-                throw error('UNSUPPORTED');
-              }
-
-              const body = Uint8Array.from(binary, (value): number => value.charCodeAt(0));
-              const headers = result.headers.filter(
-                ([name]): boolean => !['set-cookie', 'set-cookie2'].includes(name.toLowerCase()),
-              );
-
-              resolve(
-                decorate(
-                  new Response(
-                    request.method === 'HEAD' || [204, 205, 304].includes(result.status)
-                      ? null
-                      : body,
-                    { status: result.status, statusText: result.statusText, headers },
-                  ),
-                  result.url,
-                ),
-              );
-            } catch (cause) {
-              reject(
-                (cause instanceof DOMException && cause.name === 'AbortError') ||
-                  cause instanceof NativeFetchError
-                  ? cause
-                  : error('BRIDGE_UNAVAILABLE'),
+              throw error(
+                allowed.includes(parsed.data.error.code) ? parsed.data.error.code : 'NETWORK_ERROR',
               );
             }
-          }),
-        (): void => finish((): void => reject(error('BRIDGE_UNAVAILABLE'))),
-      );
+
+            const result = parsed.data.result!;
+            const url = new URL(result.url);
+
+            if (
+              url.origin !== context.origin ||
+              url.username ||
+              url.password ||
+              url.hash ||
+              [301, 302, 303, 307, 308].includes(result.status)
+            ) {
+              throw error('NETWORK_ERROR');
+            }
+
+            const binary = atob(result.bodyBase64);
+
+            if (binary.length > limit) {
+              throw error('UNSUPPORTED');
+            }
+
+            const body = Uint8Array.from(binary, (value): number => value.charCodeAt(0));
+            const headers = result.headers.filter(
+              ([name]): boolean => !['set-cookie', 'set-cookie2'].includes(name.toLowerCase()),
+            );
+
+            resolve(
+              decorate(
+                new Response(
+                  request.method === 'HEAD' || [204, 205, 304].includes(result.status)
+                    ? null
+                    : body,
+                  { status: result.status, statusText: result.statusText, headers },
+                ),
+                result.url,
+              ),
+            );
+          } catch (cause) {
+            reject(
+              (cause instanceof DOMException && cause.name === 'AbortError') ||
+                cause instanceof NativeFetchError
+                ? cause
+                : error('BRIDGE_UNAVAILABLE'),
+            );
+          }
+        });
+      })();
     });
   };
 }

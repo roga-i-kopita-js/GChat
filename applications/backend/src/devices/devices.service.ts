@@ -108,9 +108,10 @@ export class DevicesService {
     const result: (typeof webPushSubscriptions.$inferSelect & { userId: string })[] = [];
 
     for (const { address } of rows) {
-      const access = await this.auth.checkSession(userId, address.sessionId);
+      const { accountActive: accessAccountActive, sessionActive: accessSessionActive } =
+        await this.auth.checkSession(userId, address.sessionId);
 
-      if (access.accountActive && access.sessionActive) {
+      if (accessAccountActive && accessSessionActive) {
         result.push({ ...address, userId });
       }
     }
@@ -137,9 +138,10 @@ export class DevicesService {
       return undefined;
     }
 
-    const access = await this.auth.checkSession(row.userId, sessionId);
+    const { accountActive: accessAccountActive2, sessionActive: accessSessionActive2 } =
+      await this.auth.checkSession(row.userId, sessionId);
 
-    return access.accountActive && access.sessionActive
+    return accessAccountActive2 && accessSessionActive2
       ? { ...row.address, userId: row.userId }
       : undefined;
   }
@@ -199,7 +201,10 @@ export class DevicesService {
   async assertAccess(userId: string, sessionId: string): Promise<void> {
     const access = await this.auth.checkSession(userId, sessionId);
 
-    if (!access.accountActive || !access.sessionActive) {
+    const { accountActive: accessAccountActive3, sessionActive: accessSessionActive3 } =
+      access ?? {};
+
+    if (!accessAccountActive3 || !accessSessionActive3) {
       throw this.error.sessionInvalid();
     }
   }
@@ -278,9 +283,10 @@ export class DevicesService {
     const result: VoipTarget[] = [];
 
     for (const row of rows) {
-      const access = await this.auth.checkSession(userId, row.address.sessionId);
+      const { accountActive: accessAccountActive4, sessionActive: accessSessionActive4 } =
+        await this.auth.checkSession(userId, row.address.sessionId);
 
-      if (access.accountActive && access.sessionActive) {
+      if (accessAccountActive4 && accessSessionActive4) {
         result.push({ ...row.address, userId });
       }
     }
@@ -299,9 +305,10 @@ export class DevicesService {
       return undefined;
     }
 
-    const access = await this.auth.checkSession(row.userId, sessionId);
+    const { accountActive: accessAccountActive5, sessionActive: accessSessionActive5 } =
+      await this.auth.checkSession(row.userId, sessionId);
 
-    return access.accountActive && access.sessionActive
+    return accessAccountActive5 && accessSessionActive5
       ? { ...row.address, userId: row.userId }
       : undefined;
   }
@@ -311,9 +318,12 @@ export class DevicesService {
     const rows = await this.database.db.select().from(deviceSessions);
 
     for (const row of rows) {
-      const access = await this.auth.checkSession(row.userId, row.sessionId);
+      const { sessionActive: accessSessionActive6 } = await this.auth.checkSession(
+        row.userId,
+        row.sessionId,
+      );
 
-      if (access.sessionActive) {
+      if (accessSessionActive6) {
         if (row.inactiveSince) {
           await this.database.db
             .update(deviceSessions)
@@ -429,9 +439,10 @@ export class DevicesService {
     const result: ApnsTarget[] = [];
 
     for (const row of rows) {
-      const access = await this.auth.checkSession(userId, row.address.sessionId);
+      const { accountActive: accessAccountActive6, sessionActive: accessSessionActive7 } =
+        await this.auth.checkSession(userId, row.address.sessionId);
 
-      if (access.accountActive && access.sessionActive) {
+      if (accessAccountActive6 && accessSessionActive7) {
         result.push({ ...row.address, userId });
       }
     }
@@ -450,9 +461,10 @@ export class DevicesService {
       return undefined;
     }
 
-    const access = await this.auth.checkSession(row.userId, sessionId);
+    const { accountActive: accessAccountActive7, sessionActive: accessSessionActive8 } =
+      await this.auth.checkSession(row.userId, sessionId);
 
-    return access.accountActive && access.sessionActive
+    return accessAccountActive7 && accessSessionActive8
       ? { ...row.address, userId: row.userId }
       : undefined;
   }

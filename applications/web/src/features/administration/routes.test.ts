@@ -100,7 +100,9 @@ describe('route request validation', (): void => {
     const { args, fetch } = fixture();
     const result = await adminAction(args(request(form(values))));
 
-    expect(result.outcome).toBe('invalid');
+    const { outcome: resultOutcome } = result;
+
+    expect(resultOutcome).toBe('invalid');
     expect(fetch).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain(password);
   });
@@ -119,7 +121,9 @@ describe('route request validation', (): void => {
       request(form({ operation: 'disable', user_id: userId }), 'PUT'),
       new Request('https://fixture.test/admin/users', { method: 'POST', body: 'not a form' }),
     ]) {
-      expect((await adminAction(args(input))).outcome).toBe('invalid');
+      const { outcome: resultOutcome2 } = await adminAction(args(input));
+
+      expect(resultOutcome2).toBe('invalid');
     }
 
     expect(fetch).not.toHaveBeenCalled();
@@ -160,7 +164,9 @@ describe('route request validation', (): void => {
         body.set('password', password);
       }
 
-      expect((await adminAction(args(request(body)))).outcome).toBe('saved');
+      const { outcome: resultOutcome3 } = await adminAction(args(request(body)));
+
+      expect(resultOutcome3).toBe('saved');
       expect(fetch).toHaveBeenCalledOnce();
       expect(String(fetch.mock.calls[0]![0])).toContain(`/admin/users/${userId}/${operation}`);
       expect(JSON.parse(fetch.mock.calls[0]![1]!.body as string)).toEqual(
@@ -173,13 +179,15 @@ describe('route request validation', (): void => {
     const invalid = args(new Request('https://fixture.test/admin/users/invalid'));
 
     invalid.params = { userId: 'invalid' };
-    expect((await adminUserLoader(invalid)).data).toBeNull();
+    const { data: resultData } = await adminUserLoader(invalid);
+
+    expect(resultData).toBeNull();
     expect(fetch).not.toHaveBeenCalled();
-    const loaded = await adminUsersLoader(
+    const { filters: loadedFilters } = await adminUsersLoader(
       args(new Request('https://fixture.test/admin/users?q=+anna+&status=active&offset=25')),
     );
 
-    expect(loaded.filters).toEqual({ q: 'anna', status: 'active', offset: 25 });
+    expect(loadedFilters).toEqual({ q: 'anna', status: 'active', offset: 25 });
     const url = new URL(String(fetch.mock.calls[0]![0]));
 
     expect(Object.fromEntries(url.searchParams)).toEqual({
@@ -191,13 +199,13 @@ describe('route request validation', (): void => {
   });
   it('uses safe defaults for invalid or duplicate optional filters', async (): Promise<void> => {
     const { args, fetch } = fixture();
-    const loaded = await adminUsersLoader(
+    const { filters: loadedFilters2 } = await adminUsersLoader(
       args(
         new Request('https://fixture.test/admin/users?q=a&q=b&status=no&offset=9007199254740992'),
       ),
     );
 
-    expect(loaded.filters).toEqual({ q: '', status: 'all', offset: 0 });
+    expect(loadedFilters2).toEqual({ q: '', status: 'all', offset: 0 });
     expect(fetch).toHaveBeenCalledOnce();
 
     for (const query of ['group=invalid', `group=${userId}&group=all`]) {

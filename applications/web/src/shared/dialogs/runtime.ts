@@ -205,19 +205,25 @@ export class DialogRuntime {
     flush: () => Promise<void>,
     lease: { held: boolean; release?: () => void },
   ): void {
-    void navigator.locks
-      .request(updateLock, { mode: 'shared', signal: this.signal }, async (): Promise<void> => {
-        if (!this.draftFlushers.has(flush)) {
-          return;
-        }
+    void (async () => {
+      try {
+        return await navigator.locks.request(
+          updateLock,
+          { mode: 'shared', signal: this.signal },
+          async (): Promise<void> => {
+            if (!this.draftFlushers.has(flush)) {
+              return;
+            }
 
-        lease.held = true;
-        await new Promise<void>((resolve): void => {
-          lease.release = resolve;
-        });
-        lease.held = false;
-      })
-      .catch((): void => {});
+            lease.held = true;
+            await new Promise<void>((resolve): void => {
+              lease.release = resolve;
+            });
+            lease.held = false;
+          },
+        );
+      } catch (cause) {}
+    })();
   }
 
   private prepareUpdate = (): void => {
@@ -230,13 +236,15 @@ export class DialogRuntime {
         continue;
       }
 
-      void flush()
-        .then((): void => {
+      void (async () => {
+        try {
+          await flush();
+
           lease.release?.();
-        })
-        .catch((): void => {
+        } catch (cause) {
           this.changed('Не удалось сохранить черновик перед обновлением. Повторите сохранение.');
-        });
+        }
+      })();
     }
   };
 
@@ -271,11 +279,15 @@ export class DialogRuntime {
     );
 
     this.tasks.add(task);
-    void task
-      .finally((): void => {
-        this.tasks.delete(task);
-      })
-      .catch((): void => {});
+    void (async () => {
+      try {
+        try {
+          return await task;
+        } finally {
+          this.tasks.delete(task);
+        }
+      } catch (cause) {}
+    })();
 
     return task;
   }
@@ -384,13 +396,15 @@ export class DialogRuntime {
     };
     this.updateMonitor = setInterval((): void => {
       if (this.updating) {
-        void updateRequested()
-          .then((pending): void => {
+        void (async () => {
+          try {
+            const pending = await updateRequested();
+
             if (!pending) {
               finished();
             }
-          })
-          .catch((): void => {});
+          } catch (cause) {}
+        })();
       }
     }, 1000);
 
@@ -420,10 +434,20 @@ export class DialogRuntime {
       return;
     }
 
-    void this.refreshList().catch((): void => {});
+    void (async () => {
+      try {
+        return await this.refreshList();
+      } catch (cause) {}
+    })();
 
-    if (this.selected) {
-      void this.sync(this.selected.id).catch((): void => {});
+    const selected = this.selected;
+
+    if (selected) {
+      void (async () => {
+        try {
+          return await this.sync(selected.id);
+        } catch (cause) {}
+      })();
     }
   }
 
@@ -443,7 +467,11 @@ export class DialogRuntime {
     this.selected = id ? { id, atBottom: true, openRead: true, shown: 0 } : null;
 
     if (id) {
-      void this.sync(id, true).catch((): void => {});
+      void (async () => {
+        try {
+          return await this.sync(id, true);
+        } catch (cause) {}
+      })();
     }
   }
 
@@ -470,25 +498,41 @@ export class DialogRuntime {
     this.metadataVersions.set(id, (this.metadataVersions.get(id) ?? 0) + 1);
 
     if (event.type === 'dialog.read_updated') {
-      void this.tracked(async (): Promise<void> => {
-        await this.storage.change(id, 'confirmRead', ({ record }): void => {
-          if (event.payload.reader_id === this.scope.accountId) {
-            record.read = Math.max(record.read, event.payload.last_read_sequence);
-          } else if (record.dialog?.peer_id === event.payload.reader_id) {
-            record.peer_read = Math.max(record.peer_read, event.payload.last_read_sequence);
-          }
-        });
-        this.publish(id);
-      }).catch((): void => {});
+      void (async () => {
+        try {
+          return await this.tracked(async (): Promise<void> => {
+            await this.storage.change(id, 'confirmRead', ({ record }): void => {
+              if (event.payload.reader_id === this.scope.accountId) {
+                record.read = Math.max(record.read, event.payload.last_read_sequence);
+              } else if (record.dialog?.peer_id === event.payload.reader_id) {
+                record.peer_read = Math.max(record.peer_read, event.payload.last_read_sequence);
+              }
+            });
+            this.publish(id);
+          });
+        } catch (cause) {}
+      })();
     }
 
     if (this.selected?.id === id) {
-      void this.sync(id).catch((): void => {});
+      void (async () => {
+        try {
+          return await this.sync(id);
+        } catch (cause) {}
+      })();
     } else {
-      void this.metadata(id).catch((): void => {});
+      void (async () => {
+        try {
+          return await this.metadata(id);
+        } catch (cause) {}
+      })();
     }
 
-    void this.refreshList().catch((): void => {});
+    void (async () => {
+      try {
+        return await this.refreshList();
+      } catch (cause) {}
+    })();
   }
 
   private async get<T>(operation: (api: BackendApi) => Promise<ApiResult<T>>): Promise<T> {
@@ -547,7 +591,9 @@ export class DialogRuntime {
 
     this.signal.throwIfAborted();
 
-    return list.sort(
+    const { sort: listSort } = list;
+
+    return listSort.bind(list)(
       (a, b): number =>
         (b.last_message_at ?? b.created_at).localeCompare(a.last_message_at ?? a.created_at) ||
         b.dialog_id.localeCompare(a.dialog_id),
@@ -563,7 +609,7 @@ export class DialogRuntime {
   }
 
   private async storeMetadata(dialog: DialogDto, version: number): Promise<void> {
-    const value = await this.storage.change(
+    const { record: valueRecord } = await this.storage.change(
       dialog.dialog_id,
       'commitMetadata',
       ({ record }): void => {
@@ -580,7 +626,7 @@ export class DialogRuntime {
       },
     );
 
-    if (value.record.read > dialog.last_read_sequence) {
+    if (valueRecord.read > dialog.last_read_sequence) {
       this.dirty.add(dialog.dialog_id);
     }
   }
@@ -590,34 +636,48 @@ export class DialogRuntime {
       return this.listTask;
     }
 
-    this.listTask = this.tracked(async (): Promise<void> => {
-      const versions = new Map(this.metadataVersions);
-      const page = await this.get((api): ReturnType<typeof api.dialogsList> =>
-        api.dialogsList({ query: { limit: 30, offset }, signal: this.networkSignal }),
-      );
+    this.listTask = (async () => {
+      try {
+        return await this.tracked(async (): Promise<void> => {
+          const versions = new Map(this.metadataVersions);
+          const page = await this.get((api): ReturnType<typeof api.dialogsList> =>
+            api.dialogsList({ query: { limit: 30, offset }, signal: this.networkSignal }),
+          );
 
-      for (const input of page.dialogs) {
-        const dialog = dialogSchema.parse(input);
+          const { dialogs: pageDialogs } = page;
 
-        await this.storeMetadata(dialog, versions.get(dialog.dialog_id) ?? 0);
-      }
+          for (const input of pageDialogs) {
+            const dialog = dialogSchema.parse(input);
 
-      this.listHasMore = page.has_more;
-      this.listOffset = offset + page.dialogs.length;
-      this.changed(null);
-      this.publish();
-    })
-      .catch((error): never => {
+            await this.storeMetadata(dialog, versions.get(dialog.dialog_id) ?? 0);
+          }
+
+          const { has_more: pageHasMore } = page;
+
+          this.listHasMore = pageHasMore;
+          const { dialogs: pageDialogs2 } = page;
+
+          this.listOffset = offset + pageDialogs2.length;
+          this.changed(null);
+          this.publish();
+        });
+      } catch (cause) {
+        const error = cause;
+
         this.changed(dialogError(error));
         this.retry('list', (): void => {
-          void this.refreshList().catch((): void => {});
+          void (async () => {
+            try {
+              return await this.refreshList();
+            } catch (cause) {}
+          })();
         });
 
         throw error;
-      })
-      .finally((): void => {
+      } finally {
         this.listTask = undefined;
-      });
+      }
+    })();
 
     return this.listTask;
   }
@@ -631,11 +691,11 @@ export class DialogRuntime {
 
   private async metadataWork(id: string): Promise<void> {
     const version = this.metadataVersions.get(id) ?? 0;
-    const result = await this.get((api): ReturnType<typeof api.dialogsGet> =>
+    const { dialog: resultDialog } = await this.get((api): ReturnType<typeof api.dialogsGet> =>
       api.dialogsGet({ path: { dialog_id: id }, signal: this.networkSignal }),
     );
 
-    await this.storeMetadata(dialogSchema.parse(result.dialog), version);
+    await this.storeMetadata(dialogSchema.parse(resultDialog), version);
     this.publish(id);
   }
 
@@ -690,10 +750,14 @@ export class DialogRuntime {
         );
 
         await this.storage.change(id, 'commitMetadata', ({ record }): void => {
-          record.permissions = rights.dialogs;
+          const { dialogs: rightsDialogs } = rights;
+
+          record.permissions = rightsDialogs;
         });
 
-        if (!rights.dialogs.can_read) {
+        const { dialogs: rightsDialogs2 } = rights ?? {};
+
+        if (!rightsDialogs2.can_read) {
           return;
         }
 
@@ -717,7 +781,9 @@ export class DialogRuntime {
 
               await this.savePage(id, page, 'after', cursor);
 
-              if (this.updating || (!page.has_more && !this.dirty.has(id))) {
+              const { has_more: pageHasMore2 } = page ?? {};
+
+              if (this.updating || (!pageHasMore2 && !this.dirty.has(id))) {
                 break;
               }
             } while (!this.signal.aborted);
@@ -731,14 +797,20 @@ export class DialogRuntime {
         this.errors.set(id, dialogError(error));
 
         if (error instanceof ApiError && error.code === 'DIALOG_NOT_ALLOWED') {
-          await this.storage
-            .change(id, 'commitMetadata', ({ record }): void => {
-              record.permissions = null;
-            })
-            .catch((): void => {});
+          await (async () => {
+            try {
+              return await this.storage.change(id, 'commitMetadata', ({ record }): void => {
+                record.permissions = null;
+              });
+            } catch (cause) {}
+          })();
         } else if (!(error instanceof ApiError && error.code === 'NOT_FOUND')) {
           this.retry(id, (): void => {
-            void this.sync(id).catch((): void => {});
+            void (async () => {
+              try {
+                return await this.sync(id);
+              } catch (cause) {}
+            })();
           });
         }
       }
@@ -753,17 +825,18 @@ export class DialogRuntime {
     id: string,
     query?: { before_sequence?: number; after_sequence?: number },
   ): Promise<{ messages: DialogMessage[]; has_more: boolean }> {
-    const page = await this.get((api): ReturnType<typeof api.dialogsHistory> =>
-      api.dialogsHistory({
-        path: { dialog_id: id },
-        query: { limit: 30, ...query },
-        signal: this.networkSignal,
-      }),
+    const { messages: pageMessages, has_more: pageHasMore3 } = await this.get(
+      (api): ReturnType<typeof api.dialogsHistory> =>
+        api.dialogsHistory({
+          path: { dialog_id: id },
+          query: { limit: 30, ...query },
+          signal: this.networkSignal,
+        }),
     );
 
     return {
-      messages: page.messages.map((message): DialogMessage => messageSchema.parse(message)),
-      has_more: page.has_more,
+      messages: pageMessages.map((message): DialogMessage => messageSchema.parse(message)),
+      has_more: pageHasMore3,
     };
   }
 
@@ -790,17 +863,22 @@ export class DialogRuntime {
     return this.tracked(async (): Promise<void> => {
       const value = await this.storage.read(id);
 
+      const { record: valueRecord2 } = value ?? {};
+
       if (
-        !value.record.permissions?.can_read ||
-        !value.record.has_older ||
-        value.record.before_sequence === null
+        !valueRecord2.permissions?.can_read ||
+        !valueRecord2.has_older ||
+        valueRecord2.before_sequence === null
       ) {
         return;
       }
 
-      const page = await this.history(id, { before_sequence: value.record.before_sequence });
+      const { record: valueRecord3 } = value;
+      const page = await this.history(id, { before_sequence: valueRecord2.before_sequence });
 
-      await this.savePage(id, page, 'before', value.record.before_sequence);
+      const { record: valueRecord4 } = value;
+
+      await this.savePage(id, page, 'before', valueRecord2.before_sequence);
     });
   }
 
@@ -817,10 +895,11 @@ export class DialogRuntime {
       }
 
       try {
-        const result = await this.request((api): ReturnType<typeof api.dialogsCreate> =>
-          api.dialogsCreate({ body: { peer_id: peer }, signal: this.networkSignal }),
+        const { dialog: resultDialog2 } = await this.request(
+          (api): ReturnType<typeof api.dialogsCreate> =>
+            api.dialogsCreate({ body: { peer_id: peer }, signal: this.networkSignal }),
         );
-        const dialog = dialogSchema.parse(result.dialog);
+        const dialog = dialogSchema.parse(resultDialog2);
 
         await this.storeMetadata(dialog, 0);
         this.publish();
@@ -834,11 +913,15 @@ export class DialogRuntime {
     });
 
     this.opening.set(peer, task);
-    void task
-      .finally((): void => {
-        this.opening.delete(peer);
-      })
-      .catch((): void => {});
+    void (async () => {
+      try {
+        try {
+          return await task;
+        } finally {
+          this.opening.delete(peer);
+        }
+      } catch (cause) {}
+    })();
 
     return task;
   }
@@ -859,7 +942,9 @@ export class DialogRuntime {
 
     this.publish(id);
 
-    return value.record.draft.revision;
+    const { record: valueRecord5 } = value;
+
+    return valueRecord5.draft.revision;
   }
 
   async send(id: string, content: MessageInput, draftRevision?: number): Promise<void> {
@@ -942,14 +1027,15 @@ export class DialogRuntime {
         stored.error = null;
       });
       this.publish(id);
-      const result = await this.request((api): ReturnType<typeof api.dialogsSendMessage> =>
-        api.dialogsSendMessage({
-          path: { dialog_id: id },
-          body: { client_message_id: pending.client_message_id, content: pending.content },
-          signal: this.networkSignal,
-        }),
+      const { message: resultMessage } = await this.request(
+        (api): ReturnType<typeof api.dialogsSendMessage> =>
+          api.dialogsSendMessage({
+            path: { dialog_id: id },
+            body: { client_message_id: pending.client_message_id, content: pending.content },
+            signal: this.networkSignal,
+          }),
       );
-      const message = messageSchema.parse(result.message);
+      const message = messageSchema.parse(resultMessage);
 
       await this.storage.change(id, 'commitSent', (value): void => {
         value.messages = mergeMessages(value.messages, [message]);
@@ -958,21 +1044,28 @@ export class DialogRuntime {
         );
       });
       this.publish(id);
-      void this.sync(id).catch((): void => {});
+      void (async () => {
+        try {
+          return await this.sync(id);
+        } catch (cause) {}
+      })();
     } catch (error) {
       this.sendUntil = Date.now() + retryAfter(error) * 1000;
-      await this.storage
-        .change(id, 'markAttempt', ({ record }): void => {
-          const stored = record.outbox.find(
-            (value): boolean => value.client_message_id === pending.client_message_id,
-          );
+      await (async () => {
+        try {
+          return await this.storage.change(id, 'markAttempt', ({ record }): void => {
+            const stored = record.outbox.find(
+              (value): boolean => value.client_message_id === pending.client_message_id,
+            );
 
-          if (stored) {
-            stored.state = error instanceof ApiError && error.status < 500 ? 'rejected' : 'unknown';
-            stored.error = dialogError(error);
-          }
-        })
-        .catch((): void => {});
+            if (stored) {
+              stored.state =
+                error instanceof ApiError && error.status < 500 ? 'rejected' : 'unknown';
+              stored.error = dialogError(error);
+            }
+          });
+        } catch (cause) {}
+      })();
       this.publish(id);
 
       throw error;
@@ -1042,10 +1135,14 @@ export class DialogRuntime {
             );
 
             await this.storage.change(selected.id, 'confirmRead', ({ record: next }): void => {
-              next.read = Math.max(next.read, result.last_read_sequence);
+              const { last_read_sequence: resultLastReadSequence } = result;
+
+              next.read = Math.max(next.read, resultLastReadSequence);
             });
             selected.openRead = false;
-            confirmed = result.last_read_sequence;
+            const { last_read_sequence: resultLastReadSequence2 } = result;
+
+            confirmed = resultLastReadSequence2;
             this.metadataVersions.set(
               selected.id,
               (this.metadataVersions.get(selected.id) ?? 0) + 1,

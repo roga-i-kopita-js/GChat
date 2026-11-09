@@ -92,7 +92,8 @@ export async function confirmRevocation(original: Session): Promise<void> {
 }
 
 export async function login(login: string, password: string): Promise<void> {
-  const result = tokens.parse((await publicApi.authLogin({ body: { login, password } })).data);
+  const { data: authLoginResultData } = await publicApi.authLogin({ body: { login, password } });
+  const result = tokens.parse(authLoginResultData);
 
   saveSession({ ...result, deviceId: null, pending: null });
 }
@@ -120,7 +121,8 @@ async function access(force = false): Promise<Session> {
     saveSession({ ...session, pending });
 
     try {
-      const next = tokens.parse((await publicApi.authRefresh({ body: pending })).data);
+      const { data: authRefreshResultData } = await publicApi.authRefresh({ body: pending });
+      const next = tokens.parse(authRefreshResultData);
 
       // A concurrent logout must not be undone by a late refresh.
       if (!readSession() || identity(readSession()!).sid !== identity(session).sid) {
@@ -144,7 +146,11 @@ export function request<T>(
   operation: (api: BackendApi) => Promise<ApiResult<T>>,
   signal?: AbortSignal,
 ): Promise<T> {
-  return run(async (api): Promise<T> => (await operation(api)).data, signal);
+  return run(async (api): Promise<T> => {
+    const { data: resultData } = await operation(api);
+
+    return resultData;
+  }, signal);
 }
 
 export async function run<T>(
@@ -174,7 +180,8 @@ export async function run<T>(
 
   try {
     try {
-      const result = await operation(createApi(session.access_token, callerSignal), signal);
+      const { access_token: sessionAccessToken } = session;
+      const result = await operation(createApi(sessionAccessToken, callerSignal), signal);
 
       check();
 
@@ -189,7 +196,8 @@ export async function run<T>(
 
       check();
 
-      const result = await operation(createApi(refreshed.access_token, callerSignal), signal);
+      const { access_token: refreshedAccessToken } = refreshed;
+      const result = await operation(createApi(refreshedAccessToken, callerSignal), signal);
 
       check();
 

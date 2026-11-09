@@ -31,6 +31,18 @@ export function SettingsGeneralRoute(): JSX.Element {
   };
   const pushLabel = pushStatus(state);
 
+  let fileAccessSummary;
+
+  if (state) {
+    if (state.files.retainedCount) {
+      fileAccessSummary = String(state.files.retainedCount);
+    } else {
+      fileAccessSummary = 'Нет доступов';
+    }
+  } else {
+    fileAccessSummary = 'Проверяем…';
+  }
+
   return (
     <SettingsScreen title="Основные" parent="/settings" device={device}>
       <Group title="Звук">
@@ -79,13 +91,7 @@ export function SettingsGeneralRoute(): JSX.Element {
           icon={Folder}
           color="#30b0c7"
           title="Файлы и папки"
-          value={
-            state
-              ? state.files.retainedCount
-                ? String(state.files.retainedCount)
-                : 'Нет доступов'
-              : 'Проверяем…'
-          }
+          value={fileAccessSummary}
           to="/settings/general/files"
         />
       </Group>

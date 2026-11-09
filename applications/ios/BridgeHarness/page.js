@@ -75,7 +75,7 @@ async function flush() {
 
   try {
     while (outgoing.length && bridgeReady) {
-      const response = await native('httpRequest', {
+      const { result: responseResult } = await native('httpRequest', {
         httpVersion: 1,
         cycleId: cycle,
         requestId: crypto.randomUUID(),
@@ -87,7 +87,7 @@ async function flush() {
         },
       });
 
-      if (response.result?.status !== 204) {
+      if (responseResult?.status !== 204) {
         throw new Error('DELIVERY_FAILED');
       }
 
@@ -128,7 +128,9 @@ async function observeState() {
         return;
       }
 
-      if (change.timedOut) {
+      const { timedOut: changeTimedOut } = change;
+
+      if (changeTimedOut) {
         continue;
       }
 
@@ -200,11 +202,17 @@ const command = async (name, args = {}) => {
     args,
   });
 
-  if (response.error) {
-    throw Object.assign(new Error(), { code: response.error.code });
+  const { error: responseError } = response;
+
+  if (responseError) {
+    const { error: responseError2 } = response;
+
+    throw Object.assign(new Error(), { code: responseError2.code });
   }
 
-  return response.result;
+  const { result: responseResult2 } = response;
+
+  return responseResult2;
 };
 const envelope = (path, overrides = {}) => ({
   httpVersion: 1,
@@ -215,14 +223,22 @@ const envelope = (path, overrides = {}) => ({
 });
 const check = async (label, request, expectedStatus, expectedError) => {
   const response = await native('httpRequest', request);
+  const {
+    cycleId: responseCycleId,
+    requestId: responseRequestId,
+    error: responseError3,
+    result: responseResult3,
+  } = response;
   const passed =
-    response.cycleId === request.cycleId &&
-    response.requestId === request.requestId &&
+    responseCycleId === request.cycleId &&
+    responseRequestId === request.requestId &&
     (expectedError
-      ? response.error?.code === expectedError
-      : response.result?.status === expectedStatus);
+      ? responseError3?.code === expectedError
+      : responseResult3?.status === expectedStatus);
 
-  report(label, { passed, status: response.result?.status, code: response.error?.code });
+  const { result: responseResult4, error: responseError4 } = response;
+
+  report(label, { passed, status: responseResult4?.status, code: responseError4?.code });
 
   return response;
 };
@@ -230,9 +246,13 @@ const check = async (label, request, expectedStatus, expectedError) => {
 async function checkHTTP() {
   const response = await check('GET / bytes', envelope('/api/bridge-fixture/bytes'), 200);
 
-  report('Binary body', { passed: response.result?.bodyBase64 === 'AAEC/w==' });
+  const { result: responseResult5 } = response;
+
+  report('Binary body', { passed: responseResult5?.bodyBase64 === 'AAEC/w==' });
+  const { result: responseResult6 } = response ?? {};
+
   report('Cookie filtering', {
-    passed: !response.result?.headers.some(([name]) => /^set-cookie2?$/i.test(name)),
+    passed: !responseResult6?.headers.some(([name]) => /^set-cookie2?$/i.test(name)),
   });
   const head = envelope('/api/bridge-fixture/head-large');
 
@@ -326,14 +346,24 @@ document.querySelector('#logout').onclick = run('Logout', async () => {
 document.querySelector('#state').onclick = run('State', async () => {
   const state = await command('device.state.read');
 
+  const {
+    revision: stateRevision,
+    microphone: stateMicrophone,
+    camera: stateCamera,
+    geolocation: stateGeolocation,
+    audio: stateAudio,
+    push: statePush,
+    files: stateFiles,
+  } = state;
+
   report('State', {
-    revision: state.revision,
-    microphone: state.microphone,
-    camera: state.camera,
-    geolocation: state.geolocation,
-    audioTest: state.audio.test,
-    push: state.push,
-    retainedCount: state.files.retainedCount,
+    revision: stateRevision,
+    microphone: stateMicrophone,
+    camera: stateCamera,
+    geolocation: stateGeolocation,
+    audioTest: stateAudio.test,
+    push: statePush,
+    retainedCount: stateFiles.retainedCount,
   });
 });
 
@@ -348,9 +378,11 @@ for (const button of document.querySelectorAll('[data-resource]')) {
 
 for (const button of document.querySelectorAll('[data-test]')) {
   button.onclick = run('Audio', async () => {
-    const result = await command('audio.test.start', { kind: button.dataset.test });
+    const { testId: resultTestId } = await command('audio.test.start', {
+      kind: button.dataset.test,
+    });
 
-    testId = result.testId;
+    testId = resultTestId;
     report('Audio started', { kind: button.dataset.test, started: true });
   });
 }
@@ -366,19 +398,25 @@ document.querySelector('#settings').onclick = run('Settings', async () => {
 document.querySelector('#pick').onclick = run('File', async () => {
   const picked = await command('file.pick', { multiple: false, accept: [] });
 
-  if (picked.outcome === 'cancelled') {
+  const { outcome: pickedOutcome } = picked;
+
+  if (pickedOutcome === 'cancelled') {
     report('File', { cancelled: true });
 
     return;
   }
 
-  for (const entry of picked.entries) {
+  const { entries: pickedEntries } = picked;
+
+  for (const entry of pickedEntries) {
     const metadata = await command('file.stat', { id: entry.ref.id });
 
+    const { ref: metadataRef, size: metadataSize } = metadata;
+
     report('File metadata', {
-      kind: metadata.ref.kind,
-      size: metadata.size,
-      persistence: metadata.ref.persistence,
+      kind: metadataRef.kind,
+      size: metadataSize,
+      persistence: metadataRef.persistence,
     });
   }
 });
@@ -405,14 +443,17 @@ async function checkStorage() {
   if (previous) {
     const read = await command('file.read', { fileId: previous.id, offset: 0, length: 8 });
 
-    verify('persistent-after-restart', read.dataBase64 === 'AAH/');
+    const { dataBase64: readDataBase64 } = read;
+
+    verify('persistent-after-restart', readDataBase64 === 'AAH/');
     // Clean up only our own prior fixture identified within the Data root.
     const list = await command('directory.list', {
       directoryId: roots.data.id,
       cursor: null,
       limit: 200,
     });
-    const entry = list.entries.find(
+    const { entries: listEntries } = list;
+    const entry = listEntries.find(
       (item) =>
         item.ref.id === previous.directory &&
         item.ref.name === previous.name &&
@@ -430,35 +471,54 @@ async function checkStorage() {
   for (const area of ['data', 'temporary', 'cache']) {
     const name = 'gchat-storage-smoke-' + crypto.randomUUID();
     const folder = await command('directory.create', { directoryId: roots[area].id, name });
-    const file = await command('file.create', { directoryId: folder.ref.id, name: 'fixture.bin' });
+    const { ref: folderRef } = folder;
+    const file = await command('file.create', { directoryId: folderRef.id, name: 'fixture.bin' });
+    const { ref: fileRef } = file;
     const write = await command('file.write.begin', {
-      fileId: file.ref.id,
+      fileId: fileRef.id,
       mode: 'replace',
       expectedVersion: null,
     });
 
-    await command('file.write.chunk', { writeId: write.writeId, offset: 0, dataBase64: 'AAH/' });
-    await command('file.write.commit', { writeId: write.writeId });
-    const read = await command('file.read', { fileId: file.ref.id, offset: 0, length: 8 });
+    const { writeId: writeWriteId } = write;
 
-    verify('read-write', read.dataBase64 === 'AAH/' && read.eof, { area });
+    await command('file.write.chunk', { writeId: writeWriteId, offset: 0, dataBase64: 'AAH/' });
+    const { writeId: writeWriteId2 } = write;
+
+    await command('file.write.commit', { writeId: writeWriteId2 });
+    const { ref: fileRef2 } = file;
+    const read = await command('file.read', { fileId: fileRef2.id, offset: 0, length: 8 });
+
+    const { dataBase64: readDataBase642, eof: readEof } = read;
+
+    verify('read-write', readDataBase642 === 'AAH/' && readEof, { area });
     const usage = await command('storage.getUsage', { area });
 
-    verify('usage', usage.usedBytes >= 3 && usage.quotaBytes === null, {
+    const { usedBytes: usageUsedBytes, quotaBytes: usageQuotaBytes } = usage;
+
+    verify('usage', usageUsedBytes >= 3 && usageQuotaBytes === null, {
       area,
-      usedBytes: usage.usedBytes,
+      usedBytes: usageUsedBytes,
     });
 
     if (area === 'data') {
-      persistent = file.ref.id;
+      const { ref: fileRef3 } = file;
+
+      persistent = fileRef3.id;
+      const { ref: folderRef2 } = folder;
+
       localStorage.setItem(
         'gchat.storage-smoke',
-        JSON.stringify({ id: persistent, directory: folder.ref.id, name }),
+        JSON.stringify({ id: persistent, directory: folderRef2.id, name }),
       );
     } else if (area === 'temporary') {
-      temporary = file.ref.id;
+      const { ref: fileRef4 } = file;
+
+      temporary = fileRef4.id;
     } else {
-      await command('file.remove', { id: folder.ref.id, recursive: true });
+      const { ref: folderRef3 } = folder;
+
+      await command('file.remove', { id: folderRef3.id, recursive: true });
     }
   }
 
@@ -477,24 +537,35 @@ async function checkStorage() {
 
   const read = await command('file.read', { fileId: persistent, offset: 0, length: 8 });
 
-  verify('data-survives-cycle', read.dataBase64 === 'AAH/');
+  const { dataBase64: readDataBase643 } = read;
+
+  verify('data-survives-cycle', readDataBase643 === 'AAH/');
   const after = await command('file.access.list', { cursor: null, limit: 200 });
 
-  verify('external-registry-unchanged', original.entries.length === after.entries.length);
+  const { entries: originalEntries } = original;
+  const { entries: afterEntries } = after;
+
+  verify('external-registry-unchanged', originalEntries.length === afterEntries.length);
 }
 document.querySelector('#storage').onclick = run('Storage', checkStorage);
 document.querySelector('#retained').onclick = run('Retained', async () => {
   const list = await command('file.access.list', { cursor: null, limit: 20 });
 
-  report('Retained', { count: list.entries.length, more: list.nextCursor !== null });
+  const { entries: listEntries2, nextCursor: listNextCursor } = list;
 
-  for (const ref of list.entries) {
+  report('Retained', { count: listEntries2.length, more: listNextCursor !== null });
+
+  const { entries: listEntries3 } = list;
+
+  for (const ref of listEntries3) {
     const metadata = await command('file.access.restore', { id: ref.id });
 
+    const { ref: metadataRef2, size: metadataSize2 } = metadata;
+
     report('File metadata', {
-      kind: metadata.ref.kind,
-      size: metadata.size,
-      persistence: metadata.ref.persistence,
+      kind: metadataRef2.kind,
+      size: metadataSize2,
+      persistence: metadataRef2.persistence,
     });
   }
 });
@@ -502,7 +573,9 @@ async function ready() {
   bridgeReady = false;
   const capability = await native('getCapabilities');
 
-  if (capability.httpVersion !== 1) {
+  const { httpVersion: capabilityHttpVersion } = capability;
+
+  if (capabilityHttpVersion !== 1) {
     throw Object.assign(new Error(), { code: 'UNSUPPORTED_VERSION' });
   }
 
@@ -510,7 +583,9 @@ async function ready() {
   await native('webReady', { bridgeVersion: 1, cycleId: cycle });
   bridgeReady = true;
 
-  if (capability.navigationVersion === 1) {
+  const { navigationVersion: capabilityNavigationVersion } = capability;
+
+  if (capabilityNavigationVersion === 1) {
     navigationHarness ??= await import('/apps/static/bridge-navigation.js');
     await navigationHarness.startNavigationHarness(cycle, (metrics) =>
       emit('Navigation', 'result', metrics),

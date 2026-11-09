@@ -94,10 +94,13 @@ describe('APNs HTTP/2 requests', (): void => {
       'apns-expiration': '0',
       ':path': '/3/device/aabb',
     });
-    expect(
-      (await jwtVerify(headers.authorization.slice(7), keys.publicKey, { algorithms: ['ES256'] }))
-        .payload.iss,
-    ).toBe('team');
+    const { payload: resultPayload } = await jwtVerify(
+      headers.authorization.slice(7),
+      keys.publicKey,
+      { algorithms: ['ES256'] },
+    );
+
+    expect(resultPayload.iss).toBe('team');
     expect(stream.end).toHaveBeenCalledWith(JSON.stringify({ aps: {}, call_id: 'call' }));
     stream.emit('response', { ':status': 200 });
     stream.emit('end');

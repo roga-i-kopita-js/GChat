@@ -291,9 +291,10 @@ for (const viewport of [
     const chooser = page.waitForEvent('filechooser');
 
     await page.getByRole('button', { name: 'Выбрать файл', exact: true }).click();
-    await (
-      await chooser
-    ).setFiles({
+    const resolved = await chooser;
+    const { setFiles: resultSetFiles } = resolved;
+
+    await resultSetFiles.bind(resolved)({
       name: 'Очень длинное имя выбранного файла для проверки переноса текста и доступности.txt',
       mimeType: 'text/plain',
       buffer: Buffer.from('fixture'),

@@ -1,6 +1,10 @@
 const status = document.getElementById('status');
 
-void request('/spike/trace', { event: 'page-ready' }).catch(() => {});
+void (async () => {
+  try {
+    return await request('/spike/trace', { event: 'page-ready' });
+  } catch (cause) {}
+})();
 let readingIntent = false;
 
 async function consumeClickIntent() {
@@ -13,18 +17,26 @@ async function consumeClickIntent() {
   try {
     const cache = await caches.open('gchat-launch-spike-intents');
     const key = new URL('/__gchat_launch_spike_intent', window.location.origin).href;
-    const response = await cache.match(key);
+    const { match: cacheMatch } = cache;
+    const response = await cacheMatch.bind(cache)(key);
 
     if (!response) {
       return;
     }
 
-    await cache.delete(key);
-    const { createdAt } = await response.json();
+    const { delete: cacheDelete } = cache;
+
+    await cacheDelete.bind(cache)(key);
+    const { json: responseJson } = response;
+    const { createdAt } = await responseJson.bind(response)();
     const age = Date.now() - createdAt;
 
     if (typeof createdAt === 'number' && age >= 0 && age <= 30000) {
-      void request('/spike/trace', { event: 'intent-found' }).catch(() => {});
+      void (async () => {
+        try {
+          return await request('/spike/trace', { event: 'intent-found' });
+        } catch (cause) {}
+      })();
       window.location.assign('/apps/client/calls?native_launch_spike=1');
     }
   } catch {
@@ -37,7 +49,11 @@ async function consumeClickIntent() {
 window.addEventListener('pageshow', () => void consumeClickIntent());
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
-    void request('/spike/trace', { event: 'page-visible' }).catch(() => {});
+    void (async () => {
+      try {
+        return await request('/spike/trace', { event: 'page-visible' });
+      } catch (cause) {}
+    })();
   }
 
   void consumeClickIntent();
@@ -77,9 +93,11 @@ const ready = (async () => {
 
   try {
     return await Promise.race([
-      navigator.serviceWorker
-        .register('/apps/sw.js', { scope: '/apps/' })
-        .then(() => navigator.serviceWorker.ready),
+      (async () => {
+        await navigator.serviceWorker.register('/apps/sw.js', { scope: '/apps/' });
+
+        return navigator.serviceWorker.ready;
+      })(),
       new Promise((_resolve, reject) => {
         timer = setTimeout(() => reject(new DOMException('worker timeout', 'TimeoutError')), 15000);
       }),
@@ -104,13 +122,15 @@ function failure(cause) {
   return `${stages[stage] ?? 'Уведомления'}: ${name}.`;
 }
 
-ready
-  .then(() => {
+(async () => {
+  try {
+    await ready;
+
     status.textContent = 'Обработчик готов. Разрешите уведомления и выберите тест.';
-  })
-  .catch((cause) => {
+  } catch (cause) {
     status.textContent = failure(cause);
-  });
+  }
+})();
 
 async function request(path, body) {
   const response = await fetch(
@@ -124,11 +144,15 @@ async function request(path, body) {
         },
   );
 
-  if (!response.ok) {
+  const { ok: responseOk } = response ?? {};
+
+  if (!responseOk) {
     throw new Error('request');
   }
 
-  return response.json();
+  const { json: responseJson2 } = response;
+
+  return responseJson2.bind(response)();
 }
 
 document.getElementById('permission').onclick = async () => {
@@ -147,7 +171,9 @@ document.getElementById('local').onclick = async () => {
   try {
     const registration = await ready;
 
-    await registration.showNotification('Тест GChat', {
+    const { showNotification: registrationShowNotification } = registration;
+
+    await registrationShowNotification.bind(registration)('Тест GChat', {
       body: 'Нажмите, чтобы проверить переход в нативное приложение.',
       tag: 'gchat-launch-test',
       data: {},
@@ -175,7 +201,8 @@ document.getElementById('push').onclick = async () => {
     const key = Uint8Array.from(atob(publicKey.replace(/-/g, '+').replace(/_/g, '/') + '='), (c) =>
       c.charCodeAt(0),
     );
-    let subscription = await registration.pushManager.getSubscription();
+    const { pushManager: registrationPushManager } = registration;
+    let subscription = await registrationPushManager.getSubscription();
 
     // This fixture generates fresh keys after every server restart.
     if (subscription) {
@@ -184,7 +211,9 @@ document.getElementById('push').onclick = async () => {
 
     stage = 'subscription';
     status.textContent = stages[stage] + '…';
-    subscription = await registration.pushManager.subscribe({
+    const { pushManager: registrationPushManager2 } = registration;
+
+    subscription = await registrationPushManager2.subscribe({
       userVisibleOnly: true,
       applicationServerKey: key,
     });
@@ -211,7 +240,9 @@ document.getElementById('check').onclick = async () => {
       'provider-error': 'Провайдер не принял Web Push или сеть недоступна.',
     };
 
-    status.textContent = messages[result.state] ?? 'Неизвестное состояние.';
+    const { state: resultState } = result;
+
+    status.textContent = messages[resultState] ?? 'Неизвестное состояние.';
   } catch {
     status.textContent = 'Mac недоступен.';
   }
@@ -227,8 +258,11 @@ document.getElementById('update').onclick = async () => {
       throw new Error('registration');
     }
 
-    await registration.update();
-    const installing = registration.installing;
+    const { update: registrationUpdate } = registration;
+
+    await registrationUpdate.bind(registration)();
+    const { installing: registrationInstalling } = registration;
+    const installing = registrationInstalling;
 
     if (installing) {
       await new Promise((resolve, reject) => {
@@ -246,11 +280,15 @@ document.getElementById('update').onclick = async () => {
       });
     }
 
-    if (registration.waiting) {
+    const { waiting: registrationWaiting } = registration;
+
+    if (registrationWaiting) {
       navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), {
         once: true,
       });
-      registration.waiting.postMessage({ type: 'GCHAT_ACTIVATE' });
+      const { waiting: registrationWaiting2 } = registration;
+
+      registrationWaiting2.postMessage({ type: 'GCHAT_ACTIVATE' });
     } else {
       status.textContent = 'Тест актуален. Можно повторить отправку.';
     }

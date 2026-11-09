@@ -72,11 +72,13 @@ export class NativeNavigationBinding {
         throw new NavigationError('CANCELLED');
       }
 
+      const { location: stateLocation } = state;
+
       await this.port.navigationReady({
         navigationVersion: 1,
         cycleId: cycle,
         phase: 'ready',
-        location: state.location,
+        location: stateLocation,
       });
     } catch (error) {
       if (!attached && generation === this.generation) {
@@ -113,7 +115,10 @@ export class NativeNavigationBinding {
 
     if (this.listener) {
       try {
-        await (await this.listener).remove();
+        const resolved = await this.listener;
+        const { remove: resultRemove } = resolved;
+
+        await resultRemove.bind(resolved)();
       } catch {
         /* A disconnected bridge has nothing left to detach. */
       }
@@ -166,20 +171,35 @@ export class NativeNavigationBinding {
         let record = cached;
 
         if (!record) {
-          const promise = this.navigation
-            .navigateCommand(requestId, parsed.data.args.to, { replace: parsed.data.args.replace })
-            .then(
-              (result): Record<string, unknown> => ({ result }),
-              (error: unknown): Record<string, unknown> => ({
+          const promise = (async () => {
+            let fulfilledValue;
+
+            try {
+              fulfilledValue = await this.navigation.navigateCommand(
+                requestId,
+                parsed.data.args.to,
+                { replace: parsed.data.args.replace },
+              );
+            } catch (rejectedCause) {
+              const error: unknown = rejectedCause;
+
+              return {
                 error: this.failure(
                   error instanceof NavigationError ? error.code : 'INTEGRATION_ERROR',
                 ),
-              }),
-            );
+              };
+            }
+
+            const result = fulfilledValue;
+
+            return { result };
+          })();
 
           record = { fingerprint, promise };
           this.records.set(requestId, record);
-          void promise.then((): void => {
+          void (async () => {
+            await promise;
+
             if (generation !== this.generation) {
               return;
             }
@@ -194,7 +214,7 @@ export class NativeNavigationBinding {
                 this.retired.add(oldest);
               }
             }
-          });
+          })();
         }
 
         response = await record.promise;

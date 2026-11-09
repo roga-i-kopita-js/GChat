@@ -12,7 +12,9 @@ export class TestHttp {
       throw new Error('missing fetch');
     }
 
-    return response.text();
+    const { text: responseText } = response;
+
+    return responseText.bind(response)();
   }
 }
 

@@ -29,7 +29,13 @@ export function readQuery<T>(schema: z.ZodType<T>, request: Request): T {
 
 export async function readForm<T>(schema: z.ZodType<T>, request: Request): Promise<T> {
   request.signal.throwIfAborted();
-  const body = await request.formData().catch((): undefined => undefined);
+  const body = await (async () => {
+    try {
+      return await request.formData();
+    } catch (cause) {
+      return undefined;
+    }
+  })();
 
   request.signal.throwIfAborted();
   const parsed = z

@@ -19,7 +19,9 @@ it('keeps initial notification snapshots immutable and deduplicates pending inte
   const initial = await service.getState();
 
   expect(Object.isFrozen(initial)).toBe(true);
-  expect(Object.isFrozen(initial.settings)).toBe(true);
+  const { settings: initialSettings } = initial;
+
+  expect(Object.isFrozen(initialSettings)).toBe(true);
   const received = vi.fn();
 
   service.on(NotificationEvent.IntentReceived, received);
@@ -29,9 +31,16 @@ it('keeps initial notification snapshots immutable and deduplicates pending inte
   service.receive({ id: intent.id, kind: 'dialog', dialogId: intent.dialogId });
   const next = await service.getState();
 
-  expect(next.revision).toBeGreaterThan(initial.revision);
-  expect(initial.pendingIntent).toBeNull();
-  expect(Object.isFrozen(next.pendingIntent)).toBe(true);
+  const { revision: nextRevision } = next;
+  const { revision: initialRevision } = initial;
+
+  expect(nextRevision).toBeGreaterThan(initialRevision);
+  const { pendingIntent: initialPendingIntent } = initial;
+
+  expect(initialPendingIntent).toBeNull();
+  const { pendingIntent: nextPendingIntent } = next;
+
+  expect(Object.isFrozen(nextPendingIntent)).toBe(true);
   expect(received).toHaveBeenCalledTimes(1);
   service.stop();
 });

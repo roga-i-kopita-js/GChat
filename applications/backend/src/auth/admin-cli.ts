@@ -44,33 +44,48 @@ async function main(): Promise<void> {
   });
 
   try {
-    const accounts = app.get(AuthAccounts);
-    const groups = app.get(GroupsService);
+    const { get: appGet } = app;
+    const accounts = appGet.bind(app)(AuthAccounts);
+    const { get: appGet2 } = app;
+    const groups = appGet2.bind(app)(GroupsService);
     const group = input.group === undefined ? undefined : groups.normalizeName(input.group);
     const prepared = await accounts.prepare({ ...input, password });
-    const account = await app
-      .get(DatabaseService)
+    const { get: appGet3 } = app;
+    const account = await appGet3
+      .bind(app)(DatabaseService)
       .db.transaction(async (tx): Promise<SafeAccount> => {
         const account = await accounts.create(tx, prepared, 'admin');
 
         if (group !== undefined) {
-          await groups.assign(tx, account.id, group);
+          const { id: accountId } = account;
+
+          await groups.assign(tx, accountId, group);
         }
 
         return account;
       });
 
-    process.stdout.write(`Администратор создан: ${account.login} (${account.id})\n`);
+    const { login: accountLogin, id: accountId2 } = account;
+
+    process.stdout.write(`Администратор создан: ${accountLogin} (${accountId2})\n`);
   } finally {
-    await app.close();
+    const { close: appClose } = app;
+
+    await appClose.bind(app)();
   }
 }
 
-main().catch((error: unknown): void => {
-  process.stderr.write(
-    error instanceof AppError
-      ? `${error.code}: ${error.message}\n`
-      : 'Не удалось создать администратора. Проверьте параметры, терминал и конфигурацию. Результат записи может быть неизвестен.\n',
-  );
-  process.exitCode = 1;
-});
+(async () => {
+  try {
+    return await main();
+  } catch (cause) {
+    const error: unknown = cause;
+
+    process.stderr.write(
+      error instanceof AppError
+        ? `${error.code}: ${error.message}\n`
+        : 'Не удалось создать администратора. Проверьте параметры, терминал и конфигурацию. Результат записи может быть неизвестен.\n',
+    );
+    process.exitCode = 1;
+  }
+})();

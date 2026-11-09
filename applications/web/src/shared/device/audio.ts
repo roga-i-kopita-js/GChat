@@ -78,7 +78,9 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
         throw new DeviceError('CANCELLED');
       }
 
-      return (await this.refresh(options)).outputs;
+      const { outputs: refreshResultOutputs } = await this.refresh(options);
+
+      return refreshResultOutputs;
     },
     pick: async (options?: CallOptions): Promise<Selection<AudioOutput>> => {
       if (embedded) {
@@ -94,15 +96,21 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
 
         await this.refresh(options);
 
-        if (value.outcome === 'cancelled') {
+        const { outcome: valueOutcome } = value;
+
+        if (valueOutcome === 'cancelled') {
           return { outcome: 'cancelled' };
         }
 
-        if (!value.output) {
+        const { output: valueOutput } = value ?? {};
+
+        if (!valueOutput) {
           throw new DeviceError('DEVICE_UNAVAILABLE');
         }
 
-        return { outcome: 'completed', value: value.output };
+        const { output: valueOutput2 } = value;
+
+        return { outcome: 'completed', value: valueOutput };
       }
 
       if (options?.signal?.aborted || this.signal().aborted) {
@@ -161,7 +169,9 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
 
       const devices = await this.refresh(options);
 
-      if (!devices.outputs?.some((entry): boolean => entry.id === outputId)) {
+      const { outputs: devicesOutputs } = devices ?? {};
+
+      if (!devicesOutputs?.some((entry): boolean => entry.id === outputId)) {
         throw new DeviceError('DEVICE_UNAVAILABLE');
       }
 
@@ -215,8 +225,9 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
       }
 
       const values = await navigator.mediaDevices.enumerateDevices();
-      const outputs = values
-        .filter((item): boolean => item.kind === 'audiooutput')
+      const { filter: valuesFilter } = values;
+      const outputs = valuesFilter
+        .bind(values)((item): boolean => item.kind === 'audiooutput')
         .map((item): AudioOutput => ({
           id: item.deviceId,
           name: item.label || null,
@@ -245,18 +256,21 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
     const pending = task();
 
     this.loading = pending;
-    void pending.then(
-      (): void => {
+    void (async () => {
+      try {
+        await pending;
+      } catch (rejectedCause) {
         if (this.loading === pending) {
           this.loading = null;
         }
-      },
-      (): void => {
-        if (this.loading === pending) {
-          this.loading = null;
-        }
-      },
-    );
+
+        return;
+      }
+
+      if (this.loading === pending) {
+        this.loading = null;
+      }
+    })();
 
     return cancellable((): Promise<AudioState> => pending, options, this.signal());
   }
@@ -271,43 +285,50 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
     }
 
     const refresh = (): void => {
-      void this.refresh().catch((cause): void =>
-        this.emit(AudioEvent.Error, {
-          revision: this.source.getSnapshot().revision,
-          error: deviceFailure(cause, 'audio', 'read'),
-        }),
-      );
+      void (async () => {
+        try {
+          return await this.refresh();
+        } catch (cause) {
+          return this.emit(AudioEvent.Error, {
+            revision: this.source.getSnapshot().revision,
+            error: deviceFailure(cause, 'audio', 'read'),
+          });
+        }
+      })();
     };
 
     if (embedded) {
       const generation = ++this.generation;
 
-      void nativePlugin
-        .addListener('mediaEvent', (raw): void => {
-          const event = z
-            .object({
-              mediaVersion: z.literal(1),
-              cycleId: z.string(),
-              kind: z.literal('audioChanged'),
-            })
-            .safeParse(raw);
+      void (async () => {
+        try {
+          const handle = await nativePlugin.addListener('mediaEvent', (raw): void => {
+            const event = z
+              .object({
+                mediaVersion: z.literal(1),
+                cycleId: z.string(),
+                kind: z.literal('audioChanged'),
+              })
+              .safeParse(raw);
 
-          if (
-            event.success &&
-            event.data.cycleId === nativeRuntime.getSnapshot().cycleId &&
-            generation === this.generation
-          ) {
-            refresh();
-          }
-        })
-        .then((handle): void => {
+            if (
+              event.success &&
+              event.data.cycleId === nativeRuntime.getSnapshot().cycleId &&
+              generation === this.generation
+            ) {
+              refresh();
+            }
+          });
+
           if (generation === this.generation) {
             this.mediaHandle = handle;
           } else {
-            void handle.remove();
+            const { remove: handleRemove } = handle;
+
+            void handleRemove.bind(handle)();
           }
-        })
-        .catch((): void => {});
+        } catch (cause) {}
+      })();
     }
 
     const stop = this.observer.source.on(({ value }): void => {
@@ -380,13 +401,13 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
         throw new DeviceError('BUSY');
       }
 
-      const started = await cancellable(
+      const { testId: startedTestId } = await cancellable(
         (): Promise<{ testId: string }> =>
           this.bridge.execute({ command: 'audio.test.start', args: test }),
         { signal: context },
       );
 
-      id = started.testId;
+      id = startedTestId;
       await this.observer.refresh();
 
       return await cancellable(
@@ -457,9 +478,11 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
       off();
 
       if (id && context.aborted) {
-        await this.bridge
-          .execute({ command: 'audio.test.stop', args: { testId: id } })
-          .catch((): void => {});
+        await (async () => {
+          try {
+            return await this.bridge.execute({ command: 'audio.test.stop', args: { testId: id } });
+          } catch (cause) {}
+        })();
       }
     }
   }

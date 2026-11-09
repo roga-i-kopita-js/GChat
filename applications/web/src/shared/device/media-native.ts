@@ -57,15 +57,17 @@ export class NativeMedia {
       ...(options.signal ? [options.signal] : []),
     ]);
     const cancel = (): void => {
-      void nativePlugin
-        .mediaCommand({
-          mediaVersion: 1,
-          cycleId: state.cycleId,
-          requestId: crypto.randomUUID(),
-          command: 'cancel',
-          args: { requestId },
-        })
-        .catch((): void => {});
+      void (async () => {
+        try {
+          return await nativePlugin.mediaCommand({
+            mediaVersion: 1,
+            cycleId: state.cycleId,
+            requestId: crypto.randomUUID(),
+            command: 'cancel',
+            args: { requestId },
+          });
+        } catch (cause) {}
+      })();
     };
 
     context.addEventListener('abort', cancel, { once: true });

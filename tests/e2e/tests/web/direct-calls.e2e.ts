@@ -16,80 +16,157 @@ test('full browser call uses relay audio, mute, reload and ends for both users',
 }, testInfo): Promise<void> => {
   const a = await browser.newContext({ permissions: ['microphone'] });
   const b = await browser.newContext({ permissions: ['microphone'] });
-  const anna = await a.newPage();
-  const maxim = await b.newPage();
+  const { newPage: aNewPage } = a;
+  const anna = await aNewPage.bind(a)();
+  const { newPage: bNewPage } = b;
+  const maxim = await bNewPage.bind(b)();
   const errors: string[] = [];
 
-  anna.on('pageerror', (cause): void => {
+  const { on: annaOn } = anna;
+
+  annaOn.bind(anna)('pageerror', (cause): void => {
     errors.push(cause.message);
   });
-  maxim.on('pageerror', (cause): void => {
+  const { on: maximOn } = maxim;
+
+  maximOn.bind(maxim)('pageerror', (cause): void => {
     errors.push(cause.message);
   });
 
   try {
-    await anna.goto('/');
-    await anna.screenshot({ path: testInfo.outputPath('login.png'), fullPage: true });
+    const { goto: annaGoto } = anna;
+
+    await annaGoto.bind(anna)('/');
+    const { screenshot: annaScreenshot } = anna;
+
+    await annaScreenshot.bind(anna)({ path: testInfo.outputPath('login.png'), fullPage: true });
     await login(anna, 'anna');
     await login(maxim, 'maxim');
-    await anna.screenshot({ path: testInfo.outputPath('contacts.png'), fullPage: true });
+    const { screenshot: annaScreenshot2 } = anna;
+
+    await annaScreenshot2.bind(anna)({ path: testInfo.outputPath('contacts.png'), fullPage: true });
     await dial(anna, 'Максим Волков');
-    await expect(anna.getByTestId('call-status')).toHaveText('Вызываем…', { timeout: 20000 });
-    await expect(maxim.getByTestId('call-status')).toHaveText('Входящий звонок', {
+    const { getByTestId: annaGetByTestId } = anna;
+
+    await expect(annaGetByTestId.bind(anna)('call-status')).toHaveText('Вызываем…', {
+      timeout: 20000,
+    });
+    const { getByTestId: maximGetByTestId } = maxim;
+
+    await expect(maximGetByTestId.bind(maxim)('call-status')).toHaveText('Входящий звонок', {
       timeout: 15000,
     });
-    await maxim.getByRole('button', { name: 'Принять', exact: true }).click();
-    await expect(anna.getByTestId('call-status')).toHaveText('Разговор', { timeout: 35000 });
-    await expect(maxim.getByTestId('call-status')).toHaveText('Разговор');
+    const { getByRole: maximGetByRole } = maxim;
+
+    await maximGetByRole.bind(maxim)('button', { name: 'Принять', exact: true }).click();
+    const { getByTestId: annaGetByTestId2 } = anna;
+
+    await expect(annaGetByTestId2.bind(anna)('call-status')).toHaveText('Разговор', {
+      timeout: 35000,
+    });
+    const { getByTestId: maximGetByTestId2 } = maxim;
+
+    await expect(maximGetByTestId2.bind(maxim)('call-status')).toHaveText('Разговор');
 
     for (const page of [anna, maxim]) {
       await page.getByRole('button', { name: 'Диагностика', exact: true }).click();
       await expect(page.getByTestId('relay')).toHaveText('TURN (relay)', { timeout: 10000 });
       await expect
-        .poll(async (): Promise<number> =>
-          Number((await page.getByTestId('rtp-received').textContent())?.split(' ')[0] ?? 0),
-        )
+        .poll(async (): Promise<number> => {
+          const resolved = await page.getByTestId('rtp-received').textContent();
+          const { split: textContentResultSplit } = resolved ?? {};
+
+          return Number(textContentResultSplit?.bind(resolved)(' ')[0] ?? 0);
+        })
         .toBeGreaterThan(0);
       await expect
-        .poll(async (): Promise<number> =>
-          Number((await page.getByTestId('rtp-sent').textContent())?.split(' ')[0] ?? 0),
-        )
+        .poll(async (): Promise<number> => {
+          const resolved2 = await page.getByTestId('rtp-sent').textContent();
+          const { split: textContentResultSplit2 } = resolved2 ?? {};
+
+          return Number(textContentResultSplit2?.bind(resolved2)(' ')[0] ?? 0);
+        })
         .toBeGreaterThan(0);
       await page.getByRole('button', { name: 'Закрыть', exact: true }).click();
     }
 
-    await anna.getByRole('button', { name: 'Микрофон', exact: true }).click();
-    await expect(anna.getByRole('button', { name: 'Включить микрофон' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    await anna.getByRole('button', { name: 'Включить микрофон' }).click();
-    const extra = await a.newPage();
+    const { getByRole: annaGetByRole } = anna;
 
-    await extra.goto('/');
-    await extra.getByRole('button', { name: 'Диагностика', exact: true }).click();
-    await expect(extra.getByText('Звонками управляет другая вкладка GChat.')).toBeVisible();
-    await expect(anna.getByTestId('call-status')).toHaveText('Разговор');
-    await extra.close();
-    await anna.reload();
-    await expect(anna.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
-    await expect(anna.getByTestId('call-status')).toHaveText('Разговор', { timeout: 20000 });
-    await anna.getByRole('button', { name: 'Диагностика', exact: true }).click();
+    await annaGetByRole.bind(anna)('button', { name: 'Микрофон', exact: true }).click();
+    const { getByRole: annaGetByRole2 } = anna;
+
+    await expect(
+      annaGetByRole2.bind(anna)('button', { name: 'Включить микрофон' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    const { getByRole: annaGetByRole3 } = anna;
+
+    await annaGetByRole3.bind(anna)('button', { name: 'Включить микрофон' }).click();
+    const { newPage: aNewPage2 } = a;
+    const extra = await aNewPage2.bind(a)();
+
+    const { goto: extraGoto } = extra;
+
+    await extraGoto.bind(extra)('/');
+    const { getByRole: extraGetByRole } = extra;
+
+    await extraGetByRole.bind(extra)('button', { name: 'Диагностика', exact: true }).click();
+    const { getByText: extraGetByText } = extra;
+
+    await expect(
+      extraGetByText.bind(extra)('Звонками управляет другая вкладка GChat.'),
+    ).toBeVisible();
+    const { getByTestId: annaGetByTestId3 } = anna;
+
+    await expect(annaGetByTestId3.bind(anna)('call-status')).toHaveText('Разговор');
+    const { close: extraClose } = extra;
+
+    await extraClose.bind(extra)();
+    const { reload: annaReload } = anna;
+
+    await annaReload.bind(anna)();
+    const { getByRole: annaGetByRole4 } = anna;
+
+    await expect(annaGetByRole4.bind(anna)('main', { name: 'Звонки', exact: true })).toBeVisible();
+    const { getByTestId: annaGetByTestId4 } = anna;
+
+    await expect(annaGetByTestId4.bind(anna)('call-status')).toHaveText('Разговор', {
+      timeout: 20000,
+    });
+    const { getByRole: annaGetByRole5 } = anna;
+
+    await annaGetByRole5.bind(anna)('button', { name: 'Диагностика', exact: true }).click();
     await expect
       .poll(
-        async (): Promise<number> =>
-          Number((await anna.getByTestId('rtp-received').textContent())?.split(' ')[0] ?? 0),
+        async (): Promise<number> => {
+          const { getByTestId: annaGetByTestId5 } = anna;
+          const resolved3 = await annaGetByTestId5.bind(anna)('rtp-received').textContent();
+          const { split: textContentResultSplit3 } = resolved3 ?? {};
+
+          return Number(textContentResultSplit3?.bind(resolved3)(' ')[0] ?? 0);
+        },
         { timeout: 20000 },
       )
       .toBeGreaterThan(0);
-    await anna.getByRole('button', { name: 'Закрыть', exact: true }).click();
-    await anna.getByRole('button', { name: 'Завершить', exact: true }).click();
-    await expect(anna.getByTestId('call-status')).toHaveText('Разговор завершён');
-    await expect(maxim.getByTestId('call-status')).toHaveText('Разговор завершён');
+    const { getByRole: annaGetByRole6 } = anna;
+
+    await annaGetByRole6.bind(anna)('button', { name: 'Закрыть', exact: true }).click();
+    const { getByRole: annaGetByRole7 } = anna;
+
+    await annaGetByRole7.bind(anna)('button', { name: 'Завершить', exact: true }).click();
+    const { getByTestId: annaGetByTestId6 } = anna;
+
+    await expect(annaGetByTestId6.bind(anna)('call-status')).toHaveText('Разговор завершён');
+    const { getByTestId: maximGetByTestId3 } = maxim;
+
+    await expect(maximGetByTestId3.bind(maxim)('call-status')).toHaveText('Разговор завершён');
     expect(errors).toEqual([]);
   } finally {
-    await a.close();
-    await b.close();
+    const { close: aClose } = a;
+
+    await aClose.bind(a)();
+    const { close: bClose } = b;
+
+    await bClose.bind(b)();
   }
 });
 
@@ -101,41 +178,96 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
     viewport: { width: 390, height: 844 },
   });
   const b = await browser.newContext({ permissions: ['microphone'] });
-  const anna = await a.newPage();
-  const maxim = await b.newPage();
+  const { newPage: aNewPage3 } = a;
+  const anna = await aNewPage3.bind(a)();
+  const { newPage: bNewPage2 } = b;
+  const maxim = await bNewPage2.bind(b)();
 
   try {
     await login(anna, 'anna');
     await login(maxim, 'maxim');
-    await anna.getByRole('button', { name: 'Максим Волков Голосовой звонок' }).click();
-    await anna.getByRole('button', { name: 'Позвонить', exact: true }).click();
-    await anna.getByRole('dialog').getByRole('button', { name: 'Отмена', exact: true }).click();
-    await expect(maxim.getByTestId('call-status')).not.toBeVisible();
-    await anna.reload();
-    await expect(anna.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
+    const { getByRole: annaGetByRole8 } = anna;
+
+    await annaGetByRole8.bind(anna)('button', { name: 'Максим Волков Голосовой звонок' }).click();
+    const { getByRole: annaGetByRole9 } = anna;
+
+    await annaGetByRole9.bind(anna)('button', { name: 'Позвонить', exact: true }).click();
+    const { getByRole: annaGetByRole10 } = anna;
+
+    await annaGetByRole10
+      .bind(anna)('dialog')
+      .getByRole('button', { name: 'Отмена', exact: true })
+      .click();
+    const { getByTestId: maximGetByTestId4 } = maxim;
+
+    await expect(maximGetByTestId4.bind(maxim)('call-status')).not.toBeVisible();
+    const { reload: annaReload2 } = anna;
+
+    await annaReload2.bind(anna)();
+    const { getByRole: annaGetByRole11 } = anna;
+
+    await expect(annaGetByRole11.bind(anna)('main', { name: 'Звонки', exact: true })).toBeVisible();
+    const { getByRole: annaGetByRole12 } = anna;
+
     await expect(
-      anna.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true }),
+      annaGetByRole12.bind(anna)('button', { name: 'Позвонить: Максим Волков', exact: true }),
     ).toBeEnabled();
-    await maxim.getByRole('button', { name: 'Елена Соколова Голосовой звонок' }).click();
-    await maxim.getByRole('link', { name: 'Настройки', exact: true }).click();
-    await expect(maxim.getByRole('main', { name: 'Настройки', exact: true })).toBeVisible();
-    await anna.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true }).click();
-    await expect(anna.getByRole('dialog')).not.toBeVisible();
-    await expect(anna.getByTestId('call-status')).toHaveText('Вызываем…');
-    const incoming = maxim.getByRole('dialog', { name: 'Входящий звонок', exact: true });
+    const { getByRole: maximGetByRole2 } = maxim;
+
+    await maximGetByRole2
+      .bind(maxim)('button', { name: 'Елена Соколова Голосовой звонок' })
+      .click();
+    const { getByRole: maximGetByRole3 } = maxim;
+
+    await maximGetByRole3.bind(maxim)('link', { name: 'Настройки', exact: true }).click();
+    const { getByRole: maximGetByRole4 } = maxim;
+
+    await expect(
+      maximGetByRole4.bind(maxim)('main', { name: 'Настройки', exact: true }),
+    ).toBeVisible();
+    const { getByRole: annaGetByRole13 } = anna;
+
+    await annaGetByRole13
+      .bind(anna)('button', { name: 'Позвонить: Максим Волков', exact: true })
+      .click();
+    const { getByRole: annaGetByRole14 } = anna;
+
+    await expect(annaGetByRole14.bind(anna)('dialog')).not.toBeVisible();
+    const { getByTestId: annaGetByTestId7 } = anna;
+
+    await expect(annaGetByTestId7.bind(anna)('call-status')).toHaveText('Вызываем…');
+    const { getByRole: maximGetByRole5 } = maxim;
+    const incoming = maximGetByRole5.bind(maxim)('dialog', {
+      name: 'Входящий звонок',
+      exact: true,
+    });
 
     await expect(incoming).toBeVisible();
     await expect(incoming.getByRole('heading', { name: 'Анна Смирнова' })).toBeVisible();
-    await expect(maxim.getByRole('main', { name: 'Настройки', exact: true })).toBeVisible();
+    const { getByRole: maximGetByRole6 } = maxim;
+
+    await expect(
+      maximGetByRole6.bind(maxim)('main', { name: 'Настройки', exact: true }),
+    ).toBeVisible();
     await expect(incoming).toHaveJSProperty('open', true);
-    await maxim.keyboard.press('Escape');
+    const { keyboard: maximKeyboard } = maxim;
+
+    await maximKeyboard.press('Escape');
     await expect(incoming).toBeVisible();
-    await maxim.keyboard.press('Tab');
+    const { keyboard: maximKeyboard2 } = maxim;
+
+    await maximKeyboard2.press('Tab');
     await expect(incoming.locator(':focus')).toHaveCount(1);
     await incoming.getByRole('button', { name: 'Отклонить', exact: true }).click();
-    await expect(anna.getByTestId('call-status')).toHaveText('Вызов отклонён');
-    await maxim.getByRole('link', { name: 'Звонки', exact: true }).click();
-    await expect(maxim.getByTestId('call-status')).toHaveText('Вызов отклонён');
+    const { getByTestId: annaGetByTestId8 } = anna;
+
+    await expect(annaGetByTestId8.bind(anna)('call-status')).toHaveText('Вызов отклонён');
+    const { getByRole: maximGetByRole7 } = maxim;
+
+    await maximGetByRole7.bind(maxim)('link', { name: 'Звонки', exact: true }).click();
+    const { getByTestId: maximGetByTestId5 } = maxim;
+
+    await expect(maximGetByTestId5.bind(maxim)('call-status')).toHaveText('Вызов отклонён');
 
     for (const page of [anna, maxim]) {
       await page.getByRole('link', { name: 'Звонки', exact: true }).click();
@@ -147,18 +279,36 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
       await expect(page.getByTestId('call-status')).not.toBeVisible();
     }
 
-    await anna.getByRole('button', { name: 'Диагностика', exact: true }).click();
+    const { getByRole: annaGetByRole15 } = anna;
+
+    await annaGetByRole15.bind(anna)('button', { name: 'Диагностика', exact: true }).click();
     await dial(maxim, 'Анна Смирнова');
-    const mobileIncoming = anna.getByRole('dialog', { name: 'Входящий звонок', exact: true });
+    const { getByRole: annaGetByRole16 } = anna;
+    const mobileIncoming = annaGetByRole16.bind(anna)('dialog', {
+      name: 'Входящий звонок',
+      exact: true,
+    });
 
     await expect(mobileIncoming).toBeVisible();
-    await expect(anna.getByRole('heading', { name: 'Диагностика соединения' })).not.toBeVisible();
-    await maxim.getByRole('button', { name: 'Отменить', exact: true }).click();
+    const { getByRole: annaGetByRole17 } = anna;
+
+    await expect(
+      annaGetByRole17.bind(anna)('heading', { name: 'Диагностика соединения' }),
+    ).not.toBeVisible();
+    const { getByRole: maximGetByRole8 } = maxim;
+
+    await maximGetByRole8.bind(maxim)('button', { name: 'Отменить', exact: true }).click();
     await expect(mobileIncoming).not.toBeVisible();
-    await expect(anna.getByTestId('call-status')).toHaveText('Вызов отменён');
+    const { getByTestId: annaGetByTestId9 } = anna;
+
+    await expect(annaGetByTestId9.bind(anna)('call-status')).toHaveText('Вызов отменён');
   } finally {
-    await a.close();
-    await b.close();
+    const { close: aClose2 } = a;
+
+    await aClose2.bind(a)();
+    const { close: bClose2 } = b;
+
+    await bClose2.bind(b)();
   }
 });
 
@@ -168,29 +318,55 @@ test('an idle secondary tab can enable calls without opening diagnostics', async
   const context = await browser.newContext({ permissions: ['microphone'] });
 
   try {
-    const primary = await context.newPage();
+    const { newPage: contextNewPage } = context;
+    const primary = await contextNewPage.bind(context)();
 
     await login(primary, 'anna');
-    const secondary = await context.newPage();
+    const { newPage: contextNewPage2 } = context;
+    const secondary = await contextNewPage2.bind(context)();
 
-    await secondary.addInitScript((): void => localStorage.removeItem('debug'));
-    await secondary.goto('/');
-    const call = secondary.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true });
+    const { addInitScript: secondaryAddInitScript } = secondary;
+
+    await secondaryAddInitScript.bind(secondary)((): void => localStorage.removeItem('debug'));
+    const { goto: secondaryGoto } = secondary;
+
+    await secondaryGoto.bind(secondary)('/');
+    const { getByRole: secondaryGetByRole } = secondary;
+    const call = secondaryGetByRole.bind(secondary)('button', {
+      name: 'Позвонить: Максим Волков',
+      exact: true,
+    });
 
     await expect(call).toBeDisabled();
-    await expect(secondary.getByRole('button', { name: 'Диагностика', exact: true })).toHaveCount(
-      0,
-    );
-    await secondary.getByRole('button', { name: 'Открыть здесь', exact: true }).click();
-    await expect(call).toBeEnabled();
+    const { getByRole: secondaryGetByRole2 } = secondary;
+
     await expect(
-      primary.getByRole('button', { name: 'Позвонить: Максим Волков', exact: true }),
+      secondaryGetByRole2.bind(secondary)('button', { name: 'Диагностика', exact: true }),
+    ).toHaveCount(0);
+    const { getByRole: secondaryGetByRole3 } = secondary;
+
+    await secondaryGetByRole3
+      .bind(secondary)('button', { name: 'Открыть здесь', exact: true })
+      .click();
+    await expect(call).toBeEnabled();
+    const { getByRole: primaryGetByRole } = primary;
+
+    await expect(
+      primaryGetByRole.bind(primary)('button', { name: 'Позвонить: Максим Волков', exact: true }),
     ).toBeDisabled();
     await call.click();
-    await expect(secondary.getByTestId('call-status')).toHaveText('Вызываем…');
-    await secondary.getByRole('button', { name: 'Отменить', exact: true }).click();
-    await expect(secondary.getByTestId('call-status')).toHaveText('Вызов отменён');
+    const { getByTestId: secondaryGetByTestId } = secondary;
+
+    await expect(secondaryGetByTestId.bind(secondary)('call-status')).toHaveText('Вызываем…');
+    const { getByRole: secondaryGetByRole4 } = secondary;
+
+    await secondaryGetByRole4.bind(secondary)('button', { name: 'Отменить', exact: true }).click();
+    const { getByTestId: secondaryGetByTestId2 } = secondary;
+
+    await expect(secondaryGetByTestId2.bind(secondary)('call-status')).toHaveText('Вызов отменён');
   } finally {
-    await context.close();
+    const { close: contextClose } = context;
+
+    await contextClose.bind(context)();
   }
 });

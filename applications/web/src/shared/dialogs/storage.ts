@@ -95,7 +95,9 @@ async function database(): Promise<IDBDatabase> {
   };
   const db = await result(request);
 
-  db.onversionchange = (): void => db.close();
+  const { addEventListener, close } = db;
+
+  addEventListener.bind(db)('versionchange', () => close.bind(db)());
 
   return db;
 }
@@ -112,12 +114,15 @@ export async function purgeAccount(
     await navigator.locks.request(
       'gchat-dialog-account:' + accountKey(scope),
       async (): Promise<void> => {
-        const tx = db.transaction(['control', 'records', 'messages'], 'readwrite');
+        const { transaction: dbTransaction } = db;
+        const tx = dbTransaction.bind(db)(['control', 'records', 'messages'], 'readwrite');
         const done = completed(tx);
         const key = accountKey(scope);
         const control: Control | undefined = await result(tx.objectStore('control').get(key));
 
-        tx.objectStore('control').put({ key, epoch: (control?.epoch ?? 0) + 1, sessionId: '' });
+        const { epoch: controlEpoch } = control ?? {};
+
+        tx.objectStore('control').put({ key, epoch: (controlEpoch ?? 0) + 1, sessionId: '' });
 
         for (const name of ['records', 'messages']) {
           const store = tx.objectStore(name);
@@ -132,7 +137,9 @@ export async function purgeAccount(
       },
     );
   } finally {
-    db.close();
+    const { close: dbClose2 } = db;
+
+    dbClose2.bind(db)();
   }
 }
 
@@ -163,7 +170,8 @@ export class IndexedDialogStorage implements DialogStorage {
       return await navigator.locks.request(
         'gchat-dialog-account:' + accountKey(scope),
         async (): Promise<IndexedDialogStorage> => {
-          const tx = db.transaction(['control', 'records', 'messages'], 'readwrite');
+          const { transaction: dbTransaction2 } = db;
+          const tx = dbTransaction2.bind(db)(['control', 'records', 'messages'], 'readwrite');
           const done = completed(tx);
           const key = accountKey(scope);
           let control: Control | undefined = await result(tx.objectStore('control').get(key));
@@ -196,7 +204,9 @@ export class IndexedDialogStorage implements DialogStorage {
         },
       );
     } catch (error) {
-      db.close();
+      const { close: dbClose3 } = db;
+
+      dbClose3.bind(db)();
 
       throw error;
     }
@@ -211,7 +221,9 @@ export class IndexedDialogStorage implements DialogStorage {
       tx.objectStore('control').get(accountKey(this.scope)),
     );
 
-    if (control?.epoch !== this.epoch || control.sessionId !== this.scope.sessionId) {
+    const { epoch: controlEpoch2, sessionId: controlSessionId } = control ?? {};
+
+    if (controlEpoch2 !== this.epoch || controlSessionId !== this.scope.sessionId) {
       throw new StorageError('STORAGE_STALE_CONTEXT');
     }
   }
@@ -224,10 +236,13 @@ export class IndexedDialogStorage implements DialogStorage {
       tx.objectStore('messages').index('dialog').getAll([this.namespace, id]),
     );
 
+    const { record: rowRecord } = row ?? {};
+    const { map: historyMap } = history;
+
     return {
-      record: row ? recordSchema.parse(row.record) : emptyRecord(),
-      messages: history
-        .map((entry): DialogMessage => messageSchema.parse(entry.message))
+      record: row ? recordSchema.parse(rowRecord) : emptyRecord(),
+      messages: historyMap
+        .bind(history)((entry): DialogMessage => messageSchema.parse(entry.message))
         .sort((a, b): number => a.sequence - b.sequence),
     };
   }
@@ -255,7 +270,9 @@ export class IndexedDialogStorage implements DialogStorage {
 
     await done;
 
-    return rows.flatMap((row): DialogDto[] => {
+    const { flatMap: rowsFlatMap } = rows;
+
+    return rowsFlatMap.bind(rows)((row): DialogDto[] => {
       const record = recordSchema.parse(row.record);
 
       return record.dialog ? [record.dialog] : [];
@@ -282,8 +299,12 @@ export class IndexedDialogStorage implements DialogStorage {
           const value = await this.load(tx, id);
 
           update(value);
-          value.record.revision++;
-          recordSchema.parse(value.record);
+          const { record: valueRecord } = value;
+
+          valueRecord.revision++;
+          const { record: valueRecord2 } = value;
+
+          recordSchema.parse(valueRecord2);
           const common = {
             namespace: this.namespace,
             account: accountKey(this.scope),
@@ -291,13 +312,17 @@ export class IndexedDialogStorage implements DialogStorage {
             epoch: this.epoch,
           };
 
+          const { record: valueRecord3 } = value;
+
           tx.objectStore('records').put({
             ...common,
             key: this.namespace + ':' + id,
-            record: value.record,
+            record: valueRecord3,
           });
 
-          for (const message of value.messages) {
+          const { messages: valueMessages } = value;
+
+          for (const message of valueMessages) {
             tx.objectStore('messages').put({
               ...common,
               key: this.namespace + ':' + message.message_id,
@@ -310,7 +335,11 @@ export class IndexedDialogStorage implements DialogStorage {
           return value;
         } catch (error) {
           tx.abort();
-          await done.catch((): void => {});
+          await (async () => {
+            try {
+              return await done;
+            } catch (cause) {}
+          })();
 
           throw error;
         }
@@ -334,15 +363,18 @@ export async function readDeadline(storage: DialogStorage, next?: number): Promi
   const db = await database();
 
   try {
-    const tx = db.transaction('control', next === undefined ? 'readonly' : 'readwrite');
+    const { transaction: dbTransaction3 } = db;
+    const tx = dbTransaction3.bind(db)('control', next === undefined ? 'readonly' : 'readwrite');
     const done = completed(tx);
     const key = accountKey(storage.scope);
     const control: Control | undefined = await result(tx.objectStore('control').get(key));
 
+    const { epoch: controlEpoch3, sessionId: controlSessionId2 } = control ?? {};
+
     if (
       !control ||
-      control.epoch !== storage.epoch ||
-      control.sessionId !== storage.scope.sessionId
+      controlEpoch3 !== storage.epoch ||
+      controlSessionId2 !== storage.scope.sessionId
     ) {
       throw new StorageError('STORAGE_STALE_CONTEXT');
     }
@@ -353,8 +385,12 @@ export async function readDeadline(storage: DialogStorage, next?: number): Promi
 
     await done;
 
-    return next ?? control.nextReadAt ?? 0;
+    const { nextReadAt: controlNextReadAt } = control;
+
+    return next ?? controlNextReadAt ?? 0;
   } finally {
-    db.close();
+    const { close: dbClose4 } = db;
+
+    dbClose4.bind(db)();
   }
 }

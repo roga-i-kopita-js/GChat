@@ -83,7 +83,9 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       controllers: [PrivateController],
     }).compile();
 
-    app = module.createNestApplication();
+    const { createNestApplication: moduleCreateNestApplication } = module;
+
+    app = moduleCreateNestApplication.bind(module)();
     await app.listen(0, '127.0.0.1');
     passwordHash = await app.get(AuthCrypto).hashPassword(password);
   }, 20000);
@@ -121,42 +123,57 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     }
   });
   async function signIn(): Promise<TokensDto> {
-    return (
-      await request(app.getHttpServer())
-        .post('/auth/login')
-        .send({ login, password })
-        .expect(200)
-        .expect('Cache-Control', 'no-store')
-    ).body;
+    const { body: expectResultBody } = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ login, password })
+      .expect(200)
+      .expect('Cache-Control', 'no-store');
+
+    return expectResultBody;
   }
   it('issues a bound browser ticket and atomically accepts it once', async (): Promise<void> => {
     const tokens = await signIn();
+    const { access_token: tokensAccessToken } = tokens;
     const response = await request(app.getHttpServer())
       .post('/auth/ws-ticket')
-      .auth(tokens.access_token, { type: 'bearer' })
+      .auth(tokensAccessToken, { type: 'bearer' })
       .set('Origin', 'http://localhost:5173')
       .send({})
       .expect(200)
       .expect('Cache-Control', 'no-store');
     const tickets = app.get(AuthWsTickets);
+    const { body: responseBody } = response;
     const results = await Promise.allSettled([
-      tickets.redeem(response.body.ticket, 'http://localhost:5173'),
-      tickets.redeem(response.body.ticket, 'http://localhost:5173'),
+      tickets.redeem(responseBody.ticket, 'http://localhost:5173'),
+      tickets.redeem(responseBody.ticket, 'http://localhost:5173'),
     ]);
 
-    expect(results.filter((result): boolean => result.status === 'fulfilled')).toHaveLength(1);
-    expect(results.find((result): boolean => result.status === 'fulfilled')).toMatchObject({
-      value: { userId, sessionId: sessionId(tokens.refresh_token) },
+    const { filter: resultsFilter } = results;
+
+    expect(
+      resultsFilter.bind(results)((result): boolean => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    const { find: resultsFind } = results;
+    const { refresh_token: tokensRefreshToken } = tokens;
+
+    expect(
+      resultsFind.bind(results)((result): boolean => result.status === 'fulfilled'),
+    ).toMatchObject({
+      value: { userId, sessionId: sessionId(tokensRefreshToken) },
     });
+    const { access_token: tokensAccessToken2 } = tokens;
+
     await request(app.getHttpServer())
       .post('/auth/ws-ticket')
-      .auth(tokens.access_token, { type: 'bearer' })
+      .auth(tokensAccessToken2, { type: 'bearer' })
       .set('Origin', 'https://foreign.invalid')
       .send({})
       .expect(403);
+    const { access_token: tokensAccessToken3 } = tokens;
+
     await request(app.getHttpServer())
       .post('/auth/ws-ticket')
-      .auth(tokens.access_token, { type: 'bearer' })
+      .auth(tokensAccessToken3, { type: 'bearer' })
       .send({})
       .expect(403);
   });
@@ -164,82 +181,101 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
   it('checks ticket origin, expiry, revocation and issue rate limits', async (): Promise<void> => {
     const tokens = await signIn();
     const tickets = app.get(AuthWsTickets);
-    const issue = async (): Promise<any> =>
-      (
-        await request(app.getHttpServer())
-          .post('/auth/ws-ticket')
-          .auth(tokens.access_token, { type: 'bearer' })
-          .set('Origin', 'http://localhost:5173')
-          .send({})
-          .expect(200)
-      ).body;
-    const wrong = await issue();
+    const issue = async (): Promise<any> => {
+      const { access_token: tokensAccessToken4 } = tokens;
+      const { body: expectResultBody4 } = await request(app.getHttpServer())
+        .post('/auth/ws-ticket')
+        .auth(tokensAccessToken4, { type: 'bearer' })
+        .set('Origin', 'http://localhost:5173')
+        .send({})
+        .expect(200);
 
-    await expect(tickets.redeem(wrong.ticket, 'http://127.0.0.1:5173')).rejects.toMatchObject({
+      return expectResultBody4;
+    };
+    const { ticket: wrongTicket } = await issue();
+
+    await expect(tickets.redeem(wrongTicket, 'http://127.0.0.1:5173')).rejects.toMatchObject({
       code: 'FORBIDDEN',
     });
     const expired = await issue();
     const { createHash } = await import('node:crypto');
 
+    const { ticket: expiredTicket } = expired;
+
     await database.query(
       "UPDATE gchat_auth_ws_tickets SET issued_at=clock_timestamp()-interval '31 seconds', expires_at=clock_timestamp()-interval '1 second' WHERE ticket_hash=$1",
-      [createHash('sha256').update(expired.ticket).digest('hex')],
+      [createHash('sha256').update(expiredTicket).digest('hex')],
     );
-    await expect(tickets.redeem(expired.ticket, 'http://localhost:5173')).rejects.toMatchObject({
+    const { ticket: expiredTicket2 } = expired;
+
+    await expect(tickets.redeem(expiredTicket2, 'http://localhost:5173')).rejects.toMatchObject({
       code: 'ACCESS_TOKEN_INVALID',
     });
     const revoked = await issue();
 
+    const { refresh_token: tokensRefreshToken2 } = tokens;
+
     await request(app.getHttpServer())
       .post('/auth/logout')
-      .send({ refresh_token: tokens.refresh_token })
+      .send({ refresh_token: tokensRefreshToken2 })
       .expect(204);
-    await expect(tickets.redeem(revoked.ticket, 'http://localhost:5173')).rejects.toMatchObject({
+    const { ticket: revokedTicket } = revoked;
+
+    await expect(tickets.redeem(revokedTicket, 'http://localhost:5173')).rejects.toMatchObject({
       code: 'ACCESS_TOKEN_INVALID',
     });
     const another = await signIn();
 
     for (let i = 0; i < 10; i++) {
+      const { access_token: anotherAccessToken } = another;
+
       await request(app.getHttpServer())
         .post('/auth/ws-ticket')
-        .auth(another.access_token, { type: 'bearer' })
+        .auth(anotherAccessToken, { type: 'bearer' })
         .set('Origin', 'http://localhost:5173')
         .send({})
         .expect(200);
     }
 
-    const limited = await request(app.getHttpServer())
+    const { access_token: anotherAccessToken2 } = another;
+    const { headers: limitedHeaders } = await request(app.getHttpServer())
       .post('/auth/ws-ticket')
-      .auth(another.access_token, { type: 'bearer' })
+      .auth(anotherAccessToken2, { type: 'bearer' })
       .set('Origin', 'http://localhost:5173')
       .send({})
       .expect(429);
 
-    expect(Number(limited.headers['retry-after'])).toBeGreaterThan(0);
+    expect(Number(limitedHeaders['retry-after'])).toBeGreaterThan(0);
   });
 
   it('normalizes login, stores hashes, uses independent sessions and guards protected requests', async (): Promise<void> => {
-    const first = (
-      await request(app.getHttpServer())
-        .post('/auth/login')
-        .send({ login: ` ${login.toUpperCase()} `, password })
-        .expect(200)
-    ).body;
+    const { body: expectResultBody2 } = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ login: ` ${login.toUpperCase()} `, password })
+      .expect(200);
+    const first = expectResultBody2;
     const second = await signIn();
 
     expect(Object.keys(first).sort()).toEqual(['access_token', 'refresh_token', 'token_type']);
     expect(first.token_type).toBe('Bearer');
     const sid = sessionId(first.refresh_token)!;
-    const saved = (await database.query('SELECT * FROM gchat_auth_sessions WHERE id=$1', [sid]))
-      .rows[0];
+    const { rows: queryResultRows } = await database.query(
+      'SELECT * FROM gchat_auth_sessions WHERE id=$1',
+      [sid],
+    );
+    const saved = queryResultRows[0];
 
     expect(saved.refresh_token_hash).toBe(tokenHash(first.refresh_token));
     expect(JSON.stringify(saved)).not.toContain(first.refresh_token);
-    expect(
-      (
-        await database.query('SELECT id FROM gchat_auth_sessions WHERE user_id=$1', [userId])
-      ).rows.map((row): any => row.id),
-    ).toEqual(expect.arrayContaining([sid, sessionId(second.refresh_token)]));
+    const { rows: queryResultRows2 } = await database.query(
+      'SELECT id FROM gchat_auth_sessions WHERE user_id=$1',
+      [userId],
+    );
+    const { refresh_token: secondRefreshToken } = second;
+
+    expect(queryResultRows2.map((row): any => row.id)).toEqual(
+      expect.arrayContaining([sid, sessionId(secondRefreshToken)]),
+    );
     await request(app.getHttpServer())
       .get('/private')
       .auth(first.access_token, { type: 'bearer' })
@@ -256,65 +292,81 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       .get('/private')
       .auth(first.access_token, { type: 'bearer' })
       .expect(401);
+    const { access_token: secondAccessToken } = second;
+
     await request(app.getHttpServer())
       .get('/private')
-      .auth(second.access_token, { type: 'bearer' })
+      .auth(secondAccessToken, { type: 'bearer' })
       .expect(200);
   });
   it('returns one encrypted rotation result to concurrent retries without counting them repeatedly', async (): Promise<void> => {
     const first = await signIn();
     const request_id = randomUUID();
     const replies = await Promise.all(
-      Array.from({ length: 12 }, (): request.Test =>
-        request(app.getHttpServer())
+      Array.from({ length: 12 }, (): request.Test => {
+        const { refresh_token: firstRefreshToken } = first;
+
+        return request(app.getHttpServer())
           .post('/auth/refresh')
-          .send({ refresh_token: first.refresh_token, request_id })
-          .expect(200),
-      ),
+          .send({ refresh_token: firstRefreshToken, request_id })
+          .expect(200);
+      }),
     );
 
     for (const reply of replies) {
-      expect(reply.body).toEqual(replies[0]!.body);
+      const { [0]: repliesFirst } = replies;
+
+      expect(reply.body).toEqual(repliesFirst!.body);
     }
 
-    const sid = sessionId(first.refresh_token)!;
+    const { refresh_token: firstRefreshToken2 } = first;
+    const sid = sessionId(firstRefreshToken2)!;
 
-    const saved = (
-      await database.query(
-        'SELECT rotation_expires_at, rotation_encrypted FROM gchat_auth_sessions WHERE id=$1',
-        [sid],
-      )
-    ).rows[0];
+    const { rows: queryResultRows3 } = await database.query(
+      'SELECT rotation_expires_at, rotation_encrypted FROM gchat_auth_sessions WHERE id=$1',
+      [sid],
+    );
+    const saved = queryResultRows3[0];
 
     expect(saved.rotation_expires_at.getTime()).toBeGreaterThan(Date.now());
-    expect(saved.rotation_encrypted).not.toContain(replies[0]!.body.refresh_token);
-    await request(app.getHttpServer())
-      .post('/auth/refresh')
-      .send({ refresh_token: first.refresh_token, request_id: randomUUID() })
-      .expect(401);
-    const next = (
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .send({ refresh_token: replies[0]!.body.refresh_token, request_id: randomUUID() })
-        .expect(200)
-    ).body;
+    const { [0]: repliesFirst2 } = replies;
+
+    expect(saved.rotation_encrypted).not.toContain(repliesFirst2!.body.refresh_token);
+    const { refresh_token: firstRefreshToken3 } = first;
 
     await request(app.getHttpServer())
       .post('/auth/refresh')
-      .send({ refresh_token: first.refresh_token, request_id })
+      .send({ refresh_token: firstRefreshToken3, request_id: randomUUID() })
+      .expect(401);
+    const { [0]: repliesFirst3 } = replies;
+    const { body: expectResultBody5 } = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refresh_token: repliesFirst3!.body.refresh_token, request_id: randomUUID() })
+      .expect(200);
+    const next = expectResultBody5;
+
+    const { refresh_token: firstRefreshToken4 } = first;
+
+    await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refresh_token: firstRefreshToken4, request_id })
       .expect(401);
     // An older, no longer recognized token must not delete the live session.
+    const { refresh_token: firstRefreshToken5 } = first;
+
     await request(app.getHttpServer())
       .post('/auth/logout')
-      .send({ refresh_token: first.refresh_token })
+      .send({ refresh_token: firstRefreshToken5 })
       .expect(204);
     await request(app.getHttpServer())
       .get('/private')
       .auth(next.access_token, { type: 'bearer' })
       .expect(200);
+    const { [0]: repliesFirst4 } = replies;
+
     await request(app.getHttpServer())
       .post('/auth/logout')
-      .send({ refresh_token: replies[0]!.body.refresh_token })
+      .send({ refresh_token: repliesFirst4!.body.refresh_token })
       .expect(204);
     await request(app.getHttpServer())
       .post('/auth/refresh')
@@ -324,20 +376,24 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
   it('rejects an expired rotation result without revoking the current session', async (): Promise<void> => {
     const first = await signIn();
     const request_id = randomUUID();
-    const next = (
-      await request(app.getHttpServer())
-        .post('/auth/refresh')
-        .send({ refresh_token: first.refresh_token, request_id })
-        .expect(200)
-    ).body;
+    const { refresh_token: firstRefreshToken6 } = first;
+    const { body: expectResultBody6 } = await request(app.getHttpServer())
+      .post('/auth/refresh')
+      .send({ refresh_token: firstRefreshToken6, request_id })
+      .expect(200);
+    const next = expectResultBody6;
+
+    const { refresh_token: firstRefreshToken7 } = first;
 
     await database.query(
       'UPDATE gchat_auth_sessions SET rotation_expires_at=clock_timestamp() WHERE id=$1',
-      [sessionId(first.refresh_token)],
+      [sessionId(firstRefreshToken7)],
     );
+    const { refresh_token: firstRefreshToken8 } = first;
+
     await request(app.getHttpServer())
       .post('/auth/refresh')
-      .send({ refresh_token: first.refresh_token, request_id })
+      .send({ refresh_token: firstRefreshToken8, request_id })
       .expect(401);
     await request(app.getHttpServer())
       .post('/auth/refresh')
@@ -348,19 +404,25 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     const first = await signIn();
     const request_id = randomUUID();
 
+    const { refresh_token: firstRefreshToken9 } = first;
+
     await request(app.getHttpServer())
       .post('/auth/refresh')
-      .send({ refresh_token: first.refresh_token, request_id })
+      .send({ refresh_token: firstRefreshToken9, request_id })
       .expect(200);
     await database.query('UPDATE gchat_users SET disabled_at = now() WHERE id = $1', [userId]);
+    const { access_token: firstAccessToken } = first;
+
     await request(app.getHttpServer())
       .get('/private')
-      .auth(first.access_token, { type: 'bearer' })
+      .auth(firstAccessToken, { type: 'bearer' })
       .expect(401)
       .expect(({ body }): void => expect(body.error.code).toBe('SESSION_INVALID'));
+    const { refresh_token: firstRefreshToken10 } = first;
+
     await request(app.getHttpServer())
       .post('/auth/refresh')
-      .send({ refresh_token: first.refresh_token, request_id })
+      .send({ refresh_token: firstRefreshToken10, request_id })
       .expect(401);
     const disabled = await request(app.getHttpServer())
       .post('/auth/login')
@@ -371,7 +433,10 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
       .send({ login: 'unknown-user', password })
       .expect(401);
 
-    expect(disabled.body).toEqual(unknown.body);
+    const { body: disabledBody } = disabled;
+    const { body: unknownBody } = unknown;
+
+    expect(disabledBody).toEqual(unknownBody);
   });
   it('returns validation errors, no-store and Retry-After', async (): Promise<void> => {
     await request(app.getHttpServer())
@@ -410,12 +475,12 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     for (let i = 0; i < 10; i++) {
       previous = tokens;
       request_id = reusedIds[i % 2]!;
-      tokens = (
-        await request(app.getHttpServer())
-          .post('/auth/refresh')
-          .send({ refresh_token: tokens.refresh_token, request_id })
-          .expect(200)
-      ).body;
+      const { body: expectResultBody3 } = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refresh_token: tokens.refresh_token, request_id })
+        .expect(200);
+
+      tokens = expectResultBody3;
     }
 
     await request(app.getHttpServer())
@@ -432,25 +497,31 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     'handles expired rotation during logout with the %s token',
     async (which): Promise<void> => {
       const first = await signIn();
-      const current = (
-        await request(app.getHttpServer())
-          .post('/auth/refresh')
-          .send({ refresh_token: first.refresh_token, request_id: randomUUID() })
-          .expect(200)
-      ).body;
-      const sid = sessionId(first.refresh_token);
+      const { refresh_token: firstRefreshToken11 } = first;
+      const { body: expectResultBody7 } = await request(app.getHttpServer())
+        .post('/auth/refresh')
+        .send({ refresh_token: firstRefreshToken11, request_id: randomUUID() })
+        .expect(200);
+      const current = expectResultBody7;
+      const { refresh_token: firstRefreshToken12 } = first;
+      const sid = sessionId(firstRefreshToken12);
 
       await database.query(
         'UPDATE gchat_auth_sessions SET rotation_expires_at=clock_timestamp() WHERE id=$1',
         [sid],
       );
+      const { refresh_token: firstRefreshToken13 } = first;
+
       await request(app.getHttpServer())
         .post('/auth/logout')
-        .send({ refresh_token: which === 'current' ? current.refresh_token : first.refresh_token })
+        .send({ refresh_token: which === 'current' ? current.refresh_token : firstRefreshToken13 })
         .expect(204);
-      expect(
-        (await database.query('SELECT id FROM gchat_auth_sessions WHERE id=$1', [sid])).rowCount,
-      ).toBe(which === 'previous' ? 1 : 0);
+      const { rowCount: queryResultRowCount } = await database.query(
+        'SELECT id FROM gchat_auth_sessions WHERE id=$1',
+        [sid],
+      );
+
+      expect(queryResultRowCount).toBe(which === 'previous' ? 1 : 0);
     },
   );
   it('keeps Auth and WS tickets usable without Redis', async (): Promise<void> => {
@@ -460,27 +531,34 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
     client.destroy();
 
     try {
+      const { access_token: tokensAccessToken5 } = tokens;
+
       await request(app.getHttpServer())
         .get('/private')
-        .auth(tokens.access_token, { type: 'bearer' })
+        .auth(tokensAccessToken5, { type: 'bearer' })
         .expect(200);
-      const issued = await request(app.getHttpServer())
+      const { access_token: tokensAccessToken6 } = tokens;
+      const { body: issuedBody } = await request(app.getHttpServer())
         .post('/auth/ws-ticket')
-        .auth(tokens.access_token, { type: 'bearer' })
+        .auth(tokensAccessToken6, { type: 'bearer' })
         .set('Origin', 'http://localhost:5173')
         .send({})
         .expect(200);
 
       await expect(
-        app.get(AuthWsTickets).redeem(issued.body.ticket, 'http://localhost:5173'),
+        app.get(AuthWsTickets).redeem(issuedBody.ticket, 'http://localhost:5173'),
       ).resolves.toMatchObject({ userId });
+      const { refresh_token: tokensRefreshToken3 } = tokens;
+
       await request(app.getHttpServer())
         .post('/auth/refresh')
-        .send({ refresh_token: tokens.refresh_token, request_id: randomUUID() })
+        .send({ refresh_token: tokensRefreshToken3, request_id: randomUUID() })
         .expect(200);
+      const { refresh_token: tokensRefreshToken4 } = tokens;
+
       await request(app.getHttpServer())
         .post('/auth/logout')
-        .send({ refresh_token: tokens.refresh_token })
+        .send({ refresh_token: tokensRefreshToken4 })
         .expect(204);
     } finally {
       await client.connect();
@@ -489,15 +567,24 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
   it('allows only one of two different refresh operations with the same token', async (): Promise<void> => {
     const tokens = await signIn();
     const responses = await Promise.all(
-      [randomUUID(), randomUUID()].map((request_id): PromiseLike<request.Response> =>
-        request(app.getHttpServer())
+      [randomUUID(), randomUUID()].map((request_id): PromiseLike<request.Response> => {
+        const { refresh_token: tokensRefreshToken5 } = tokens;
+
+        return request(app.getHttpServer())
           .post('/auth/refresh')
-          .send({ refresh_token: tokens.refresh_token, request_id }),
-      ),
+          .send({ refresh_token: tokensRefreshToken5, request_id });
+      }),
     );
 
-    expect(responses.map((response): number => response.status).sort()).toEqual([200, 401]);
-    const winner = responses.find((response): boolean => response.status === 200)!;
+    const { map: responsesMap } = responses;
+
+    expect(
+      responsesMap
+        .bind(responses)((response): number => response.status)
+        .sort(),
+    ).toEqual([200, 401]);
+    const { find: responsesFind } = responses;
+    const winner = responsesFind.bind(responses)((response): boolean => response.status === 200)!;
 
     await request(app.getHttpServer())
       .get('/private')
@@ -510,27 +597,30 @@ integration('HTTP Auth with isolated PostgreSQL and Redis data', (): void => {
   });
   it('does not resurrect a session when refresh races logout', async (): Promise<void> => {
     const tokens = await signIn();
+    const { refresh_token: tokensRefreshToken6 } = tokens;
     const [refresh] = await Promise.all([
       request(app.getHttpServer())
         .post('/auth/refresh')
-        .send({ refresh_token: tokens.refresh_token, request_id: randomUUID() }),
+        .send({ refresh_token: tokensRefreshToken6, request_id: randomUUID() }),
       request(app.getHttpServer())
         .post('/auth/logout')
-        .send({ refresh_token: tokens.refresh_token })
+        .send({ refresh_token: tokensRefreshToken6 })
         .expect(204),
     ]);
 
     expect([200, 401]).toContain(refresh.status);
-    expect(
-      (
-        await database.query('SELECT id FROM gchat_auth_sessions WHERE id=$1', [
-          sessionId(tokens.refresh_token),
-        ])
-      ).rowCount,
-    ).toBe(0);
+    const { refresh_token: tokensRefreshToken7 } = tokens;
+    const { rowCount: queryResultRowCount2 } = await database.query(
+      'SELECT id FROM gchat_auth_sessions WHERE id=$1',
+      [sessionId(tokensRefreshToken7)],
+    );
+
+    expect(queryResultRowCount2).toBe(0);
+    const { access_token: tokensAccessToken7 } = tokens;
+
     await request(app.getHttpServer())
       .get('/private')
-      .auth(tokens.access_token, { type: 'bearer' })
+      .auth(tokensAccessToken7, { type: 'bearer' })
       .expect(401);
   });
 });

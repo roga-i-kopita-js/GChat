@@ -33,6 +33,41 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
     }
   }, [dialogId, result.status === 'ready']);
 
+  let dialogsContent;
+
+  if (result.status === 'starting') {
+    dialogsContent = <p role="status">Загружаем диалоги…</p>;
+  } else if (result.status === 'error') {
+    dialogsContent = <p role="alert">{dialogError(result.error)}</p>;
+  } else if (!result.items.length) {
+    dialogsContent = (
+      <div className="dialog-empty">
+        <MessageCircle size={34} />
+        <h3>Пока нет диалогов</h3>
+        <p>Начните переписку из контактов</p>
+        <Link to="/calls">К контактам</Link>
+      </div>
+    );
+  } else {
+    dialogsContent = result.items.map((dialog): JSX.Element => (
+      <Link
+        key={dialog.dialog_id}
+        to={'/dialogs/' + dialog.dialog_id}
+        aria-current={dialogId === dialog.dialog_id ? 'page' : undefined}
+        className={'dialog-contact' + (dialogId === dialog.dialog_id ? ' current' : '')}
+      >
+        <Avatar name={dialog.peer_display_name} seed={dialog.peer_id} />
+        <span className="dialog-contact-name">{dialog.peer_display_name}</span>
+        <span className="dialog-contact-meta">
+          <time>{time(dialog.last_message_at ?? dialog.created_at)}</time>
+          {dialog.has_unread_messages && (
+            <span className="dialog-unread" aria-label="Есть непрочитанные сообщения" />
+          )}
+        </span>
+      </Link>
+    ));
+  }
+
   return (
     <div className={'dialogs-layout' + (dialogId ? ' dialog-selected' : '')}>
       <section className="dialogs-sidebar" aria-label="Диалоги">
@@ -57,41 +92,16 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
             runtime.listScroll = event.currentTarget.scrollTop;
           }}
         >
-          {result.status === 'starting' ? (
-            <p role="status">Загружаем диалоги…</p>
-          ) : result.status === 'error' ? (
-            <p role="alert">{dialogError(result.error)}</p>
-          ) : !result.items.length ? (
-            <div className="dialog-empty">
-              <MessageCircle size={34} />
-              <h3>Пока нет диалогов</h3>
-              <p>Начните переписку из контактов</p>
-              <Link to="/calls">К контактам</Link>
-            </div>
-          ) : (
-            result.items.map((dialog): JSX.Element => (
-              <Link
-                key={dialog.dialog_id}
-                to={'/dialogs/' + dialog.dialog_id}
-                aria-current={dialogId === dialog.dialog_id ? 'page' : undefined}
-                className={'dialog-contact' + (dialogId === dialog.dialog_id ? ' current' : '')}
-              >
-                <Avatar name={dialog.peer_display_name} seed={dialog.peer_id} />
-                <span className="dialog-contact-name">{dialog.peer_display_name}</span>
-                <span className="dialog-contact-meta">
-                  <time>{time(dialog.last_message_at ?? dialog.created_at)}</time>
-                  {dialog.has_unread_messages && (
-                    <span className="dialog-unread" aria-label="Есть непрочитанные сообщения" />
-                  )}
-                </span>
-              </Link>
-            ))
-          )}
+          {dialogsContent}
           {runtime.listHasMore && (
             <button
               className="dialog-more"
               onClick={(): void => {
-                void runtime.refreshList(runtime.listOffset).catch((): void => {});
+                void (async () => {
+                  try {
+                    return await runtime.refreshList(runtime.listOffset);
+                  } catch (cause) {}
+                })();
               }}
             >
               Ещё диалоги

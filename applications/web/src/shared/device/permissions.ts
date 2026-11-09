@@ -69,7 +69,9 @@ export class DevicePermissions extends Events<PermissionEvents> implements Permi
 
     await this.observer.refresh();
 
-    return value.state;
+    const { state: valueState } = value;
+
+    return valueState;
   }
 
   async openSettings(options?: CallOptions): Promise<void> {

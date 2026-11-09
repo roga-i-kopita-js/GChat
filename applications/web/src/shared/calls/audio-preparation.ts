@@ -45,7 +45,11 @@ export class AudioPreparation {
     this.context = undefined;
 
     if (context) {
-      void context.close().catch((): void => {});
+      void (async () => {
+        try {
+          return await context.close();
+        } catch (cause) {}
+      })();
     }
   }
 
@@ -67,7 +71,9 @@ export class AudioPreparation {
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 
-    for (const track of stream.getTracks()) {
+    const { getTracks: streamGetTracks } = stream;
+
+    for (const track of streamGetTracks.bind(stream)()) {
       track.stop();
     }
 

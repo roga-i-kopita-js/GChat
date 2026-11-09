@@ -77,37 +77,41 @@ integration('Standard Drizzle PostgreSQL migrations', (): void => {
     );
     await runMigrations(url, folder);
     await runMigrations(url, folder);
-    expect((await database.query('SELECT * FROM migration_probe')).rows).toEqual([{ id: 1 }]);
-    expect(
-      (await database.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations'))
-        .rows,
-    ).toEqual([{ count: 1 }]);
+    const { rows: queryResultRows } = await database.query('SELECT * FROM migration_probe');
+
+    expect(queryResultRows).toEqual([{ id: 1 }]);
+    const { rows: queryResultRows2 } = await database.query(
+      'SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations',
+    );
+
+    expect(queryResultRows2).toEqual([{ count: 1 }]);
 
     await append('0001_extend', "ALTER TABLE migration_probe ADD COLUMN label text DEFAULT 'ok';");
     await runMigrations(url, folder);
-    expect((await database.query('SELECT label FROM migration_probe')).rows).toEqual([
-      { label: 'ok' },
-    ]);
+    const { rows: queryResultRows3 } = await database.query('SELECT label FROM migration_probe');
+
+    expect(queryResultRows3).toEqual([{ label: 'ok' }]);
 
     await append(
       '0002_failure',
       'INSERT INTO migration_probe (id) VALUES (2); SELECT * FROM migration_table_that_does_not_exist;',
     );
     await expect(runMigrations(url, folder)).rejects.toThrow();
-    expect(
-      (await database.query('SELECT count(*)::int AS count FROM migration_probe')).rows,
-    ).toEqual([{ count: 1 }]);
-    expect(
-      (await database.query('SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations'))
-        .rows,
-    ).toEqual([{ count: 2 }]);
+    const { rows: queryResultRows4 } = await database.query(
+      'SELECT count(*)::int AS count FROM migration_probe',
+    );
+
+    expect(queryResultRows4).toEqual([{ count: 1 }]);
+    const { rows: queryResultRows5 } = await database.query(
+      'SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations',
+    );
+
+    expect(queryResultRows5).toEqual([{ count: 2 }]);
     // A failed run closed its pool and left no hanging connection.
-    expect(
-      (
-        await database.query(
-          'SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database()',
-        )
-      ).rows,
-    ).toEqual([{ count: 1 }]);
+    const { rows: queryResultRows6 } = await database.query(
+      'SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database()',
+    );
+
+    expect(queryResultRows6).toEqual([{ count: 1 }]);
   });
 });

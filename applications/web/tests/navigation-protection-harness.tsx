@@ -160,8 +160,10 @@ export function command(native: boolean): void {
       args: { to: '/next', replace: false },
     });
   } else {
-    void navigation.navigate('/next').then((result): void => {
-      control.lastOutcome = result.outcome;
-    });
+    void (async () => {
+      const { outcome: resultOutcome } = await navigation.navigate('/next');
+
+      control.lastOutcome = resultOutcome;
+    })();
   }
 }

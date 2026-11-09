@@ -30,11 +30,13 @@ export class HealthcheckController {
   @ApiOperation({ operationId: 'healthcheckReady' })
   async ready(): Promise<ReadinessResponseDto> {
     const results = await Promise.allSettled([this.database.ping(), this.redis.ping()]);
+    const { [0]: resultsFirst, [1]: results1 } = results;
     const checks: ReadinessResponseDto['checks'] = {
-      database: results[0].status === 'fulfilled' ? 'up' : 'down',
-      redis: results[1].status === 'fulfilled' ? 'up' : 'down',
+      database: resultsFirst.status === 'fulfilled' ? 'up' : 'down',
+      redis: results1.status === 'fulfilled' ? 'up' : 'down',
     };
-    const healthy = results.every((result): boolean => result.status === 'fulfilled');
+    const { every: resultsEvery } = results;
+    const healthy = resultsEvery.bind(results)((result): boolean => result.status === 'fulfilled');
     const response: ReadinessResponseDto = {
       status: healthy ? 'ok' : 'error',
       service: 'gchat-backend',

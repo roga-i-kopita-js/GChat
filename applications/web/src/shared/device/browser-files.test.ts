@@ -41,7 +41,9 @@ describe('browser file references', (): void => {
     expect(last.bytesRead).toBe(1);
     await files.execute('file.access.forget', { id });
     await expect(files.execute('file.stat', { id })).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    expect((await handle.getFile()).size).toBe(262145);
+    const { size: getFileResultSize } = await handle.getFile();
+
+    expect(getFileResultSize).toBe(262145);
     expect(changed).toHaveBeenCalled();
   });
   it('does not expose platform paths or accept a forged reference', async (): Promise<void> => {

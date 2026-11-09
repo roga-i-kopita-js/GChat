@@ -210,9 +210,18 @@ test('confirms access changes and cancels without sending an operation', async (
     throw new Error('Confirmation buttons must be visible');
   }
 
-  expect(Math.abs(cancelBox.y - confirmBox.y)).toBeLessThan(1);
-  expect(Math.abs(cancelBox.width - confirmBox.width)).toBeLessThan(1);
-  expect(Math.abs(cancelBox.height - confirmBox.height)).toBeLessThan(1);
+  const { y: cancelBoxY } = cancelBox;
+  const { y: confirmBoxY } = confirmBox;
+
+  expect(Math.abs(cancelBoxY - confirmBoxY)).toBeLessThan(1);
+  const { width: cancelBoxWidth } = cancelBox;
+  const { width: confirmBoxWidth } = confirmBox;
+
+  expect(Math.abs(cancelBoxWidth - confirmBoxWidth)).toBeLessThan(1);
+  const { height: cancelBoxHeight } = cancelBox;
+  const { height: confirmBoxHeight } = confirmBox;
+
+  expect(Math.abs(cancelBoxHeight - confirmBoxHeight)).toBeLessThan(1);
   await page.getByRole('button', { name: 'Отмена', exact: true }).click();
   expect(posts).toBe(0);
   await detail.getByRole('button', { name: 'Отключить аккаунт', exact: true }).click();

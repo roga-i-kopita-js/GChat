@@ -12,7 +12,12 @@ import { useDebug } from '../shared/useDebug';
 const DiagnosticsDialog = lazy(
   async (): Promise<{
     default: typeof import('../features/calls/DiagnosticsDialog').DiagnosticsDialog;
-  }> => ({ default: (await import('../features/calls/DiagnosticsDialog')).DiagnosticsDialog }),
+  }> => {
+    const { DiagnosticsDialog: resultDiagnosticsDialog } =
+      await import('../features/calls/DiagnosticsDialog');
+
+    return { default: resultDiagnosticsDialog };
+  },
 );
 
 export function AppLayout(): JSX.Element {
@@ -38,6 +43,54 @@ export function AppLayout(): JSX.Element {
     return <></>;
   }
 
+  let pageTitle;
+
+  if (settings) {
+    pageTitle = 'Настройки';
+  } else if (dialogs) {
+    pageTitle = 'Диалоги';
+  } else if (admin) {
+    pageTitle = 'Администрирование';
+  } else {
+    pageTitle = 'Звонки';
+  }
+
+  let callBanner;
+
+  if (!state.owner) {
+    callBanner = (
+      <div role="status" className="tab-banner">
+        Звонками управляет другая вкладка GChat.
+        <button
+          onClick={(): void =>
+            void (async () => {
+              try {
+                return await device.calls.takeControl();
+              } catch (cause) {}
+            })()
+          }
+          disabled={ongoing}
+        >
+          Открыть здесь
+        </button>
+      </div>
+    );
+  } else if (presentation.callControls === 'host' && !presentation.callingAvailable) {
+    callBanner = (
+      <div role="status" className="tab-banner">
+        Звонки в этой сборке приложения пока недоступны.
+      </div>
+    );
+  } else if (state.connection !== 'online') {
+    callBanner = (
+      <div role="status" className="tab-banner">
+        Подключаем звонки… Кнопки станут доступны после подключения.
+      </div>
+    );
+  } else {
+    callBanner = null;
+  }
+
   return (
     <div
       className={
@@ -60,31 +113,9 @@ export function AppLayout(): JSX.Element {
           (settings ? ' settings-active' : '') +
           (dialogs ? ' dialogs-active' : '')
         }
-        aria-label={
-          settings ? 'Настройки' : dialogs ? 'Диалоги' : admin ? 'Администрирование' : 'Звонки'
-        }
+        aria-label={pageTitle}
       >
-        {!settings &&
-          !dialogs &&
-          (!state.owner ? (
-            <div role="status" className="tab-banner">
-              Звонками управляет другая вкладка GChat.
-              <button
-                onClick={(): void => void device.calls.takeControl().catch((): void => {})}
-                disabled={ongoing}
-              >
-                Открыть здесь
-              </button>
-            </div>
-          ) : presentation.callControls === 'host' && !presentation.callingAvailable ? (
-            <div role="status" className="tab-banner">
-              Звонки в этой сборке приложения пока недоступны.
-            </div>
-          ) : state.connection !== 'online' ? (
-            <div role="status" className="tab-banner">
-              Подключаем звонки… Кнопки станут доступны после подключения.
-            </div>
-          ) : null)}
+        {!settings && !dialogs && callBanner}
         {state.error && (
           <div role="alert" className="error-banner">
             {state.error}

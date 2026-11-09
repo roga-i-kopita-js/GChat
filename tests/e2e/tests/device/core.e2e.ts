@@ -79,6 +79,8 @@ test('factory preserves injected HTTP, owns one router, and stop is terminal', a
       storage = (error as { code: string }).code;
     }
 
+    const { phase: getStateResultPhase } = await device.lifecycle.getState();
+
     return {
       reply,
       injected: device.http instanceof TestHttp,
@@ -86,7 +88,7 @@ test('factory preserves injected HTTP, owns one router, and stop is terminal', a
       restart,
       storage,
       location,
-      phase: (await device.lifecycle.getState()).phase,
+      phase: getStateResultPhase,
       execute: 'execute' in device,
     };
   });
@@ -112,24 +114,38 @@ test('public files stage bytes, persist refs across reload and cache successful 
 
     await device.lifecycle.start();
     const root = await device.storage.getRoot('data');
-    const file = await device.files.create(root, 'public-api.bin');
-    const write = await device.files.beginWrite(file.ref, {
+    const { ref: fileRef, version: fileVersion } = await device.files.create(
+      root,
+      'public-api.bin',
+    );
+    const write = await device.files.beginWrite(fileRef, {
       mode: 'replace',
-      expectedVersion: file.version,
+      expectedVersion: fileVersion,
     });
 
-    await write.write(0, new Uint8Array([0, 255, 1]));
-    const saved = await write.commit();
-    const again = await write.commit();
+    const { write: writeWrite } = write;
 
-    if (saved.ref.id !== again.ref.id) {
+    await writeWrite.bind(write)(0, new Uint8Array([0, 255, 1]));
+    const { commit: writeCommit } = write;
+    const saved = await writeCommit.bind(write)();
+    const { commit: writeCommit2 } = write;
+    const again = await writeCommit2.bind(write)();
+
+    const { ref: savedRef } = saved;
+    const { ref: againRef } = again;
+
+    if (savedRef.id !== againRef.id) {
       throw new Error('commit was not idempotent');
     }
 
-    await write.abort();
+    const { abort: writeAbort } = write;
+
+    await writeAbort.bind(write)();
     await device.lifecycle.stop();
 
-    return saved.ref.id;
+    const { ref: savedRef2 } = saved;
+
+    return savedRef2.id;
   });
 
   await page.reload();
@@ -145,7 +161,9 @@ test('public files stage bytes, persist refs across reload and cache successful 
     await device.files.remove(ref, { recursive: false });
     await device.lifecycle.stop();
 
-    return Array.from(result.data);
+    const { data: resultData } = result;
+
+    return Array.from(resultData);
   }, ref);
 
   expect(bytes).toEqual([0, 255, 1]);
@@ -155,9 +173,12 @@ test('camera shares one source and publishes persistent photos and streamed reco
   browser,
 }): Promise<void> => {
   const context = await browser.newContext({ permissions: ['camera'] });
-  const page = await context.newPage();
+  const { newPage: contextNewPage } = context;
+  const page = await contextNewPage.bind(context)();
 
-  await page.addInitScript((): void => {
+  const { addInitScript: pageAddInitScript } = page;
+
+  await pageAddInitScript.bind(page)((): void => {
     const claims = {
       sub: '00000000-0000-4000-8000-000000000001',
       sid: 'camera-session',
@@ -179,11 +200,15 @@ test('camera shares one source and publishes persistent photos and streamed reco
       }),
     );
   });
-  await page.route(
+  const { route: pageRoute } = page;
+
+  await pageRoute.bind(page)(
     (url): boolean => url.pathname.startsWith('/api/'),
     async (route): Promise<void> => route.fulfill({ status: 503, body: '{}' }),
   );
-  await page.addInitScript((): void => {
+  const { addInitScript: pageAddInitScript2 } = page;
+
+  await pageAddInitScript2.bind(page)((): void => {
     const capture = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
 
     navigator.mediaDevices.getUserMedia = async (constraints): Promise<MediaStream> => {
@@ -203,7 +228,9 @@ test('camera shares one source and publishes persistent photos and streamed reco
         video: { ...constraints.video, facingMode: undefined },
       });
 
-      for (const track of stream.getVideoTracks()) {
+      const { getVideoTracks: streamGetVideoTracks } = stream;
+
+      for (const track of streamGetVideoTracks.bind(stream)()) {
         const settings = track.getSettings.bind(track);
 
         track.getSettings = (): MediaTrackSettings => ({ ...settings(), facingMode: 'user' });
@@ -212,8 +239,11 @@ test('camera shares one source and publishes persistent photos and streamed reco
       return stream;
     };
   });
-  await page.goto('/tests/device-harness.html');
-  const result = await page.evaluate(async (): Promise<object> => {
+  const { goto: pageGoto } = page;
+
+  await pageGoto.bind(page)('/tests/device-harness.html');
+  const { evaluate: pageEvaluate } = page;
+  const result = await pageEvaluate.bind(page)(async (): Promise<object> => {
     const path = '/tests/device-harness.ts';
     const { makeDevice } = await import(path);
     const device = makeDevice();
@@ -221,28 +251,47 @@ test('camera shares one source and publishes persistent photos and streamed reco
     await device.lifecycle.start();
     const one = await device.camera.open({ facing: 'front' });
     const two = await device.camera.open({ facing: 'front' });
-    const same = (await one.getStream()).id === (await two.getStream()).id;
+    const { getStream: oneGetStream } = one;
+    const { getStream: twoGetStream } = two;
+    const { id: resultId } = await oneGetStream.bind(one)();
+    const { id: resultId2 } = await twoGetStream.bind(two)();
+    const same = resultId === resultId2;
 
-    await one.release();
-    const state = await two.getState();
-    const photo = await two.takePhoto();
+    const { release: oneRelease } = one;
+
+    await oneRelease.bind(one)();
+    const { getState: twoGetState } = two;
+    const state = await twoGetState.bind(two)();
+    const { takePhoto: twoTakePhoto } = two;
+    const photo = await twoTakePhoto.bind(two)();
     const metadata = await device.files.stat(photo);
-    const recording = await two.startRecording();
-    const anotherPhoto = await two.takePhoto();
-    const clip = await recording.stop();
-    const repeated = await recording.stop();
+    const { startRecording: twoStartRecording } = two;
+    const recording = await twoStartRecording.bind(two)();
+    const { takePhoto: twoTakePhoto2 } = two;
+    const anotherPhoto = await twoTakePhoto2.bind(two)();
+    const { stop: recordingStop } = recording;
+    const clip = await recordingStop.bind(recording)();
+    const { stop: recordingStop2 } = recording;
+    const repeated = await recordingStop2.bind(recording)();
     const video = await device.files.stat(clip);
 
-    await two.release();
+    const { release: twoRelease } = two;
+
+    await twoRelease.bind(two)();
     await device.lifecycle.stop();
+
+    const { status: stateStatus } = state;
+    const { id: clipId } = clip;
+    const { id: repeatedId } = repeated;
+    const { persistence: anotherPhotoPersistence } = anotherPhoto;
 
     return {
       same,
-      state: state.status,
+      state: stateStatus,
       photo: metadata,
       video,
-      repeat: clip.id === repeated.id,
-      another: anotherPhoto.persistence,
+      repeat: clipId === repeatedId,
+      another: anotherPhotoPersistence,
     };
   });
 
@@ -254,5 +303,7 @@ test('camera shares one source and publishes persistent photos and streamed reco
     repeat: true,
     another: 'persistent',
   });
-  await context.close();
+  const { close: contextClose } = context;
+
+  await contextClose.bind(context)();
 });

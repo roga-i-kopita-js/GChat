@@ -74,10 +74,20 @@ describe('Dialog encryption', (): void => {
   ] as const)('rejects tampering with %s', (field): void => {
     const { crypto, row } = setup();
     const encrypted = crypto.encrypt(row, { kind: 'sticker', sticker_id: 'animal-pals-v1-cat' });
+    let tamperedValue;
+
+    if (field === 'sequence') {
+      tamperedValue = 2;
+    } else if (field === 'createdAt') {
+      tamperedValue = new Date(0);
+    } else {
+      tamperedValue = randomUUID();
+    }
+
     const modified = {
       ...row,
       ...encrypted,
-      [field]: field === 'sequence' ? 2 : field === 'createdAt' ? new Date(0) : randomUUID(),
+      [field]: tamperedValue,
     };
 
     expect((): unknown => crypto.decrypt(modified)).toThrow(

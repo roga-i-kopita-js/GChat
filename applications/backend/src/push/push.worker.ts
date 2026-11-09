@@ -32,13 +32,15 @@ export class PushWorker implements OnApplicationBootstrap, OnModuleDestroy {
         return;
       }
 
-      this.running = this.tick()
-        .catch((): void => {
+      this.running = (async () => {
+        try {
+          return await this.tick();
+        } catch (cause) {
           this.logger.warn('VoIP delivery deferred');
-        })
-        .finally((): void => {
+        } finally {
           this.running = undefined;
-        });
+        }
+      })();
     }, 200);
     this.timer.unref();
   }
@@ -52,56 +54,78 @@ export class PushWorker implements OnApplicationBootstrap, OnModuleDestroy {
       try {
         const target = await this.devices.resolveVoipTarget(job.deviceId, job.sessionId);
 
-        if (!target || target.environment !== this.config.getOrThrow<string>('APNS_ENVIRONMENT')) {
+        const { environment: targetEnvironment } = target ?? {};
+
+        if (!target || targetEnvironment !== this.config.getOrThrow<string>('APNS_ENVIRONMENT')) {
           await this.store.complete(job.id, job.leaseToken, 'cancelled');
           continue;
         }
 
+        const { userId: targetUserId } = target;
         const call = await this.calls.get(
-          { userId: target.userId, sessionId: job.sessionId, deviceId: job.deviceId },
+          { userId: targetUserId, sessionId: job.sessionId, deviceId: job.deviceId },
           job.callId,
         );
 
+        const { state: callState, ringing_deadline: callRingingDeadline } = call ?? {};
+
         if (
-          call.state !== 'ringing' ||
-          !call.ringing_deadline ||
-          Date.parse(call.ringing_deadline) <= Date.now()
+          callState !== 'ringing' ||
+          !callRingingDeadline ||
+          Date.parse(callRingingDeadline) <= Date.now()
         ) {
           await this.store.complete(job.id, job.leaseToken, 'cancelled');
           continue;
         }
 
+        const { token: targetToken } = target;
+        const {
+          call_id: callCallId,
+          caller_id: callCallerId,
+          recipient_id: callRecipientId,
+          created_at: callCreatedAt,
+          ringing_deadline: callRingingDeadline2,
+        } = call;
         const result = await this.client.send(
           job.id,
-          target.token,
+          targetToken,
           {
             aps: {},
-            call_id: call.call_id,
-            caller_id: call.caller_id,
-            recipient_id: call.recipient_id,
-            created_at: call.created_at,
-            ringing_deadline: call.ringing_deadline,
+            call_id: callCallId,
+            caller_id: callCallerId,
+            recipient_id: callRecipientId,
+            created_at: callCreatedAt,
+            ringing_deadline: callRingingDeadline2,
           },
-          new Date(call.ringing_deadline),
+          new Date(callRingingDeadline),
         );
 
-        if (result.status === 200) {
+        const { status: resultStatus, reason: resultReason } = result;
+
+        if (resultStatus === 200) {
           await this.store.complete(job.id, job.leaseToken);
         } else if (
-          ['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic'].includes(result.reason ?? '')
+          ['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic'].includes(resultReason ?? '')
         ) {
+          const { deviceId: targetDeviceId, version: targetVersion } = target;
+          const { reason: resultReason2, timestamp: resultTimestamp } = result;
+
           await this.devices.invalidateVoipTarget(
-            target.deviceId,
-            target.version,
-            result.reason === 'Unregistered' ? result.timestamp : undefined,
+            targetDeviceId,
+            targetVersion,
+            resultReason2 === 'Unregistered' ? resultTimestamp : undefined,
           );
           await this.store.complete(job.id, job.leaseToken, 'cancelled');
-        } else if (result.status === 429 || result.status >= 500) {
-          await this.store.retry(job.id, job.leaseToken, job.attempts, result.retryAfterSeconds);
+        } else if (resultStatus === 429 || resultStatus >= 500) {
+          const { retryAfterSeconds: resultRetryAfterSeconds } = result;
+
+          await this.store.retry(job.id, job.leaseToken, job.attempts, resultRetryAfterSeconds);
         } else {
+          const { status: resultStatus2, reason: resultReason3 } = result;
+
           this.logger.warn('APNs configuration or request rejected', {
-            status: result.status,
-            reason: result.reason,
+            status: resultStatus2,
+            reason: resultReason3,
           });
           await this.store.complete(job.id, job.leaseToken, 'cancelled');
         }

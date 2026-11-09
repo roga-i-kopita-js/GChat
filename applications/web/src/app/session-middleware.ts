@@ -12,17 +12,21 @@ export const sessionMiddleware: MiddlewareFunction = async (
 
   request.signal.throwIfAborted();
 
-  if (!state.identity || state.status !== 'authenticated') {
+  const { identity: stateIdentity, status: stateStatus } = state ?? {};
+
+  if (!stateIdentity || stateStatus !== 'authenticated') {
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\/apps\/client(?=\/|$)/, '') || '/';
 
     throw redirect('/login?returnTo=' + encodeURIComponent(path + url.search));
   }
 
+  const { identity: stateIdentity2, generation: stateGeneration } = state;
+
   context.set(userContext, {
-    sub: state.identity.id,
-    sid: String(state.generation),
-    role: state.identity.role,
+    sub: stateIdentity.id,
+    sid: String(stateGeneration),
+    role: stateIdentity.role,
   });
 
   if (request.method !== 'GET' && request.method !== 'HEAD') {

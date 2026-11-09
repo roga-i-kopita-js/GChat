@@ -32,8 +32,11 @@ export class GroupsRepository {
       .values({ name })
       .onConflictDoNothing({ target: groups.name })
       .returning({ id: groups.id });
-    const group =
-      inserted ?? (await tx.select({ id: groups.id }).from(groups).where(eq(groups.name, name)))[0];
+    const { [0]: whereResultFirst } = await tx
+      .select({ id: groups.id })
+      .from(groups)
+      .where(eq(groups.name, name));
+    const group = inserted ?? whereResultFirst;
 
     if (!group) {
       throw this.error.serviceUnavailable();
@@ -166,7 +169,7 @@ export class GroupsRepository {
     try {
       const [first, second] = [firstUserId, secondUserId].sort();
       const other = alias(groupMembers, 'other_member');
-      const rows = await tx
+      const { length: rowsLength } = await tx
         .select({ id: groups.id })
         .from(groups)
         .innerJoin(groupMembers, eq(groupMembers.groupId, groups.id))
@@ -176,7 +179,7 @@ export class GroupsRepository {
         .limit(1)
         .for('share');
 
-      return rows.length > 0;
+      return rowsLength > 0;
     } catch (cause) {
       if (isDatabaseUnavailable(cause)) {
         throw this.error.serviceUnavailable({ cause });
@@ -189,14 +192,14 @@ export class GroupsRepository {
   async hasCommonGroup(firstUserId: string, secondUserId: string): Promise<boolean> {
     try {
       const otherMember = alias(groupMembers, 'other_member');
-      const matches = await this.database.db
+      const { length: matchesLength } = await this.database.db
         .select({ groupId: groupMembers.groupId })
         .from(groupMembers)
         .innerJoin(otherMember, eq(groupMembers.groupId, otherMember.groupId))
         .where(and(eq(groupMembers.userId, firstUserId), eq(otherMember.userId, secondUserId)))
         .limit(1);
 
-      return matches.length > 0;
+      return matchesLength > 0;
     } catch (cause) {
       if (isDatabaseUnavailable(cause)) {
         throw this.error.serviceUnavailable({ cause });

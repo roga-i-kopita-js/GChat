@@ -48,8 +48,12 @@ describe('Backend HTTP', (): void => {
       .useValue(redis)
       .compile();
 
-    app = module.createNestApplication();
-    app.useWebSocketAdapter(new SignalingAdapter(app, module.get(AuthService)));
+    const { createNestApplication: moduleCreateNestApplication } = module;
+
+    app = moduleCreateNestApplication.bind(module)();
+    const { get: moduleGet } = module;
+
+    app.useWebSocketAdapter(new SignalingAdapter(app, moduleGet.bind(module)(AuthService)));
     setupSwagger(app);
     await app.init();
   });
@@ -74,8 +78,12 @@ describe('Backend HTTP', (): void => {
       .expect(/swagger-ui/);
     const response = await request(app.getHttpServer()).get('/docs-json').expect(200);
 
-    expect(response.body.info.title).toBe('GChat API');
-    expect(Object.keys(response.body.paths).sort()).toEqual([
+    const { body: responseBody } = response;
+
+    expect(responseBody.info.title).toBe('GChat API');
+    const { body: responseBody2 } = response;
+
+    expect(Object.keys(responseBody2.paths).sort()).toEqual([
       '/admin/groups',
       '/admin/users',
       '/admin/users/{user_id}',
@@ -96,12 +104,20 @@ describe('Backend HTTP', (): void => {
       '/health',
       '/ready',
     ]);
-    expect(response.body.paths['/health'].get).toBeDefined();
+    const { body: responseBody3 } = response;
+
+    expect(responseBody3.paths['/health'].get).toBeDefined();
+    const { body: responseBody4 } = response;
+
     expect(
-      response.body.paths['/ready'].get.responses['503'].content['application/json'].schema,
+      responseBody4.paths['/ready'].get.responses['503'].content['application/json'].schema,
     ).toEqual({ $ref: '#/components/schemas/ReadinessResponseDto' });
-    expect(response.body.components.securitySchemes.bearer.scheme).toBe('bearer');
-    expect(response.body.paths['/health'].get.security).toBeUndefined();
+    const { body: responseBody5 } = response;
+
+    expect(responseBody5.components.securitySchemes.bearer.scheme).toBe('bearer');
+    const { body: responseBody6 } = response;
+
+    expect(responseBody6.paths['/health'].get.security).toBeUndefined();
     expect(pool.query).not.toHaveBeenCalled();
   });
 

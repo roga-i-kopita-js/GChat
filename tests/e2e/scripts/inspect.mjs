@@ -23,8 +23,11 @@ try {
     busy.push(...keys);
   }
 
+  const { rows: callsRows } = calls;
+  const { rows: participantsRows } = participants;
+
   console.log(
-    JSON.stringify({ calls: calls.rows, participants: participants.rows, busy: busy.length }),
+    JSON.stringify({ calls: callsRows, participants: participantsRows, busy: busy.length }),
   );
 } finally {
   if (redis.isOpen) {

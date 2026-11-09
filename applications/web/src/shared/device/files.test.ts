@@ -72,16 +72,21 @@ describe('public file write sessions', (): void => {
     );
     const write = await files.beginWrite(ref, { mode: 'replace', expectedVersion: null });
     const caller = new AbortController();
-    const pending = write.write(0, new Uint8Array([1, 2, 3]), { signal: caller.signal });
+    const { write: writeWrite } = write;
+    const pending = writeWrite.bind(write)(0, new Uint8Array([1, 2, 3]), { signal: caller.signal });
 
     caller.abort();
     await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
-    await expect(write.commit()).rejects.toMatchObject({ code: 'BUSY' });
+    const { commit: writeCommit } = write;
+
+    await expect(writeCommit.bind(write)()).rejects.toMatchObject({ code: 'BUSY' });
     resolve({ bytesWritten: 3 });
     await new Promise<void>((done): void => {
       setTimeout(done, 0);
     });
-    expect(await write.commit()).toEqual(saved);
+    const { commit: writeCommit2 } = write;
+
+    expect(await writeCommit2.bind(write)()).toEqual(saved);
     expect(bridge.chunk).toHaveBeenCalledTimes(1);
   });
   it('never retries an unknown commit but caches a confirmed one', async (): Promise<void> => {
@@ -90,14 +95,24 @@ describe('public file write sessions', (): void => {
     bridge.commit.mockRejectedValueOnce(new DeviceError('OUTCOME_UNKNOWN'));
     const unknown = await files.beginWrite(ref, { mode: 'replace', expectedVersion: null });
 
-    await expect(unknown.commit()).rejects.toMatchObject({ code: 'OUTCOME_UNKNOWN' });
-    await expect(unknown.commit()).rejects.toMatchObject({ code: 'INVALID_STATE' });
+    const { commit: unknownCommit } = unknown;
+
+    await expect(unknownCommit.bind(unknown)()).rejects.toMatchObject({ code: 'OUTCOME_UNKNOWN' });
+    const { commit: unknownCommit2 } = unknown;
+
+    await expect(unknownCommit2.bind(unknown)()).rejects.toMatchObject({ code: 'INVALID_STATE' });
     expect(bridge.commit).toHaveBeenCalledTimes(1);
     const known = await files.beginWrite(ref, { mode: 'replace', expectedVersion: null });
 
-    expect(await known.commit()).toBe(saved);
-    expect(await known.commit()).toBe(saved);
-    await known.abort();
+    const { commit: knownCommit } = known;
+
+    expect(await knownCommit.bind(known)()).toBe(saved);
+    const { commit: knownCommit2 } = known;
+
+    expect(await knownCommit2.bind(known)()).toBe(saved);
+    const { abort: knownAbort } = known;
+
+    await knownAbort.bind(known)();
     expect(bridge.commit).toHaveBeenCalledTimes(2);
     expect(bridge.abort).not.toHaveBeenCalled();
   });
@@ -105,13 +120,21 @@ describe('public file write sessions', (): void => {
     const { bridge, files, controller } = fixture();
     const write = await files.beginWrite(ref, { mode: 'replace', expectedVersion: null });
 
-    await write.abort();
-    await write.abort();
+    const { abort: writeAbort } = write;
+
+    await writeAbort.bind(write)();
+    const { abort: writeAbort2 } = write;
+
+    await writeAbort2.bind(write)();
     expect(bridge.abort).toHaveBeenCalledTimes(1);
     const old = await files.beginWrite(ref, { mode: 'replace', expectedVersion: null });
 
     controller.abort();
-    await expect(old.write(0, new Uint8Array([1]))).rejects.toMatchObject({ code: 'CANCELLED' });
+    const { write: oldWrite } = old;
+
+    await expect(oldWrite.bind(old)(0, new Uint8Array([1]))).rejects.toMatchObject({
+      code: 'CANCELLED',
+    });
     expect(bridge.chunk).not.toHaveBeenCalled();
   });
 });

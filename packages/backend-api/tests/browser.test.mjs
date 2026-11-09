@@ -25,5 +25,7 @@ test('browser bundle loads with browser globals and performs a request', async (
   runInNewContext(result.outputFiles[0].text, context);
   const api = new context.BrowserApi.BackendApi({ baseUrl: '/api' });
 
-  assert.equal(JSON.stringify((await api.groupsList()).data), '{"groups":[]}');
+  const { data: groupsListResultData } = await api.groupsList();
+
+  assert.equal(JSON.stringify(groupsListResultData), '{"groups":[]}');
 });

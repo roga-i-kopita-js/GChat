@@ -23,6 +23,27 @@ export function PermissionSettings({
     </SettingsAction>
   );
 
+  let permissionAction;
+
+  if (
+    permission &&
+    (permission.permission === 'denied' || permission.permission === 'restricted')
+  ) {
+    permissionAction = action('Открыть настройки', (): void => {
+      void run((): ReturnType<typeof device.api.permissions.openSettings> =>
+        device.api.permissions.openSettings(),
+      );
+    });
+  } else if (permission?.permission !== 'granted') {
+    permissionAction = action('Разрешить доступ', (): void => {
+      void run((): ReturnType<typeof device.api.permissions.request> =>
+        device.api.permissions.request(resource),
+      );
+    });
+  } else {
+    permissionAction = null;
+  }
+
   return (
     <SettingsScreen title={titles[section]} parent="/settings/general" device={device}>
       <p className="settings-intro">{descriptions[section]}</p>
@@ -33,20 +54,7 @@ export function PermissionSettings({
           title="Доступ"
           value={permission ? permissionLabels[permission.permission] : 'Проверяем…'}
         />
-        {permission &&
-        (permission.permission === 'denied' || permission.permission === 'restricted')
-          ? action('Открыть настройки', (): void => {
-              void run((): ReturnType<typeof device.api.permissions.openSettings> =>
-                device.api.permissions.openSettings(),
-              );
-            })
-          : permission?.permission !== 'granted'
-            ? action('Разрешить доступ', (): void => {
-                void run((): ReturnType<typeof device.api.permissions.request> =>
-                  device.api.permissions.request(resource),
-                );
-              })
-            : null}
+        {permissionAction}
       </Group>
       {permission?.settingsHint === 'siteSettings' &&
         (permission.permission === 'denied' || permission.permission === 'restricted') && (

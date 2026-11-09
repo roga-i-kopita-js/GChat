@@ -104,7 +104,11 @@ export function LoginPage(): JSX.Element {
           <p>Рады вас видеть. Войдите в свой аккаунт.</p>
           <form
             onSubmit={(event): void => {
-              void core.calls.activateAudio().catch((): void => {});
+              void (async () => {
+                try {
+                  return await core.calls.activateAudio();
+                } catch (cause) {}
+              })();
               void submit(event);
             }}
           >

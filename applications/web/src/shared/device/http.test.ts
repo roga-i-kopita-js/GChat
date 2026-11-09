@@ -53,15 +53,28 @@ describe('native Fetch adapter', (): void => {
     });
 
     expect(result).toBeInstanceOf(Response);
-    expect(result.url).toBe(origin + '/api/groups');
-    expect(result.type).toBe('basic');
-    expect(result.redirected).toBe(false);
-    expect(result.headers.has('Set-Cookie')).toBe(false);
-    const copy = result.clone();
+    const { url: resultUrl } = result;
 
-    expect(copy.url).toBe(result.url);
+    expect(resultUrl).toBe(origin + '/api/groups');
+    const { type: resultType } = result;
+
+    expect(resultType).toBe('basic');
+    const { redirected: resultRedirected } = result;
+
+    expect(resultRedirected).toBe(false);
+    const { headers: resultHeaders } = result;
+
+    expect(resultHeaders.has('Set-Cookie')).toBe(false);
+    const { clone: resultClone } = result;
+    const copy = resultClone.bind(result)();
+
+    const { url: resultUrl2 } = result;
+
+    expect(copy.url).toBe(resultUrl2);
     expect(copy.type).toBe('basic');
-    expect([...new Uint8Array(await result.arrayBuffer())]).toEqual([0, 255]);
+    const { arrayBuffer: resultArrayBuffer } = result;
+
+    expect([...new Uint8Array(await resultArrayBuffer.bind(result)())]).toEqual([0, 255]);
     expect([...new Uint8Array(await copy.arrayBuffer())]).toEqual([0, 255]);
     expect(JSON.stringify(calls)).not.toContain('web-secret');
     expect(calls[0].request).toMatchObject({
@@ -207,10 +220,14 @@ describe('native Fetch adapter', (): void => {
       }));
       const result = await transport.request('/api');
 
-      expect(result.status).toBe(status);
+      const { status: resultStatus } = result;
+
+      expect(resultStatus).toBe(status);
 
       if ([204, 205, 304].includes(status)) {
-        expect(result.body).toBeNull();
+        const { body: resultBody } = result;
+
+        expect(resultBody).toBeNull();
       }
     }
 

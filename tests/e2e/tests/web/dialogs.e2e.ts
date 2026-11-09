@@ -9,96 +9,174 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
 }, testInfo): Promise<void> => {
   const a = await browser.newContext();
   const b = await browser.newContext();
-  const anna = await a.newPage();
-  const maxim = await b.newPage();
+  const { newPage: aNewPage } = a;
+  const anna = await aNewPage.bind(a)();
+  const { newPage: bNewPage } = b;
+  const maxim = await bNewPage.bind(b)();
   const errors: string[] = [];
   const modules = new Set<string>();
 
-  maxim.on('request', (request): void => {
+  const { on: maximOn } = maxim;
+
+  maximOn.bind(maxim)('request', (request): void => {
     modules.add(new URL(request.url()).pathname);
   });
 
-  anna.on('pageerror', (error): void => {
+  const { on: annaOn } = anna;
+
+  annaOn.bind(anna)('pageerror', (error): void => {
     errors.push(error.message);
   });
-  maxim.on('pageerror', (error): void => {
+  const { on: maximOn2 } = maxim;
+
+  maximOn2.bind(maxim)('pageerror', (error): void => {
     errors.push(error.message);
   });
 
   try {
     await login(anna, 'anna');
     await login(maxim, 'maxim');
-    const open = anna.getByRole('button', { name: 'Написать: Максим Волков', exact: true });
+    const { getByRole: annaGetByRole } = anna;
+    const open = annaGetByRole.bind(anna)('button', {
+      name: 'Написать: Максим Волков',
+      exact: true,
+    });
 
     await expect(open).toBeEnabled();
     await open.click();
-    await expect(anna.getByLabel('Сообщение', { exact: true })).toBeVisible();
-    const sidebar = anna.getByRole('region', { name: 'Диалоги', exact: true });
+    const { getByLabel: annaGetByLabel } = anna;
+
+    await expect(annaGetByLabel.bind(anna)('Сообщение', { exact: true })).toBeVisible();
+    const { getByRole: annaGetByRole2 } = anna;
+    const sidebar = annaGetByRole2.bind(anna)('region', { name: 'Диалоги', exact: true });
 
     await sidebar.evaluate((element): void => {
       element.setAttribute('data-instance', 'original');
     });
-    await anna
-      .getByRole('navigation', { name: 'Основные разделы' })
+    const { getByRole: annaGetByRole3 } = anna;
+
+    await annaGetByRole3
+      .bind(anna)('navigation', { name: 'Основные разделы' })
       .getByRole('link', { name: 'Диалоги', exact: true })
       .click();
-    await expect(anna.getByRole('heading', { name: 'Выберите диалог', exact: true })).toBeVisible();
+    const { getByRole: annaGetByRole4 } = anna;
+
+    await expect(
+      annaGetByRole4.bind(anna)('heading', { name: 'Выберите диалог', exact: true }),
+    ).toBeVisible();
     await expect(sidebar).toHaveAttribute('data-instance', 'original');
-    await anna.goBack();
-    await expect(anna.getByLabel('Сообщение', { exact: true })).toBeVisible();
+    const { goBack: annaGoBack } = anna;
+
+    await annaGoBack.bind(anna)();
+    const { getByLabel: annaGetByLabel2 } = anna;
+
+    await expect(annaGetByLabel2.bind(anna)('Сообщение', { exact: true })).toBeVisible();
     await expect(sidebar).toHaveAttribute('data-instance', 'original');
-    const url = anna.url();
+    const { url: annaUrl } = anna;
+    const url = annaUrl.bind(anna)();
     const text = 'Тест переписки ' + randomUUID();
 
-    await anna.getByLabel('Сообщение', { exact: true }).fill(text);
-    await anna.getByRole('button', { name: 'Отправить сообщение', exact: true }).click();
-    await expect(anna.locator('.dialog-message-text').filter({ hasText: text })).toHaveCount(1);
-    await maxim.getByRole('link', { name: 'Диалоги', exact: true }).click();
-    await expect(maxim.getByRole('link', { name: /Анна/ })).toBeVisible();
+    const { getByLabel: annaGetByLabel3 } = anna;
+
+    await annaGetByLabel3.bind(anna)('Сообщение', { exact: true }).fill(text);
+    const { getByRole: annaGetByRole5 } = anna;
+
+    await annaGetByRole5.bind(anna)('button', { name: 'Отправить сообщение', exact: true }).click();
+    const { locator: annaLocator } = anna;
+
+    await expect(
+      annaLocator.bind(anna)('.dialog-message-text').filter({ hasText: text }),
+    ).toHaveCount(1);
+    const { getByRole: maximGetByRole } = maxim;
+
+    await maximGetByRole.bind(maxim)('link', { name: 'Диалоги', exact: true }).click();
+    const { getByRole: maximGetByRole2 } = maxim;
+
+    await expect(maximGetByRole2.bind(maxim)('link', { name: /Анна/ })).toBeVisible();
     expect(
       [...modules].some((path): boolean => /\/(DialogConversationRoute|Composer)\.tsx$/.test(path)),
     ).toBe(false);
-    await maxim.getByRole('link', { name: /Анна/ }).click();
-    await expect(maxim.locator('.dialog-message-text').filter({ hasText: text })).toBeVisible();
+    const { getByRole: maximGetByRole3 } = maxim;
+
+    await maximGetByRole3.bind(maxim)('link', { name: /Анна/ }).click();
+    const { locator: maximLocator } = maxim;
+
+    await expect(
+      maximLocator.bind(maxim)('.dialog-message-text').filter({ hasText: text }),
+    ).toBeVisible();
     expect(
       [...modules].some((path): boolean => path.endsWith('/DialogConversationRoute.tsx')),
     ).toBe(true);
-    await maxim.bringToFront();
+    const { bringToFront: maximBringToFront } = maxim;
+
+    await maximBringToFront.bind(maxim)();
+    const { locator: annaLocator2 } = anna;
+
     await expect(
-      anna
-        .locator('.dialog-message-text')
+      annaLocator2
+        .bind(anna)('.dialog-message-text')
         .filter({ hasText: text })
         .locator('..')
         .getByLabel('Прочитано', { exact: true }),
     ).toBeVisible({ timeout: 15000 });
-    await anna.bringToFront();
+    const { bringToFront: annaBringToFront } = anna;
+
+    await annaBringToFront.bind(anna)();
     const draft = 'Черновик ' + randomUUID();
 
-    await anna.getByLabel('Сообщение', { exact: true }).fill(draft);
-    await anna.getByRole('link', { name: 'Звонки', exact: true }).click();
+    const { getByLabel: annaGetByLabel4 } = anna;
+
+    await annaGetByLabel4.bind(anna)('Сообщение', { exact: true }).fill(draft);
+    const { getByRole: annaGetByRole6 } = anna;
+
+    await annaGetByRole6.bind(anna)('link', { name: 'Звонки', exact: true }).click();
     await expect(anna).toHaveURL(/\/calls$/);
-    await anna.goto(url);
-    await expect(anna.getByLabel('Сообщение', { exact: true })).toHaveValue(draft);
-    await anna.reload();
-    await expect(anna.getByLabel('Сообщение', { exact: true })).toHaveValue(draft);
-    const sentSticker = anna.waitForResponse(
+    const { goto: annaGoto } = anna;
+
+    await annaGoto.bind(anna)(url);
+    const { getByLabel: annaGetByLabel5 } = anna;
+
+    await expect(annaGetByLabel5.bind(anna)('Сообщение', { exact: true })).toHaveValue(draft);
+    const { reload: annaReload } = anna;
+
+    await annaReload.bind(anna)();
+    const { getByLabel: annaGetByLabel6 } = anna;
+
+    await expect(annaGetByLabel6.bind(anna)('Сообщение', { exact: true })).toHaveValue(draft);
+    const { waitForResponse: annaWaitForResponse } = anna;
+    const sentSticker = annaWaitForResponse.bind(anna)(
       (response): boolean =>
         response.url().includes('/messages') &&
         response.request().method() === 'POST' &&
         response.request().postDataJSON()?.content?.kind === 'sticker',
     );
 
-    await anna.getByRole('button', { name: 'Открыть стикеры' }).click();
-    await anna.getByRole('button', { name: 'Отправить стикер: Кот' }).click();
-    expect((await sentSticker).ok()).toBe(true);
-    await expect(anna.getByAltText('Стикер: Кот').last()).toBeVisible();
-    await expect(anna.getByLabel('Сообщение', { exact: true })).toBeEditable();
-    await expect(anna.getByLabel('Сообщение', { exact: true })).toHaveValue(draft);
+    const { getByRole: annaGetByRole7 } = anna;
+
+    await annaGetByRole7.bind(anna)('button', { name: 'Открыть стикеры' }).click();
+    const { getByRole: annaGetByRole8 } = anna;
+
+    await annaGetByRole8.bind(anna)('button', { name: 'Отправить стикер: Кот' }).click();
+    const resolved = await sentSticker;
+    const { ok: resultOk } = resolved;
+
+    expect(resultOk.bind(resolved)()).toBe(true);
+    const { getByAltText: annaGetByAltText } = anna;
+
+    await expect(annaGetByAltText.bind(anna)('Стикер: Кот').last()).toBeVisible();
+    const { getByLabel: annaGetByLabel7 } = anna;
+
+    await expect(annaGetByLabel7.bind(anna)('Сообщение', { exact: true })).toBeEditable();
+    const { getByLabel: annaGetByLabel8 } = anna;
+
+    await expect(annaGetByLabel8.bind(anna)('Сообщение', { exact: true })).toHaveValue(draft);
     const unknown = 'Неизвестный результат ' + randomUUID();
     let lost = false;
     let failedResponse = false;
 
-    await anna.route('**/api/dialogs/*/messages', async (route): Promise<void> => {
+    const { route: annaRoute } = anna;
+
+    await annaRoute.bind(anna)('**/api/dialogs/*/messages', async (route): Promise<void> => {
       if (route.request().method() === 'POST' && !lost) {
         lost = true;
         await route.fetch();
@@ -108,38 +186,80 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
         await route.continue();
       }
     });
-    await anna.getByLabel('Сообщение', { exact: true }).fill(unknown);
-    await anna.getByRole('button', { name: 'Отправить сообщение', exact: true }).click();
-    await expect(anna.locator('.dialog-message-text').filter({ hasText: unknown })).toHaveCount(1);
-    await expect.poll((): boolean => failedResponse).toBe(true);
-    await anna.reload();
-    await anna.screenshot({ path: testInfo.outputPath('dialog-after-reload.png') });
-    await expect(anna.locator('.dialog-message-text').filter({ hasText: unknown })).toHaveCount(1);
+    const { getByLabel: annaGetByLabel9 } = anna;
+
+    await annaGetByLabel9.bind(anna)('Сообщение', { exact: true }).fill(unknown);
+    const { getByRole: annaGetByRole9 } = anna;
+
+    await annaGetByRole9.bind(anna)('button', { name: 'Отправить сообщение', exact: true }).click();
+    const { locator: annaLocator3 } = anna;
+
     await expect(
-      anna
-        .getByText(unknown, { exact: true })
+      annaLocator3.bind(anna)('.dialog-message-text').filter({ hasText: unknown }),
+    ).toHaveCount(1);
+    await expect.poll((): boolean => failedResponse).toBe(true);
+    const { reload: annaReload2 } = anna;
+
+    await annaReload2.bind(anna)();
+    const { screenshot: annaScreenshot } = anna;
+
+    await annaScreenshot.bind(anna)({ path: testInfo.outputPath('dialog-after-reload.png') });
+    const { locator: annaLocator4 } = anna;
+
+    await expect(
+      annaLocator4.bind(anna)('.dialog-message-text').filter({ hasText: unknown }),
+    ).toHaveCount(1);
+    const { getByText: annaGetByText } = anna;
+
+    await expect(
+      annaGetByText
+        .bind(anna)(unknown, { exact: true })
         .locator('..')
         .getByLabel(/Отправлено|Прочитано/),
     ).toBeVisible();
-    await anna.setViewportSize({ width: 360, height: 640 });
+    const { setViewportSize: annaSetViewportSize } = anna;
+
+    await annaSetViewportSize.bind(anna)({ width: 360, height: 640 });
+    const { getByRole: annaGetByRole10 } = anna;
+
     await expect(
-      anna.getByRole('button', { name: 'Отправить сообщение', exact: true }),
+      annaGetByRole10.bind(anna)('button', { name: 'Отправить сообщение', exact: true }),
     ).toBeVisible();
-    await anna.screenshot({ path: testInfo.outputPath('dialog-mobile.png') });
+    const { screenshot: annaScreenshot2 } = anna;
+
+    await annaScreenshot2.bind(anna)({ path: testInfo.outputPath('dialog-mobile.png') });
+    const { evaluate: annaEvaluate } = anna;
+
     expect(
-      await anna.evaluate((): boolean => document.documentElement.scrollWidth <= innerWidth),
+      await annaEvaluate.bind(anna)(
+        (): boolean => document.documentElement.scrollWidth <= innerWidth,
+      ),
     ).toBe(true);
-    await anna.getByRole('link', { name: 'Назад к диалогам' }).click();
-    await expect(anna.getByRole('heading', { name: 'Диалоги', exact: true })).toBeVisible();
-    await anna.screenshot({ path: testInfo.outputPath('dialogs-mobile.png') });
+    const { getByRole: annaGetByRole11 } = anna;
+
+    await annaGetByRole11.bind(anna)('link', { name: 'Назад к диалогам' }).click();
+    const { getByRole: annaGetByRole12 } = anna;
+
+    await expect(
+      annaGetByRole12.bind(anna)('heading', { name: 'Диалоги', exact: true }),
+    ).toBeVisible();
+    const { screenshot: annaScreenshot3 } = anna;
+
+    await annaScreenshot3.bind(anna)({ path: testInfo.outputPath('dialogs-mobile.png') });
     expect(errors).toEqual([]);
   } catch (error) {
-    await anna.screenshot({ path: testInfo.outputPath('dialog-failure.png') });
+    const { screenshot: annaScreenshot4 } = anna;
+
+    await annaScreenshot4.bind(anna)({ path: testInfo.outputPath('dialog-failure.png') });
 
     throw error;
   } finally {
-    await a.close();
-    await b.close();
+    const { close: aClose } = a;
+
+    await aClose.bind(a)();
+    const { close: bClose } = b;
+
+    await bClose.bind(b)();
   }
 });
 
@@ -152,37 +272,49 @@ test('tabs share one WSS, resolve draft conflicts explicitly, flush before updat
   await expect(page.getByLabel('Сообщение', { exact: true })).toBeVisible();
   const other = await context.newPage();
 
-  await other.goto(page.url());
-  await expect(other.getByLabel('Сообщение', { exact: true })).toBeVisible();
+  const { goto: otherGoto } = other;
+
+  await otherGoto.bind(other)(page.url());
+  const { getByLabel: otherGetByLabel } = other;
+
+  await expect(otherGetByLabel.bind(other)('Сообщение', { exact: true })).toBeVisible();
   const own = 'Первый черновик ' + randomUUID();
   const peer = 'Второй черновик ' + randomUUID();
 
+  const { getByLabel: otherGetByLabel2 } = other;
+
   await Promise.all([
     page.getByLabel('Сообщение', { exact: true }).fill(own),
-    other.getByLabel('Сообщение', { exact: true }).fill(peer),
+    otherGetByLabel2.bind(other)('Сообщение', { exact: true }).fill(peer),
   ]);
   await expect
-    .poll(
-      async (): Promise<number> =>
+    .poll(async (): Promise<number> => {
+      const { locator: otherLocator } = other;
+
+      return (
         (await page.locator('.draft-conflict').count()) +
-        (await other.locator('.draft-conflict').count()),
-    )
+        (await otherLocator.bind(other)('.draft-conflict').count())
+      );
+    })
     .toBe(1);
   const conflicted = (await page.locator('.draft-conflict').count()) ? page : other;
   const text = conflicted === page ? own : peer;
 
   await conflicted.getByRole('button', { name: 'Сохранить мой вариант', exact: true }).click();
   await expect(page.getByLabel('Сообщение', { exact: true })).toHaveValue(text);
-  await expect(other.getByLabel('Сообщение', { exact: true })).toHaveValue(text);
+  const { getByLabel: otherGetByLabel3 } = other;
+
+  await expect(otherGetByLabel3.bind(other)('Сообщение', { exact: true })).toHaveValue(text);
   expect(
-    await page.evaluate(
-      async (): Promise<number> =>
-        (await navigator.locks.query()).held?.filter(
-          (lock): boolean => lock.name === 'gchat-ws-owner',
-        ).length ?? 0,
-    ),
+    await page.evaluate(async (): Promise<number> => {
+      const { held: queryResultHeld } = await navigator.locks.query();
+
+      return queryResultHeld?.filter((lock): boolean => lock.name === 'gchat-ws-owner').length ?? 0;
+    }),
   ).toBe(1);
-  await other.close();
+  const { close: otherClose } = other;
+
+  await otherClose.bind(other)();
   const updateDraft = 'Перед обновлением ' + randomUUID();
 
   await page.getByLabel('Сообщение', { exact: true }).fill(updateDraft);
@@ -196,13 +328,19 @@ test('tabs share one WSS, resolve draft conflicts explicitly, flush before updat
         const database = await new Promise<IDBDatabase>((resolve): void => {
           request.onsuccess = (): void => resolve(request.result);
         });
-        const records = database.transaction('records').objectStore('records').getAll();
+        const { transaction: databaseTransaction } = database;
+        const records = databaseTransaction
+          .bind(database)('records')
+          .objectStore('records')
+          .getAll();
         const saved = await new Promise<boolean>((resolve): void => {
           records.onsuccess = (): void =>
             resolve(records.result.some((row): boolean => row.record.draft.text === text));
         });
 
-        database.close();
+        const { close: databaseClose } = database;
+
+        databaseClose.bind(database)();
 
         return saved;
       }, updateDraft),
@@ -220,13 +358,16 @@ test('tabs share one WSS, resolve draft conflicts explicitly, flush before updat
       const database = await new Promise<IDBDatabase>((resolve): void => {
         request.onsuccess = (): void => resolve(request.result);
       });
-      const tx = database.transaction('messages');
+      const { transaction: databaseTransaction2 } = database;
+      const tx = databaseTransaction2.bind(database)('messages');
       const count = tx.objectStore('messages').count();
       const result = await new Promise<number>((resolve): void => {
         count.onsuccess = (): void => resolve(count.result);
       });
 
-      database.close();
+      const { close: databaseClose2 } = database;
+
+      databaseClose2.bind(database)();
 
       return result;
     }),

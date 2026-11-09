@@ -33,8 +33,13 @@ function fixture(): { runtime: DialogRuntime; store: any; api: any; saved(): Sto
     purge: async (): Promise<void> => {},
   };
   const api = { dialogsSendMessage: vi.fn() };
-  const request = async <T>(operation: (client: BackendApi) => Promise<ApiResult<T>>): Promise<T> =>
-    (await operation(api as unknown as BackendApi)).data;
+  const request = async <T>(
+    operation: (client: BackendApi) => Promise<ApiResult<T>>,
+  ): Promise<T> => {
+    const { data: resultData } = await operation(api as unknown as BackendApi);
+
+    return resultData;
+  };
   const runtime = new DialogRuntime(store.scope, store, request);
 
   vi.spyOn(runtime, 'sync').mockResolvedValue();

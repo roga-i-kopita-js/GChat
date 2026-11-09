@@ -66,14 +66,17 @@ export class DirectCallsService {
     recipientId: string,
   ): Promise<void> {
     const accounts = await this.auth.lockActiveAccountRoles(tx, [callerId, recipientId]);
-    const caller = accounts.find((account): boolean => account.id === callerId);
+    const { find: accountsFind } = accounts;
+    const caller = accountsFind.bind(accounts)((account): boolean => account.id === callerId);
 
     if (!caller) {
       throw this.error.sessionInvalid();
     }
 
+    const { some: accountsSome } = accounts ?? {};
+
     if (
-      !accounts.some((account): boolean => account.id === recipientId) ||
+      !accountsSome?.bind(accounts)((account): boolean => account.id === recipientId) ||
       (caller.role !== 'admin' && !(await this.groups.lockCommonGroup(tx, callerId, recipientId)))
     ) {
       throw this.failure('CALL_NOT_ALLOWED');
@@ -126,9 +129,15 @@ export class DirectCallsService {
             ),
           );
 
-        if (busy.length) {
+        const { length: busyLength } = busy;
+
+        if (busyLength) {
+          const { some: busySome } = busy;
+
           throw this.failure(
-            busy.some((p): boolean => p.userId === actor.userId) ? 'CALLER_BUSY' : 'RECIPIENT_BUSY',
+            busySome.bind(busy)((p): boolean => p.userId === actor.userId)
+              ? 'CALLER_BUSY'
+              : 'RECIPIENT_BUSY',
           );
         }
 
@@ -165,9 +174,13 @@ export class DirectCallsService {
           .insert(callDeliveries)
           .values({ callId: id, kind: 'state', version: 0, snapshot: callDto(call!) });
 
-        if (targets.length) {
+        const { length: targetsLength } = targets;
+
+        if (targetsLength) {
+          const { map: targetsMap } = targets;
+
           await tx.insert(callDeliveries).values(
-            targets.map((target): typeof callDeliveries.$inferInsert => ({
+            targetsMap.bind(targets)((target): typeof callDeliveries.$inferInsert => ({
               callId: id,
               kind: 'voip',
               version: 0,
@@ -177,9 +190,13 @@ export class DirectCallsService {
           );
         }
 
-        if (webTargets.length) {
+        const { length: webTargetsLength } = webTargets;
+
+        if (webTargetsLength) {
+          const { map: webTargetsMap } = webTargets;
+
           await tx.insert(callDeliveries).values(
-            webTargets.map((target): typeof callDeliveries.$inferInsert => ({
+            webTargetsMap.bind(webTargets)((target): typeof callDeliveries.$inferInsert => ({
               callId: id,
               kind: 'web_push',
               version: 0,
@@ -219,14 +236,14 @@ export class DirectCallsService {
             'code' in failure &&
             failure.code === '23505'
           ) {
-            const callerBusy = await this.repository.db
+            const { length: callerBusyLength } = await this.repository.db
               .select()
               .from(callParticipants)
               .where(
                 and(eq(callParticipants.userId, actor.userId), isNull(callParticipants.releasedAt)),
               );
 
-            throw this.failure(callerBusy.length ? 'CALLER_BUSY' : 'RECIPIENT_BUSY');
+            throw this.failure(callerBusyLength ? 'CALLER_BUSY' : 'RECIPIENT_BUSY');
           }
 
           throw cause;
@@ -287,17 +304,24 @@ export class DirectCallsService {
 
     const call = await this.get(actor, row.id);
 
-    return call.state === 'ended' ? null : call;
+    const { state: callState } = call;
+
+    return callState === 'ended' ? null : call;
   }
 
   async ping(actor: CallActor, input: CallPingDto): Promise<CallPingResponseDto> {
-    const call = await this.command(actor, input.call_id, 'ping', input);
+    const {
+      state: callState2,
+      version: callVersion,
+      recovery_id: callRecoveryId,
+      recovery_deadline: callRecoveryDeadline,
+    } = await this.command(actor, input.call_id, 'ping', input);
 
     return {
-      state: call.state,
-      version: call.version,
-      recovery_id: call.recovery_id,
-      recovery_deadline: call.recovery_deadline,
+      state: callState2,
+      version: callVersion,
+      recovery_id: callRecoveryId,
+      recovery_deadline: callRecoveryDeadline,
     };
   }
 
@@ -342,16 +366,24 @@ export class DirectCallsService {
 
         const peer = participants.find((p): boolean => p.userId !== actor.userId)!;
 
-        return { value: await callback(tx, call, peer, actor.userId === call.callerId) };
+        const valueValue = await callback(tx, call, peer, actor.userId === call.callerId);
+
+        return { value: valueValue };
       },
       actor,
     );
 
-    if (result.failure) {
-      throw result.failure;
+    const { failure: resultFailure } = result;
+
+    if (resultFailure) {
+      const { failure: resultFailure2 } = result;
+
+      throw resultFailure2;
     }
 
-    return result.value!;
+    const { value: resultValue } = result;
+
+    return resultValue!;
   }
 
   async registerNegotiation(tx: DatabaseTransaction, call: CallRecord, id: string): Promise<void> {
@@ -467,11 +499,17 @@ export class DirectCallsService {
               break;
             }
 
-            this.finish(
-              call,
-              command === 'end' ? 'hangup' : command === 'reject' ? 'rejected' : 'cancelled',
-              now,
-            );
+            let endReason: EndReason;
+
+            if (command === 'end') {
+              endReason = 'hangup';
+            } else if (command === 'reject') {
+              endReason = 'rejected';
+            } else {
+              endReason = 'cancelled';
+            }
+
+            this.finish(call, endReason, now);
             break;
           case 'connected':
             if (
@@ -557,11 +595,17 @@ export class DirectCallsService {
       actor,
     );
 
-    if (result.failure) {
-      throw result.failure;
+    const { failure: resultFailure3 } = result;
+
+    if (resultFailure3) {
+      const { failure: resultFailure4 } = result;
+
+      throw resultFailure4;
     }
 
-    return callDto(result.call);
+    const { call: resultCall } = result;
+
+    return callDto(resultCall);
   }
 
   private finish(call: CallRecord, reason: EndReason, now: Date): void {
@@ -623,8 +667,12 @@ export class DirectCallsService {
           p.sessionId ?? '00000000-0000-0000-0000-000000000000',
         );
 
-        disabled ||= !access.accountActive;
-        revoked ||= !!p.sessionId && !access.sessionActive;
+        const { accountActive: accessAccountActive } = access ?? {};
+
+        disabled ||= !accessAccountActive;
+        const { sessionActive: accessSessionActive } = access ?? {};
+
+        revoked ||= !!p.sessionId && !accessSessionActive;
       }
 
       if (disabled || revoked) {
@@ -703,18 +751,28 @@ export class DirectCallsService {
     );
 
     try {
-      if (result.call.state === 'ended') {
-        await this.presence.release(id, [result.call.callerId, result.call.recipientId]);
+      const { call: resultCall2 } = result;
+
+      if (resultCall2.state === 'ended') {
+        const { call: resultCall3 } = result;
+
+        await this.presence.release(id, [resultCall3.callerId, resultCall3.recipientId]);
       } else {
-        for (const p of result.participants) {
-          await this.presence.project(p, result.call.version);
+        const { participants: resultParticipants } = result;
+
+        for (const p of resultParticipants) {
+          const { call: resultCall4 } = result;
+
+          await this.presence.project(p, resultCall4.version);
         }
       }
     } catch {
       this.logger.warn('Call Redis projection deferred', { callId: id });
     }
 
-    return result.value;
+    const { value: resultValue2 } = result;
+
+    return resultValue2;
   }
 
   async maintain(id: string, checkAuth: boolean): Promise<void> {
@@ -799,8 +857,12 @@ export class DirectCallsService {
       .select({ sessionId: callParticipants.sessionId })
       .from(callParticipants);
 
+    const { flatMap: retainedFlatMap } = retained;
+
     await this.devices.cleanup(
-      new Set(retained.flatMap((row): string[] => (row.sessionId ? [row.sessionId] : []))),
+      new Set(
+        retainedFlatMap.bind(retained)((row): string[] => (row.sessionId ? [row.sessionId] : [])),
+      ),
     );
   }
 }

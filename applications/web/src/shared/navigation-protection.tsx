@@ -110,14 +110,21 @@ export function useNavigationProtection(protection: NavigationProtection): boole
     const lease = protection.flush ? null : retainFrontendUpdate();
     let active = true;
 
-    void lease?.ready.then(
-      (): void => {
-        if (active) {
-          setHeld(true);
-        }
-      },
-      (): void => {},
-    );
+    void (async () => {
+      if (!lease) {
+        return;
+      }
+
+      try {
+        await lease.ready;
+      } catch (rejectedCause) {
+        return;
+      }
+
+      if (active) {
+        setHeld(true);
+      }
+    })();
 
     return (): void => {
       active = false;

@@ -62,7 +62,9 @@ export class DirectCallsPresence {
     try {
       const values = await this.redis.client.mGet(this.keys(users));
 
-      return values.every((value): boolean => value === callId);
+      const { every: valuesEvery } = values;
+
+      return valuesEvery.bind(values)((value): boolean => value === callId);
     } catch (cause) {
       throw this.error.serviceUnavailable({ cause });
     }

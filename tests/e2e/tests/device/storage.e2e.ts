@@ -8,31 +8,42 @@ test('OPFS restores internal refs, excludes grants and protects roots across rel
     const path = '/tests/storage-harness.ts';
     const { files, storage, StorageArea } = await import(path);
     const root = await storage.getRoot(StorageArea.Data);
+    const { id: rootId } = root;
     const created = await files.execute('file.create', {
-      directoryId: root.id,
+      directoryId: rootId,
       name: 'fixture.bin',
     });
+    const { ref: createdRef } = created;
     const write = await files.execute('file.write.begin', {
-      fileId: created.ref.id,
+      fileId: createdRef.id,
       mode: 'replace',
       expectedVersion: null,
     });
 
+    const { writeId: writeWriteId } = write;
+
     await files.execute('file.write.chunk', {
-      writeId: write.writeId,
+      writeId: writeWriteId,
       offset: 0,
       dataBase64: btoa('\x00\xff\x01'),
     });
-    await files.execute('file.write.commit', { writeId: write.writeId });
+    const { writeId: writeWriteId2 } = write;
+
+    await files.execute('file.write.commit', { writeId: writeWriteId2 });
     const usage = await storage.getUsage(StorageArea.Data);
 
-    if (usage.usedBytes !== 3 || usage.quotaBytes !== null) {
+    const { usedBytes: usageUsedBytes, quotaBytes: usageQuotaBytes } = usage;
+
+    if (usageUsedBytes !== 3 || usageQuotaBytes !== null) {
       throw new Error('usage');
     }
 
-    const grants = await files.execute('file.access.list', { cursor: null, limit: 10 });
+    const { entries: grantsEntries } = await files.execute('file.access.list', {
+      cursor: null,
+      limit: 10,
+    });
 
-    if (grants.entries.length) {
+    if (grantsEntries.length) {
       throw new Error('internal grant leaked');
     }
 
@@ -44,16 +55,20 @@ test('OPFS restores internal refs, excludes grants and protects roots across rel
       'file.access.restore',
     ]) {
       try {
-        await files.execute(
-          command,
-          command === 'file.remove'
-            ? { id: root.id, recursive: true }
-            : command === 'file.rename'
-              ? { id: root.id, name: 'bad' }
-              : command === 'file.move'
-                ? { id: root.id, name: 'bad', destinationDirectoryId: root.id }
-                : { id: root.id },
-        );
+        const { id: rootId2 } = root;
+        let selectedValue;
+
+        if (command === 'file.remove') {
+          selectedValue = { id: rootId2, recursive: true };
+        } else if (command === 'file.rename') {
+          selectedValue = { id: rootId2, name: 'bad' };
+        } else if (command === 'file.move') {
+          selectedValue = { id: rootId2, name: 'bad', destinationDirectoryId: rootId2 };
+        } else {
+          selectedValue = { id: rootId2 };
+        }
+
+        await files.execute(command, selectedValue);
 
         throw new Error('root modification accepted');
       } catch (error) {
@@ -63,7 +78,10 @@ test('OPFS restores internal refs, excludes grants and protects roots across rel
       }
     }
 
-    return { root: root.id, file: created.ref.id };
+    const { id: rootId3 } = root;
+    const { ref: createdRef2 } = created;
+
+    return { root: rootId3, file: createdRef2.id };
   });
 
   await page.reload();
@@ -76,7 +94,10 @@ test('OPFS restores internal refs, excludes grants and protects roots across rel
 
       await files.execute('file.remove', { id: refs.file, recursive: false });
 
-      return root.id === refs.root && read.dataBase64 === 'AP8B';
+      const { id: rootId4 } = root ?? {};
+      const { dataBase64: readDataBase64 } = read;
+
+      return rootId4 === refs.root && readDataBase64 === 'AP8B';
     }, previous),
   ).toBe(true);
 });
@@ -90,16 +111,23 @@ test('temporary cleanup preserves another live document and recovers abandoned o
     page.evaluate(async (): Promise<string> => {
       const path = '/tests/storage-harness.ts';
       const { files, storage, StorageArea } = await import(path);
-      const root = await storage.getRoot(StorageArea.Temporary);
-      const dir = await files.execute('directory.create', { directoryId: root.id, name: 'alive' });
+      const { id: rootId5 } = await storage.getRoot(StorageArea.Temporary);
+      const { ref: dirRef } = await files.execute('directory.create', {
+        directoryId: rootId5,
+        name: 'alive',
+      });
 
-      return dir.ref.id;
+      return dirRef.id;
     });
   const ref = await prepare();
   const other = await context.newPage();
 
-  await other.goto('/');
-  await other.evaluate(async (): Promise<void> => {
+  const { goto: otherGoto } = other;
+
+  await otherGoto.bind(other)('/');
+  const { evaluate: otherEvaluate } = other;
+
+  await otherEvaluate.bind(other)(async (): Promise<void> => {
     const path = '/tests/storage-harness.ts';
     const { storage, StorageArea } = await import(path);
 
@@ -110,10 +138,14 @@ test('temporary cleanup preserves another live document and recovers abandoned o
       const path = '/tests/storage-harness.ts';
       const { files } = await import(path);
 
-      return (await files.execute('file.stat', { id })).ref.kind === 'directory';
+      const { ref: executeResultRef } = await files.execute('file.stat', { id });
+
+      return executeResultRef.kind === 'directory';
     }, ref),
   ).toBe(true);
-  await other.close();
+  const { close: otherClose } = other;
+
+  await otherClose.bind(other)();
   await page.reload();
   expect(
     await page.evaluate(async (): Promise<number> => {
@@ -121,15 +153,21 @@ test('temporary cleanup preserves another live document and recovers abandoned o
       const { storage, StorageArea } = await import(path);
 
       await storage.getRoot(StorageArea.Temporary);
-      const base = await (
-        await navigator.storage.getDirectory()
-      ).getDirectoryHandle('gchat-device-storage-v1');
-      const temp = await base.getDirectoryHandle('temporary');
+      const resolved = await navigator.storage.getDirectory();
+      const { getDirectoryHandle: getDirectoryResultGetDirectoryHandle } = resolved;
+      const base =
+        await getDirectoryResultGetDirectoryHandle.bind(resolved)('gchat-device-storage-v1');
+      const { getDirectoryHandle: baseGetDirectoryHandle } = base;
+      const temp = await baseGetDirectoryHandle.bind(base)('temporary');
       let count = 0;
 
-      for await (const _entry of (
-        temp as FileSystemDirectoryHandle & { values(): AsyncIterable<FileSystemHandle> }
-      ).values()) {
+      const { values: tempValues } = temp as FileSystemDirectoryHandle & {
+        values(): AsyncIterable<FileSystemHandle>;
+      };
+
+      for await (const _entry of tempValues.bind(
+        temp as FileSystemDirectoryHandle & { values(): AsyncIterable<FileSystemHandle> },
+      )()) {
         count++;
       }
 
@@ -146,24 +184,29 @@ test('rejects recursive copies into source and invalidates removed descendant re
     await page.evaluate(async (): Promise<boolean> => {
       const path = '/tests/storage-harness.ts';
       const { files, storage, StorageArea } = await import(path);
-      const root = await storage.getRoot(StorageArea.Cache);
+      const { id: rootId6 } = await storage.getRoot(StorageArea.Cache);
       const parent = await files.execute('directory.create', {
-        directoryId: root.id,
+        directoryId: rootId6,
         name: 'fixture',
       });
+      const { ref: parentRef } = parent;
       const child = await files.execute('directory.create', {
-        directoryId: parent.ref.id,
+        directoryId: parentRef.id,
         name: 'child',
       });
+      const { ref: childRef } = child;
       const file = await files.execute('file.create', {
-        directoryId: child.ref.id,
+        directoryId: childRef.id,
         name: 'file.bin',
       });
 
       try {
+        const { ref: parentRef2 } = parent;
+        const { ref: childRef2 } = child;
+
         await files.execute('file.copy', {
-          id: parent.ref.id,
-          destinationDirectoryId: child.ref.id,
+          id: parentRef2.id,
+          destinationDirectoryId: childRef2.id,
           name: 'loop',
         });
 
@@ -174,10 +217,14 @@ test('rejects recursive copies into source and invalidates removed descendant re
         }
       }
 
-      await files.execute('file.remove', { id: parent.ref.id, recursive: true });
+      const { ref: parentRef3 } = parent;
+
+      await files.execute('file.remove', { id: parentRef3.id, recursive: true });
 
       try {
-        await files.execute('file.stat', { id: file.ref.id });
+        const { ref: fileRef } = file;
+
+        await files.execute('file.stat', { id: fileRef.id });
 
         return false;
       } catch (error) {
@@ -196,21 +243,29 @@ test('moves an internal file across areas and restores the same ID in Data', asy
     const { files, storage, StorageArea } = await import(path);
     const temporary = await storage.getRoot(StorageArea.Temporary);
     const data = await storage.getRoot(StorageArea.Data);
+    const { id: temporaryId } = temporary;
     const file = await files.execute('file.create', {
-      directoryId: temporary.id,
+      directoryId: temporaryId,
       name: 'moving.bin',
     });
+    const { ref: fileRef2 } = file;
+    const { id: dataId } = data;
     const moved = await files.execute('file.move', {
-      id: file.ref.id,
-      destinationDirectoryId: data.id,
+      id: fileRef2.id,
+      destinationDirectoryId: dataId,
       name: 'moved.bin',
     });
 
-    if (moved.ref.id !== file.ref.id || moved.ref.persistence !== 'persistent') {
+    const { ref: movedRef } = moved;
+    const { ref: fileRef3 } = file;
+
+    if (movedRef.id !== fileRef3.id || movedRef.persistence !== 'persistent') {
       throw new Error('move changed identity or persistence');
     }
 
-    return moved.ref.id;
+    const { ref: movedRef2 } = moved;
+
+    return movedRef2.id;
   });
 
   await page.reload();
@@ -222,7 +277,9 @@ test('moves an internal file across areas and restores the same ID in Data', asy
 
       await files.execute('file.remove', { id, recursive: false });
 
-      return file.ref.id === id && file.ref.name === 'moved.bin';
+      const { ref: fileRef4 } = file;
+
+      return fileRef4.id === id && fileRef4.name === 'moved.bin';
     }, id),
   ).toBe(true);
 });

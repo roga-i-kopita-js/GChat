@@ -87,25 +87,25 @@ export function useSettingsDevice(): SettingsDevice {
     setSoundAnswer('');
     const epoch = generation.current;
 
-    void api.audio
-      .test({ kind }, { signal: controller.signal })
-      .then((report): void => {
+    void (async () => {
+      try {
+        const report = await api.audio.test({ kind }, { signal: controller.signal });
+
         if (epoch !== generation.current) {
           return;
         }
 
-        const failed = report.checks.find((item): boolean => item.status === 'failed');
+        const { checks: reportChecks } = report;
+        const failed = reportChecks.find((item): boolean => item.status === 'failed');
 
         if (failed?.status === 'failed') {
           setError(failed.error.message);
         }
-      })
-      .catch((cause): void => {
+      } catch (cause) {
         if (epoch === generation.current && !controller.signal.aborted) {
           setError(deviceErrorMessage(cause));
         }
-      })
-      .finally((): void => {
+      } finally {
         if (test.current === controller) {
           test.current = null;
         }
@@ -113,7 +113,8 @@ export function useSettingsDevice(): SettingsDevice {
         if (epoch === generation.current) {
           setStartingTest(false);
         }
-      });
+      }
+    })();
   };
 
   return {

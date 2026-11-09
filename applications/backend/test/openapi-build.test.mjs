@@ -40,7 +40,8 @@ test('standalone OpenAPI equals the HTTP application document from the same Nest
     .overrideProvider(REDIS_CLIENT)
     .useValue({ isOpen: true, connect: forbidden, ping: forbidden, close: async () => {} });
   const module = await builder.compile();
-  const app = module.createNestApplication();
+  const { createNestApplication: moduleCreateNestApplication } = module;
+  const app = moduleCreateNestApplication.bind(module)();
 
   try {
     const document = createOpenApiDocument(app);
@@ -79,7 +80,8 @@ test('compiled export runs with an empty environment and without loading .env', 
 
 async function documentFor(controllers) {
   const module = await Test.createTestingModule({ controllers }).compile();
-  const app = module.createNestApplication();
+  const { createNestApplication: moduleCreateNestApplication2 } = module;
+  const app = moduleCreateNestApplication2.bind(module)();
 
   try {
     return createOpenApiDocument(app);
@@ -110,14 +112,12 @@ test('renaming a controller and its method preserves the explicit operationId', 
 
   decorate(BeforeController, 'before', 'stableOperation');
   decorate(AfterController, 'after', 'stableOperation');
-  assert.equal(
-    (await documentFor([BeforeController])).paths['/example'].get.operationId,
-    'stableOperation',
-  );
-  assert.equal(
-    (await documentFor([AfterController])).paths['/example'].get.operationId,
-    'stableOperation',
-  );
+  const { paths: resultPaths } = await documentFor([BeforeController]);
+
+  assert.equal(resultPaths['/example'].get.operationId, 'stableOperation');
+  const { paths: resultPaths2 } = await documentFor([AfterController]);
+
+  assert.equal(resultPaths2['/example'].get.operationId, 'stableOperation');
 });
 
 test('OpenAPI creation rejects absent and duplicate explicit IDs', async () => {

@@ -39,20 +39,28 @@ afterEach((): void => {
 describe('Data router navigation', (): void => {
   it('commits with one history and applies replace semantics', async (): Promise<void> => {
     const { router, navigation } = fixture();
-    const result = await navigation.navigate('/settings/general/audio');
+    const { outcome: resultOutcome } = await navigation.navigate('/settings/general/audio');
 
-    expect(result.outcome).toBe(NavigationOutcome.Committed);
+    expect(resultOutcome).toBe(NavigationOutcome.Committed);
     expect(router.state.location.pathname).toBe('/settings/general/audio');
-    expect((await navigation.navigate('/calls', { replace: true })).outcome).toBe('committed');
+    const { outcome: navigateResultOutcome } = await navigation.navigate('/calls', {
+      replace: true,
+    });
+
+    expect(navigateResultOutcome).toBe('committed');
     expect(router.state.historyAction).toBe('REPLACE');
   });
   it('reports router redirects and route loader failures without raw errors', async (): Promise<void> => {
     const { router, navigation } = fixture();
 
-    expect((await navigation.navigate('/settings')).outcome).toBe('redirected');
+    const { outcome: navigateResultOutcome2 } = await navigation.navigate('/settings');
+
+    expect(navigateResultOutcome2).toBe('redirected');
     const failure = await navigation.navigate('/admin/users');
 
-    expect(failure.outcome).toBe('failed');
+    const { outcome: failureOutcome } = failure;
+
+    expect(failureOutcome).toBe('failed');
     expect(JSON.stringify(failure)).not.toContain('private backend text');
     expect(router.state.errors).toBeTruthy();
   });
@@ -69,8 +77,12 @@ describe('Data router navigation', (): void => {
     await vi.waitFor((): void => expect(router.state.navigation.state).toBe('loading'));
     const second = await navigation.navigate('/calls');
 
-    expect((await first).outcome).toBe('superseded');
-    expect(second.outcome).toBe('committed');
+    const { outcome: resultOutcome2 } = await first;
+
+    expect(resultOutcome2).toBe('superseded');
+    const { outcome: secondOutcome } = second;
+
+    expect(secondOutcome).toBe('committed');
     release();
   });
   it('tracks regular router navigation as a competing transition', async (): Promise<void> => {
@@ -85,7 +97,9 @@ describe('Data router navigation', (): void => {
 
     await vi.waitFor((): void => expect(router.state.navigation.state).toBe('loading'));
     await router.navigate('/calls');
-    expect((await first).outcome).toBe('superseded');
+    const { outcome: resultOutcome3 } = await first;
+
+    expect(resultOutcome3).toBe('superseded');
     release();
   });
   it('waits for blocker decision and distinguishes reset from proceed', async (): Promise<void> => {
@@ -103,7 +117,9 @@ describe('Data router navigation', (): void => {
       blocker.reset();
     }
 
-    expect((await blocked).outcome).toBe('blocked');
+    const { outcome: resultOutcome4 } = await blocked;
+
+    expect(resultOutcome4).toBe('blocked');
     expect(router.state.location.pathname).toBe('/calls');
     const proceeding = navigation.navigate('/settings');
 
@@ -116,7 +132,9 @@ describe('Data router navigation', (): void => {
       next.proceed();
     }
 
-    expect((await proceeding).outcome).toBe('redirected');
+    const { outcome: resultOutcome5 } = await proceeding;
+
+    expect(resultOutcome5).toBe('redirected');
   });
   it('does not start pre-aborted navigation; late abort cancels waiting and still publishes actual completion', async (): Promise<void> => {
     let release!: () => void;
@@ -223,9 +241,10 @@ describe('Data router navigation', (): void => {
     );
     const navigation = new DeviceNavigation(router, resolver, '/apps/client');
 
-    expect((await navigation.navigate('/settings/general/audio')).location.pathname).toBe(
-      '/settings/general/audio',
-    );
+    const { location: navigateResultLocation } =
+      await navigation.navigate('/settings/general/audio');
+
+    expect(navigateResultLocation.pathname).toBe('/settings/general/audio');
     navigation.stop();
     navigation.stop();
     await expect(navigation.navigate('/calls')).rejects.toMatchObject({ code: 'INVALID_STATE' });

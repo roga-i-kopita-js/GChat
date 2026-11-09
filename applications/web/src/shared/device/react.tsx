@@ -70,7 +70,11 @@ function LifecycleRoot({ device }: { device: DeviceCore }): ReactElement {
           <button
             className="primary"
             onClick={(): void => {
-              void device.lifecycle.retry().catch((): void => {});
+              void (async () => {
+                try {
+                  return await device.lifecycle.retry();
+                } catch (cause) {}
+              })();
             }}
           >
             Повторить
@@ -270,19 +274,21 @@ function CameraPreviewElement<THttp>({
         clearHole();
       }
 
-      void adapter
-        .bind(
-          source,
-          { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
-          shown,
-          previewId,
-          priority,
-        )
-        .catch((cause): void => {
+      void (async () => {
+        try {
+          return await adapter.bind(
+            source,
+            { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+            shown,
+            previewId,
+            priority,
+          );
+        } catch (cause) {
           if (active) {
             setError(cause);
           }
-        });
+        }
+      })();
     };
     const schedule = (): void => {
       cancelAnimationFrame(frame);
@@ -313,9 +319,17 @@ function CameraPreviewElement<THttp>({
       window.removeEventListener('scroll', schedule, true);
       window.removeEventListener('resize', schedule);
       document.removeEventListener('visibilitychange', schedule);
-      void adapter
-        .bind(source, { x: 0, y: 0, width: 0, height: 0 }, false, previewId, priority)
-        .catch((): void => {});
+      void (async () => {
+        try {
+          return await adapter.bind(
+            source,
+            { x: 0, y: 0, width: 0, height: 0 },
+            false,
+            previewId,
+            priority,
+          );
+        } catch (cause) {}
+      })();
     };
   }, [record, source.id, visible, previewId, priority]);
 

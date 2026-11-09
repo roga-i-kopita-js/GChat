@@ -131,17 +131,27 @@ export class NativeCamera implements CameraService {
       return;
     }
 
-    if (!this.accepts(value.state)) {
+    const { state: valueState } = value;
+
+    if (!this.accepts(valueState)) {
       return;
     }
 
-    if (this.sourceId !== value.sourceId) {
+    const { sourceId: valueSourceId } = value;
+
+    if (this.sourceId !== valueSourceId) {
       this.events.clear();
     }
 
-    this.sourceId = value.sourceId;
-    this.isCall = value.call;
-    this.update(value.state);
+    const { sourceId: valueSourceId2 } = value;
+
+    this.sourceId = valueSourceId2;
+    const { call: valueCall } = value;
+
+    this.isCall = valueCall;
+    const { state: valueState2 } = value;
+
+    this.update(valueState2);
     this.publishPreview();
   }
 
@@ -240,7 +250,9 @@ export class NativeCamera implements CameraService {
     });
 
     if (generation !== this.generation) {
-      await handle.remove();
+      const { remove: handleRemove } = handle;
+
+      await handleRemove.bind(handle)();
 
       return;
     }
@@ -288,8 +300,10 @@ export class NativeCamera implements CameraService {
       options,
     );
 
+    const { checks: checksChecks } = checks;
+
     return {
-      checks: checks.checks.map((value): CheckReport['checks'][number] =>
+      checks: checksChecks.map((value): CheckReport['checks'][number] =>
         value.status === 'passed'
           ? { service: 'camera', check: value.check, status: CheckStatus.Passed }
           : {
@@ -332,18 +346,28 @@ export class NativeCamera implements CameraService {
       options,
     );
 
-    if (this.sourceId !== result.sourceId) {
+    const { sourceId: resultSourceId } = result;
+
+    if (this.sourceId !== resultSourceId) {
       this.events.clear();
     }
 
-    this.sourceId = result.sourceId;
-    this.isCall = result.call ?? camera.lifetime === CameraLifetime.Call;
-    this.update(result.state);
+    const { sourceId: resultSourceId2 } = result;
+
+    this.sourceId = resultSourceId2;
+    const { call: resultCall } = result;
+
+    this.isCall = resultCall ?? camera.lifetime === CameraLifetime.Call;
+    const { state: resultState } = result;
+
+    this.update(resultState);
     let released = false;
     const valid = (): void => {
+      const { sourceId: resultSourceId3 } = result;
+
       if (
         released ||
-        this.sourceId !== result.sourceId ||
+        this.sourceId !== resultSourceId3 ||
         this.state.getSnapshot().status === 'released'
       ) {
         throw new DeviceError('INVALID_STATE');
@@ -358,10 +382,12 @@ export class NativeCamera implements CameraService {
       getState: async (callOptions): Promise<CameraState> => {
         valid();
 
+        const { sessionId: resultSessionId } = result;
+
         return this.update(
           await this.media.request(
             'camera.state',
-            { sessionId: result.sessionId },
+            { sessionId: resultSessionId },
             cameraState,
             callOptions,
           ),
@@ -374,7 +400,9 @@ export class NativeCamera implements CameraService {
           throw new DeviceError('CANCELLED');
         }
 
-        return Object.freeze({ id: result.sourceId });
+        const { sourceId: resultSourceId4 } = result;
+
+        return Object.freeze({ id: resultSourceId4 });
       },
       on: (event, handler): (() => void) => {
         valid();
@@ -387,10 +415,12 @@ export class NativeCamera implements CameraService {
       },
       setFacing: async (facing, callOptions): Promise<void> => {
         valid();
+        const { sessionId: resultSessionId2 } = result;
+
         this.update(
           await this.media.request(
             'camera.facing',
-            { sessionId: result.sessionId, facing },
+            { sessionId: resultSessionId2, facing },
             cameraState,
             callOptions,
           ),
@@ -399,18 +429,21 @@ export class NativeCamera implements CameraService {
       takePhoto: async (callOptions): Promise<FileRef> => {
         valid();
 
+        const { sessionId: resultSessionId3 } = result;
+
         return this.media.request(
           'camera.photo',
-          { sessionId: result.sessionId },
+          { sessionId: resultSessionId3 },
           refSchema,
           callOptions,
         );
       },
       startRecording: async (callOptions): Promise<RecordingSession> => {
         valid();
+        const { sessionId: resultSessionId4 } = result;
         const recording = await this.media.request(
           'camera.record',
-          { sessionId: result.sessionId },
+          { sessionId: resultSessionId4 },
           z.strictObject({ recordingId: z.string().uuid() }),
           callOptions,
         );
@@ -426,9 +459,11 @@ export class NativeCamera implements CameraService {
               valid();
             }
 
+            const { recordingId: recordingRecordingId } = recording;
+
             stopping ??= this.media.request(
               'camera.stopRecording',
-              { recordingId: recording.recordingId },
+              { recordingId: recordingRecordingId },
               refSchema,
             );
 
@@ -447,7 +482,9 @@ export class NativeCamera implements CameraService {
           return;
         }
 
-        await this.media.request('camera.release', { sessionId: result.sessionId }, mediaDone);
+        const { sessionId: resultSessionId5 } = result;
+
+        await this.media.request('camera.release', { sessionId: resultSessionId5 }, mediaDone);
       },
     };
   }
@@ -479,23 +516,27 @@ export class NativeCamera implements CameraService {
     const revision = ++this.bindingSequence;
 
     this.bindingRevisions.set(previewId, revision);
-    const pending = this.binding
-      .catch((): void => {})
-      .then(async (): Promise<void> => {
-        if (this.bindingRevisions.get(previewId) !== revision) {
-          return;
-        }
+    const pending = (async () => {
+      await (async () => {
+        try {
+          return await this.binding;
+        } catch (cause) {}
+      })();
 
-        await this.media.request(
-          'camera.preview',
-          { sourceId: source.id, previewId, rect, visible, priority },
-          mediaDone,
-        );
+      if (this.bindingRevisions.get(previewId) !== revision) {
+        return;
+      }
 
-        if (!visible && this.bindingRevisions.get(previewId) === revision) {
-          this.bindingRevisions.delete(previewId);
-        }
-      });
+      await this.media.request(
+        'camera.preview',
+        { sourceId: source.id, previewId, rect, visible, priority },
+        mediaDone,
+      );
+
+      if (!visible && this.bindingRevisions.get(previewId) === revision) {
+        this.bindingRevisions.delete(previewId);
+      }
+    })();
 
     this.binding = pending;
 
@@ -507,11 +548,19 @@ export class NativeCamera implements CameraService {
     this.synchronization++;
     this.callPreview.set({ revision: 0, source: null, status: 'released' });
 
-    await this.binding.catch((): void => {});
+    await (async () => {
+      try {
+        return await this.binding;
+      } catch (cause) {}
+    })();
     this.bindingRevisions.clear();
 
     if (this.handle) {
-      await this.media.releaseViews().catch((): void => {});
+      await (async () => {
+        try {
+          return await this.media.releaseViews();
+        } catch (cause) {}
+      })();
     }
 
     await this.handle?.remove();

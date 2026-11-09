@@ -37,7 +37,9 @@ async function pair(
 
   const signaling = { opened: 0, closed: 0 };
 
-  ui.on('page', (page): void => {
+  const { on: uiOn } = ui;
+
+  uiOn.bind(ui)('page', (page): void => {
     page.on('websocket', (socket): void => {
       // Vite HMR has its own socket on every page; only /ws is GChat signaling.
       if (new URL(socket.url()).pathname !== '/ws') {
@@ -51,14 +53,24 @@ async function pair(
     });
   });
   contexts.push(ui, reference);
-  const web = await ui.newPage();
-  const peer = await reference.newPage();
+  const { newPage: uiNewPage } = ui;
+  const web = await uiNewPage.bind(ui)();
+  const { newPage: referenceNewPage } = reference;
+  const peer = await referenceNewPage.bind(reference)();
 
-  await web.addInitScript(observePlayback);
+  const { addInitScript: webAddInitScript } = web;
+
+  await webAddInitScript.bind(web)(observePlayback);
   await login(web, 'anna');
-  await peer.goto('http://127.0.0.1:5174/fixtures/protocol/participant.html');
-  await peer.waitForFunction((): boolean => !!window.callActor);
-  await peer.evaluate((): Promise<void> => window.callActor.login('maxim'));
+  const { goto: peerGoto } = peer;
+
+  await peerGoto.bind(peer)('http://127.0.0.1:5174/fixtures/protocol/participant.html');
+  const { waitForFunction: peerWaitForFunction } = peer;
+
+  await peerWaitForFunction.bind(peer)((): boolean => !!window.callActor);
+  const { evaluate: peerEvaluate } = peer;
+
+  await peerEvaluate.bind(peer)((): Promise<void> => window.callActor.login('maxim'));
 
   return { web, peer, signaling };
 }
@@ -116,15 +128,20 @@ async function start(web: Page, peer: Page, direction: 'incoming' | 'outgoing'):
   let negotiation: string;
 
   if (direction === 'incoming') {
-    const result = await command(peer, 'call.create', {
-      recipient_id: (await session(web)).userId,
+    const { userId: resultUserId } = await session(web);
+    const { call: resultCall } = await command(peer, 'call.create', {
+      recipient_id: resultUserId,
     });
 
-    id = result.call.call_id;
+    id = resultCall.call_id;
     await expect(web.getByTestId('call-status')).toHaveText('Входящий звонок');
     await web.getByRole('button', { name: 'Принять', exact: true }).click();
     await expect
-      .poll(async (): Promise<string> => (await peerSample(peer)).calls.at(-1)?.state)
+      .poll(async (): Promise<string> => {
+        const { calls: resultCalls } = await peerSample(peer);
+
+        return resultCalls.at(-1)?.state;
+      })
       .toBe('connecting');
     await peer.evaluate((id): Promise<void> => window.callActor.prepare(id, 880), id);
     negotiation = await peer.evaluate((): Promise<string> => window.callActor.offer());
@@ -139,9 +156,15 @@ async function start(web: Page, peer: Page, direction: 'incoming' | 'outgoing'):
   } else {
     await dial(web, 'Максим Волков');
     await expect
-      .poll(async (): Promise<string> => (await peerSample(peer)).calls.at(-1)?.state)
+      .poll(async (): Promise<string> => {
+        const { calls: resultCalls2 } = await peerSample(peer);
+
+        return resultCalls2.at(-1)?.state;
+      })
       .toBe('ringing');
-    id = (await peerSample(peer)).calls.at(-1).call_id;
+    const { calls: resultCalls3 } = await peerSample(peer);
+
+    id = resultCalls3.at(-1).call_id;
     await command(peer, 'call.accept', { call_id: id });
     await peer.evaluate((id): Promise<void> => window.callActor.prepare(id, 880), id);
     await expect
@@ -155,12 +178,23 @@ async function start(web: Page, peer: Page, direction: 'incoming' | 'outgoing'):
   }
 
   await expect
-    .poll(async (): Promise<string> => (await peerSample(peer)).connection, { timeout: 20000 })
+    .poll(
+      async (): Promise<string> => {
+        const { connection: resultConnection } = await peerSample(peer);
+
+        return resultConnection;
+      },
+      { timeout: 20000 },
+    )
     .toBe('connected');
   await command(peer, 'call.connected', { call_id: id, negotiation_id: negotiation });
   await expect(web.getByTestId('call-status')).toHaveText('Разговор', { timeout: 20000 });
   await expect
-    .poll(async (): Promise<string> => (await peerSample(peer)).calls.at(-1)?.state)
+    .poll(async (): Promise<string> => {
+      const { calls: resultCalls4 } = await peerSample(peer);
+
+      return resultCalls4.at(-1)?.state;
+    })
     .toBe('active');
 
   return id;
@@ -173,9 +207,13 @@ async function tones(web: Page, peer: Page): Promise<void> {
   await expect
     .poll(
       async (): Promise<boolean> => {
-        const received = await peerSample(peer);
+        const {
+          relay: receivedRelay,
+          rms: receivedRms,
+          peakHz: receivedPeakHz,
+        } = await peerSample(peer);
 
-        return received.relay && received.rms > 0.01 && microphoneTone(received.peakHz);
+        return receivedRelay && receivedRms > 0.01 && microphoneTone(receivedPeakHz);
       },
       { timeout: 15000, message: 'Native web microphone WAV must decode at the reference peer' },
     )
@@ -183,13 +221,18 @@ async function tones(web: Page, peer: Page): Promise<void> {
   await expect
     .poll(
       async (): Promise<boolean> => {
-        const received = await playback(web);
+        const {
+          playing: receivedPlaying,
+          rms: receivedRms2,
+          peakHz: receivedPeakHz2,
+          errors: receivedErrors,
+        } = await playback(web);
 
         return (
-          received.playing &&
-          received.rms > 0.01 &&
-          Math.abs(received.peakHz - 880) < 20 &&
-          received.errors.length === 0
+          receivedPlaying &&
+          receivedRms2 > 0.01 &&
+          Math.abs(receivedPeakHz2 - 880) < 20 &&
+          receivedErrors.length === 0
         );
       },
       { timeout: 15000, message: 'The actual web audio element must play the decoded peer tone' },
@@ -200,26 +243,39 @@ async function finish(web: Page, peer: Page, id: string): Promise<void> {
   await web.getByRole('button', { name: 'Завершить', exact: true }).click();
   await expect(web.getByTestId('call-status')).toHaveText('Разговор завершён');
   await expect
-    .poll(
-      async (): Promise<string> =>
-        (await command(peer, 'call.get', { call_id: id })).call.end_reason,
-    )
+    .poll(async (): Promise<string> => {
+      const { call: resultCall2 } = await command(peer, 'call.get', { call_id: id });
+
+      return resultCall2.end_reason;
+    })
     .toBe('hangup');
   await expect
     .poll(async (): Promise<boolean> => {
       const output = await playback(web);
 
-      return !output.playing && !output.attached && output.liveTracks === 0;
+      const {
+        playing: outputPlaying,
+        attached: outputAttached,
+        liveTracks: outputLiveTracks,
+      } = output ?? {};
+
+      return !outputPlaying && !outputAttached && outputLiveTracks === 0;
     })
     .toBe(true);
   await expect
     .poll(async (): Promise<number[]> => {
-      const sample = await peerSample(peer);
+      const {
+        livePeers: sampleLivePeers,
+        liveTracks: sampleLiveTracks,
+        liveContexts: sampleLiveContexts,
+      } = await peerSample(peer);
 
-      return [sample.livePeers, sample.liveTracks, sample.liveContexts];
+      return [sampleLivePeers, sampleLiveTracks, sampleLiveContexts];
     })
     .toEqual([0, 0, 0]);
-  expect((await peerSample(peer)).errors).toEqual([]);
+  const { errors: resultErrors } = await peerSample(peer);
+
+  expect(resultErrors).toEqual([]);
 }
 
 for (const direction of ['incoming', 'outgoing'] as const) {
@@ -234,26 +290,40 @@ for (const direction of ['incoming', 'outgoing'] as const) {
 
       await web.getByRole('button', { name: 'Микрофон', exact: true }).click();
       await expect
-        .poll(async (): Promise<number> => (await peerSample(peer)).rms)
+        .poll(async (): Promise<number> => {
+          const { rms: resultRms } = await peerSample(peer);
+
+          return resultRms;
+        })
         .toBeLessThan(0.005);
       await expect
         .poll(async (): Promise<boolean> => {
           const sample = await peerSample(peer);
 
+          const { received: sampleReceived } = sample;
+          const { received: beforeReceived } = before;
+          const { rms: sampleRms, connection: sampleConnection } = sample;
+
           return (
-            sample.received > before.received &&
-            sample.rms < 0.005 &&
-            sample.connection === 'connected'
+            sampleReceived > beforeReceived && sampleRms < 0.005 && sampleConnection === 'connected'
           );
         })
         .toBe(true);
       const incoming = await playback(web);
 
-      expect(incoming.playing).toBe(true);
-      expect(incoming.rms).toBeGreaterThan(0.01);
-      expect(Math.abs(incoming.peakHz - 880)).toBeLessThan(20);
+      const { playing: incomingPlaying } = incoming;
+
+      expect(incomingPlaying).toBe(true);
+      const { rms: incomingRms } = incoming;
+
+      expect(incomingRms).toBeGreaterThan(0.01);
+      const { peakHz: incomingPeakHz } = incoming;
+
+      expect(Math.abs(incomingPeakHz - 880)).toBeLessThan(20);
       await expect(web.getByTestId('call-status')).toHaveText('Разговор');
-      expect((await peerSample(peer)).calls.at(-1).state).toBe('active');
+      const { calls: resultCalls5 } = await peerSample(peer);
+
+      expect(resultCalls5.at(-1).state).toBe('active');
       await web.getByRole('button', { name: 'Включить микрофон', exact: true }).click();
       await tones(web, peer);
       expect(signaling).toEqual({ opened: 1, closed: 0 });
@@ -308,36 +378,54 @@ test('live audio survives real JWT expiry and one refresh shared by browser tabs
       const response = await fetch('/api/groups', {
         headers: { Authorization: 'Bearer ' + token },
       });
-      const body = await response.json();
+      const { json: responseJson } = response;
+      const body = await responseJson.bind(response)();
 
-      return { status: response.status, code: body.error?.code ?? null };
+      const { status: responseStatus } = response;
+      const { error: bodyError } = body;
+
+      return { status: responseStatus, code: bodyError?.code ?? null };
     };
   });
   const id = await start(web, peer, 'outgoing');
 
   await tones(web, peer);
-  const initial = (await peerSample(peer)).calls.at(-1);
+  const { calls: resultCalls6 } = await peerSample(peer);
+  const initial = resultCalls6.at(-1);
   const counters = await peerSample(peer);
   let observations = 0;
-  const sampleInterval = Math.min(
-    3000,
-    Math.max(100, (original.expiresAt - original.issuedAt) / 20),
-  );
+  const { expiresAt: originalExpiresAt, issuedAt: originalIssuedAt } = original;
+  const sampleInterval = Math.min(3000, Math.max(100, (originalExpiresAt - originalIssuedAt) / 20));
 
   // Observe real passage of the signed JWT lifetime; do not fast-forward clocks.
-  while (Date.now() < original.expiresAt + 1500) {
+  while (Date.now() < originalExpiresAt + 1500) {
     const signal = await peerSample(peer);
     const rendered = await playback(web);
 
-    expect(signal.relay).toBe(true);
-    expect(signal.rms).toBeGreaterThan(0.01);
-    expect(microphoneTone(signal.peakHz)).toBe(true);
-    expect(rendered.playing).toBe(true);
-    expect(rendered.rms).toBeGreaterThan(0.01);
-    expect(Math.abs(rendered.peakHz - 880)).toBeLessThan(20);
-    expect(rendered.errors).toEqual([]);
+    const { relay: signalRelay } = signal;
+
+    expect(signalRelay).toBe(true);
+    const { rms: signalRms } = signal;
+
+    expect(signalRms).toBeGreaterThan(0.01);
+    const { peakHz: signalPeakHz } = signal;
+
+    expect(microphoneTone(signalPeakHz)).toBe(true);
+    const { playing: renderedPlaying } = rendered;
+
+    expect(renderedPlaying).toBe(true);
+    const { rms: renderedRms } = rendered;
+
+    expect(renderedRms).toBeGreaterThan(0.01);
+    const { peakHz: renderedPeakHz } = rendered;
+
+    expect(Math.abs(renderedPeakHz - 880)).toBeLessThan(20);
+    const { errors: renderedErrors } = rendered;
+
+    expect(renderedErrors).toEqual([]);
     await expect(web.getByTestId('call-status')).toHaveText('Разговор');
-    const call = (await peerSample(peer)).calls.at(-1);
+    const { calls: resultCalls7 } = await peerSample(peer);
+    const call = resultCalls7.at(-1);
 
     expect([call.call_id, call.state, call.version, call.recovery_id]).toEqual([
       id,
@@ -364,8 +452,10 @@ test('live audio survives real JWT expiry and one refresh shared by browser tabs
   ).toEqual({ status: 401, code: 'ACCESS_TOKEN_EXPIRED' });
   const followers = await Promise.all([context.newPage(), context.newPage()]);
 
+  const { map: followersMap } = followers;
+
   await Promise.all(
-    followers.map(async (page): Promise<void> => {
+    followersMap.bind(followers)(async (page): Promise<void> => {
       await page.goto('/');
       await expect(page.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Диагностика', exact: true }).click();
@@ -378,10 +468,21 @@ test('live audio survives real JWT expiry and one refresh shared by browser tabs
   expect(refreshStatuses).toEqual([200]);
   const rotated = await session(web);
 
-  expect(rotated.sessionId).toBe(original.sessionId);
-  expect(rotated.deviceId).toBe(original.deviceId);
-  expect(rotated.expiresAt).toBeGreaterThan(original.expiresAt);
-  expect(rotated.pending).toBe(false);
+  const { sessionId: rotatedSessionId } = rotated;
+  const { sessionId: originalSessionId } = original;
+
+  expect(rotatedSessionId).toBe(originalSessionId);
+  const { deviceId: rotatedDeviceId } = rotated;
+  const { deviceId: originalDeviceId } = original;
+
+  expect(rotatedDeviceId).toBe(originalDeviceId);
+  const { expiresAt: rotatedExpiresAt } = rotated;
+  const { expiresAt: originalExpiresAt2 } = original;
+
+  expect(rotatedExpiresAt).toBeGreaterThan(originalExpiresAt2);
+  const { pending: rotatedPending } = rotated;
+
+  expect(rotatedPending).toBe(false);
 
   for (const follower of followers) {
     expect(await session(follower)).toEqual(rotated);
@@ -391,10 +492,22 @@ test('live audio survives real JWT expiry and one refresh shared by browser tabs
   await tones(web, peer);
   const after = await peerSample(peer);
 
-  expect(after.calls).toHaveLength(1);
-  expect(after.calls[0].started_at).toBe(initial.started_at);
-  expect(after.calls[0].version).toBe(initial.version);
-  expect(after.sent).toBeGreaterThan(counters.sent);
-  expect(after.received).toBeGreaterThan(counters.received);
+  const { calls: afterCalls } = after;
+
+  expect(afterCalls).toHaveLength(1);
+  const { calls: afterCalls2 } = after;
+
+  expect(afterCalls2[0].started_at).toBe(initial.started_at);
+  const { calls: afterCalls3 } = after;
+
+  expect(afterCalls3[0].version).toBe(initial.version);
+  const { sent: afterSent } = after;
+  const { sent: countersSent } = counters;
+
+  expect(afterSent).toBeGreaterThan(countersSent);
+  const { received: afterReceived } = after;
+  const { received: countersReceived } = counters;
+
+  expect(afterReceived).toBeGreaterThan(countersReceived);
   await finish(web, peer, id);
 });

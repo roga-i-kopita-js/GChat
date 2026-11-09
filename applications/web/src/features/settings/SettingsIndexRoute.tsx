@@ -59,9 +59,13 @@ export function SettingsIndexRoute(): JSX.Element {
               className="danger-button"
               onClick={(): void => {
                 setConfirmLogout(false);
-                void device.session
-                  .logout()
-                  .catch((cause: unknown): void => setError(deviceErrorMessage(cause)));
+                void (async () => {
+                  try {
+                    return await device.session.logout();
+                  } catch (cause) {
+                    return setError(deviceErrorMessage(cause));
+                  }
+                })();
               }}
             >
               <LogOut size={17} /> Выйти

@@ -35,10 +35,18 @@ describe('Auth cryptography', (): void => {
     const a = await crypto.issue(account, sid);
     const b = await crypto.issue(account, sid);
 
-    expect(a.refresh_token).not.toBe(b.refresh_token);
-    expect(sessionId(a.refresh_token)).toBe(sid);
-    expect(tokenHash(a.refresh_token)).toHaveLength(64);
-    const jwt = decodeJwt(a.access_token);
+    const { refresh_token: aRefreshToken } = a;
+    const { refresh_token: bRefreshToken } = b;
+
+    expect(aRefreshToken).not.toBe(bRefreshToken);
+    const { refresh_token: aRefreshToken2 } = a;
+
+    expect(sessionId(aRefreshToken2)).toBe(sid);
+    const { refresh_token: aRefreshToken3 } = a;
+
+    expect(tokenHash(aRefreshToken3)).toHaveLength(64);
+    const { access_token: aAccessToken } = a;
+    const jwt = decodeJwt(aAccessToken);
 
     expect(jwt).toMatchObject({
       sub: account.id,
@@ -50,17 +58,22 @@ describe('Auth cryptography', (): void => {
       aud: 'gchat-api',
     });
     expect(jwt.exp! - jwt.iat!).toBe(120);
-    await expect(crypto.verifyAccess(a.access_token)).resolves.toEqual({
+    const { access_token: aAccessToken2 } = a;
+
+    await expect(crypto.verifyAccess(aAccessToken2)).resolves.toEqual({
       userId: account.id,
       sessionId: sid,
     });
   });
   it('rejects altered signatures and reports expiration separately', async (): Promise<void> => {
     const a = await crypto.issue(account, randomUUID());
-    const parts = a.access_token.split('.');
+    const { access_token: aAccessToken3 } = a;
+    const parts = aAccessToken3.split('.');
+
+    const { access_token: aAccessToken4 } = a;
 
     parts[1] = Buffer.from(
-      JSON.stringify({ ...decodeJwt(a.access_token), sub: randomUUID() }),
+      JSON.stringify({ ...decodeJwt(aAccessToken4), sub: randomUUID() }),
     ).toString('base64url');
     await expect(crypto.verifyAccess(parts.join('.'))).rejects.toMatchObject({
       code: 'ACCESS_TOKEN_INVALID',
@@ -90,21 +103,28 @@ describe('Auth cryptography', (): void => {
     );
     const sid = randomUUID();
     const issued = await short.issue(account, sid);
-    const jwt = decodeJwt(issued.access_token);
+    const { access_token: issuedAccessToken } = issued;
+    const jwt = decodeJwt(issuedAccessToken);
 
     expect(jwt.exp! - jwt.iat!).toBe(15);
-    await expect(short.verifyAccess(issued.access_token)).resolves.toEqual({
+    const { access_token: issuedAccessToken2 } = issued;
+
+    await expect(short.verifyAccess(issuedAccessToken2)).resolves.toEqual({
       userId: account.id,
       sessionId: sid,
     });
     // Changing the duration must not invalidate the shape/signature of existing tokens.
-    await expect(crypto.verifyAccess(issued.access_token)).resolves.toEqual({
+    const { access_token: issuedAccessToken3 } = issued;
+
+    await expect(crypto.verifyAccess(issuedAccessToken3)).resolves.toEqual({
       userId: account.id,
       sessionId: sid,
     });
     const existing = await crypto.issue(account, sid);
 
-    await expect(short.verifyAccess(existing.access_token)).resolves.toEqual({
+    const { access_token: existingAccessToken } = existing;
+
+    await expect(short.verifyAccess(existingAccessToken)).resolves.toEqual({
       userId: account.id,
       sessionId: sid,
     });
@@ -150,7 +170,9 @@ describe('Auth cryptography', (): void => {
     const tokens = await crypto.issue(account, sid);
     const encrypted = await crypto.encrypt(tokens, sid, requestId);
 
-    expect(encrypted).not.toContain(tokens.refresh_token);
+    const { refresh_token: tokensRefreshToken } = tokens;
+
+    expect(encrypted).not.toContain(tokensRefreshToken);
     expect(await crypto.encrypt(tokens, sid, requestId)).not.toBe(encrypted);
     await expect(crypto.decrypt(encrypted, sid, requestId)).resolves.toEqual(tokens);
     await expect(crypto.decrypt(encrypted, randomUUID(), requestId)).rejects.toThrow();
@@ -170,8 +192,12 @@ describe('Auth cryptography', (): void => {
     const key = Buffer.from(JSON.parse(process.env.AUTH_ROTATION_KEYS!).test, 'base64');
     const decrypted = await flattenedDecrypt(jwe, key);
 
-    expect(JSON.parse(Buffer.from(decrypted.plaintext).toString())).toEqual(tokens);
-    expect(Buffer.from(decrypted.additionalAuthenticatedData!).toString()).toBe(
+    const { plaintext: decryptedPlaintext } = decrypted;
+
+    expect(JSON.parse(Buffer.from(decryptedPlaintext).toString())).toEqual(tokens);
+    const { additionalAuthenticatedData: decryptedAdditionalAuthenticatedData } = decrypted;
+
+    expect(Buffer.from(decryptedAdditionalAuthenticatedData!).toString()).toBe(
       JSON.stringify([sid, requestId]),
     );
     const invalid = await new FlattenedEncrypt(Buffer.from(JSON.stringify(tokens)))
@@ -233,8 +259,12 @@ describe('Auth cryptography', (): void => {
     expect(argon2.needsRehash(first, { memoryCost: 65536, timeCost: 3, parallelism: 4 })).toBe(
       false,
     );
-    expect(Buffer.from(first.split('$')[4]!, 'base64')).toHaveLength(16);
-    expect(Buffer.from(first.split('$')[5]!, 'base64')).toHaveLength(32);
+    const { split: firstSplit } = first;
+
+    expect(Buffer.from(firstSplit.bind(first)('$')[4]!, 'base64')).toHaveLength(16);
+    const { split: firstSplit2 } = first;
+
+    expect(Buffer.from(firstSplit2.bind(first)('$')[5]!, 'base64')).toHaveLength(32);
     await expect(crypto.verifyPassword(password, first)).resolves.toBe(true);
     await expect(crypto.verifyPassword(password, second)).resolves.toBe(true);
     await expect(crypto.verifyPassword('wrong', first)).resolves.toBe(false);

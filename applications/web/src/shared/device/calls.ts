@@ -45,13 +45,19 @@ export class DeviceCalls implements CallsService {
 
   sync = (): void => {
     const state = this.client.getSnapshot();
-    const control = !state.owner
-      ? 'otherWindow'
-      : embedded && nativeRuntime.getSnapshot().nativeCalls !== true
-        ? 'unavailable'
-        : state.call && state.call.state !== 'ended' && !state.selected
-          ? 'unavailable'
-          : 'available';
+    let controlValue: CallsState['control'];
+
+    if (!state.owner) {
+      controlValue = 'otherWindow';
+    } else if (embedded && nativeRuntime.getSnapshot().nativeCalls !== true) {
+      controlValue = 'unavailable';
+    } else if (state.call && state.call.state !== 'ended' && !state.selected) {
+      controlValue = 'unavailable';
+    } else {
+      controlValue = 'available';
+    }
+
+    const control = controlValue;
 
     this.source.set({
       ...this.source.getSnapshot(),
@@ -148,9 +154,12 @@ export class DeviceCalls implements CallsService {
           throw new DeviceError('BUSY');
         }
 
-        const prepared = await this.bridge.execute({ command: 'call.prepareOutgoing', args: {} });
+        const { outcome: preparedOutcome } = await this.bridge.execute({
+          command: 'call.prepareOutgoing',
+          args: {},
+        });
 
-        if (prepared.outcome === 'cancelled') {
+        if (preparedOutcome === 'cancelled') {
           throw new DeviceError('CANCELLED');
         }
 

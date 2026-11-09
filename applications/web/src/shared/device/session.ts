@@ -75,16 +75,21 @@ export class DeviceSession<THttp> implements SessionService<THttp> {
     }
 
     this.cycle = cycle;
+    let statusValue: SessionState['status'];
+
+    if (phase === 'waiting') {
+      statusValue = 'starting';
+    } else if (phase === 'error') {
+      statusValue = 'error';
+    } else if (claims) {
+      statusValue = 'authenticated';
+    } else {
+      statusValue = 'anonymous';
+    }
+
     this.source.set({
       ...old,
-      status:
-        phase === 'waiting'
-          ? 'starting'
-          : phase === 'error'
-            ? 'error'
-            : claims
-              ? 'authenticated'
-              : 'anonymous',
+      status: statusValue,
       generation: old.generation + (changedScope ? 1 : 0),
       identity: claims
         ? {
@@ -148,11 +153,15 @@ export class DeviceSession<THttp> implements SessionService<THttp> {
   ): Promise<T> {
     const state = await this.getState(options);
 
-    if (state.status === 'error') {
+    const { status: stateStatus } = state;
+
+    if (stateStatus === 'error') {
       throw new DeviceError('BRIDGE_UNAVAILABLE');
     }
 
-    if (state.status !== 'authenticated') {
+    const { status: stateStatus2 } = state;
+
+    if (stateStatus2 !== 'authenticated') {
       throw new DeviceError('UNAUTHENTICATED');
     }
 
@@ -165,7 +174,9 @@ export class DeviceSession<THttp> implements SessionService<THttp> {
       signal.throwIfAborted();
       this.sync();
 
-      if (this.source.getSnapshot().generation !== state.generation) {
+      const { generation: stateGeneration } = state;
+
+      if (this.source.getSnapshot().generation !== stateGeneration) {
         throw new DeviceError('CANCELLED');
       }
     };
@@ -211,7 +222,9 @@ export class DeviceSession<THttp> implements SessionService<THttp> {
       throw new DeviceError('CANCELLED');
     }
 
-    if ((await this.getState(options)).status === 'anonymous') {
+    const { status: getStateResultStatus } = await this.getState(options);
+
+    if (getStateResultStatus === 'anonymous') {
       return;
     }
 

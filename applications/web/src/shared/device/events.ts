@@ -56,9 +56,21 @@ export function cancellable<T>(
     signal?.addEventListener('abort', cancel, { once: true });
 
     try {
-      void operation()
-        .then(resolve, reject)
-        .finally((): void => signal?.removeEventListener('abort', cancel));
+      void (async () => {
+        try {
+          let fulfilledValue;
+
+          try {
+            fulfilledValue = await operation();
+          } catch (rejectedCause) {
+            return await reject(rejectedCause);
+          }
+
+          return await resolve(fulfilledValue);
+        } finally {
+          signal?.removeEventListener('abort', cancel);
+        }
+      })();
     } catch (cause) {
       signal?.removeEventListener('abort', cancel);
       reject(cause);

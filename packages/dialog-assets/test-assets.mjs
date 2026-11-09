@@ -23,11 +23,21 @@ test('fixed catalog preserves source/PNG hashes, transparent RGBA dimensions and
 
     assert.equal(createHash('sha256').update(original).digest('hex'), item.original_sha256);
     assert.equal(createHash('sha256').update(png).digest('hex'), item.png_sha256);
-    assert.equal(png.subarray(1, 4).toString(), 'PNG');
-    assert.equal(png.readUInt32BE(16), 512);
-    assert.equal(png.readUInt32BE(20), 512);
-    assert.equal(png[25], 6);
-    assert.match(original.toString(), /CC0-1.0/);
+    const { subarray: pngSubarray } = png;
+
+    assert.equal(pngSubarray.bind(png)(1, 4).toString(), 'PNG');
+    const { readUInt32BE: pngReadUInt32BE } = png;
+
+    assert.equal(pngReadUInt32BE.bind(png)(16), 512);
+    const { readUInt32BE: pngReadUInt32BE2 } = png;
+
+    assert.equal(pngReadUInt32BE2.bind(png)(20), 512);
+    const { [25]: png25 } = png;
+
+    assert.equal(png25, 6);
+    const { toString: originalToString } = original;
+
+    assert.match(originalToString.bind(original)(), /CC0-1.0/);
     assert.match(
       item.source,
       /^https:\/\/www\.assetpolish\.com\/assets\/colour-animals\/[^/]+\.svg$/,

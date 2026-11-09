@@ -56,11 +56,16 @@ export class RedlockService implements BeforeApplicationShutdown {
     const task = this.scope.run(true, (): Promise<T> => this.run(resource, action, controller));
 
     this.active.set(controller, task);
-    // Use both handlers so tracking never produces an unhandled rejected promise.
-    void task.then(
-      (): boolean => this.active.delete(controller),
-      (): boolean => this.active.delete(controller),
-    );
+    // Observe completion without creating an unhandled rejected tracking promise.
+    void (async () => {
+      try {
+        await task;
+      } catch (rejectedCause) {
+        return this.active.delete(controller);
+      }
+
+      return this.active.delete(controller);
+    })();
 
     return task;
   }

@@ -8,27 +8,28 @@ export async function resolvePeerName(
   peer: string,
   signal: AbortSignal,
 ): Promise<string | null> {
-  const groups = (
-    await device.session.run(
-      (api, combined): ReturnType<BackendApi['groupsList']> => api.groupsList({ signal: combined }),
-      { signal },
-    )
-  ).data;
+  const { data: runResultData } = await device.session.run(
+    (api, combined): ReturnType<BackendApi['groupsList']> => api.groupsList({ signal: combined }),
+    { signal },
+  );
+  const groups = runResultData;
   const pages = await Promise.all(
-    groups.groups.map(
-      async (group): Promise<GroupMembersResponseDto> =>
-        (
-          await device.session.run(
-            (api, combined): ReturnType<BackendApi['groupsListMembers']> =>
-              api.groupsListMembers({ path: { group_id: group.id }, signal: combined }),
-            { signal },
-          )
-        ).data,
-    ),
+    groups.groups.map(async (group): Promise<GroupMembersResponseDto> => {
+      const { data: runResultData2 } = await device.session.run(
+        (api, combined): ReturnType<BackendApi['groupsListMembers']> =>
+          api.groupsListMembers({ path: { group_id: group.id }, signal: combined }),
+        { signal },
+      );
+
+      return runResultData2;
+    }),
   );
 
+  const { flatMap: pagesFlatMap } = pages;
+
   return (
-    pages.flatMap((page): Member[] => page.members).find((member): boolean => member.id === peer)
-      ?.display_name ?? null
+    pagesFlatMap
+      .bind(pages)((page): Member[] => page.members)
+      .find((member): boolean => member.id === peer)?.display_name ?? null
   );
 }

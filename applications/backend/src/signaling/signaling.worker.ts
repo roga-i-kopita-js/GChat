@@ -22,13 +22,15 @@ export class SignalingWorker implements OnApplicationBootstrap, OnModuleDestroy 
         return;
       }
 
-      this.running = this.tick()
-        .catch((): void => {
+      this.running = (async () => {
+        try {
+          return await this.tick();
+        } catch (cause) {
           this.logger.warn('State delivery deferred');
-        })
-        .finally((): void => {
+        } finally {
           this.running = undefined;
-        });
+        }
+      })();
     }, 200);
     this.timer.unref();
   }

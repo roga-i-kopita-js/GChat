@@ -52,11 +52,17 @@ export function resolveNativeLocation(to: string, origin: string, allowLogin = t
       (part): string => '/settings/general/' + part,
     ),
   ];
-  const entity = decoded.startsWith('/dialogs/')
-    ? decoded.slice(9)
-    : decoded.startsWith('/admin/users/')
-      ? decoded.slice(13)
-      : '';
+  let entityValue;
+
+  if (decoded.startsWith('/dialogs/')) {
+    entityValue = decoded.slice(9);
+  } else if (decoded.startsWith('/admin/users/')) {
+    entityValue = decoded.slice(13);
+  } else {
+    entityValue = '';
+  }
+
+  const entity = entityValue;
 
   if ((!fixed.includes(decoded) && !uuid.test(entity)) || (!allowLogin && decoded === '/login')) {
     return invalid();
@@ -64,14 +70,19 @@ export function resolveNativeLocation(to: string, origin: string, allowLogin = t
 
   const url = new URL(to, origin);
   const keys = [...url.searchParams.keys()];
-  const allowed =
-    decoded === '/login'
-      ? ['serverUrl', 'returnTo']
-      : decoded === '/calls'
-        ? ['group']
-        : decoded === '/admin/users' || decoded.startsWith('/admin/users/')
-          ? ['q', 'status', 'offset']
-          : [];
+  let allowedValue: string[];
+
+  if (decoded === '/login') {
+    allowedValue = ['serverUrl', 'returnTo'];
+  } else if (decoded === '/calls') {
+    allowedValue = ['group'];
+  } else if (decoded === '/admin/users' || decoded.startsWith('/admin/users/')) {
+    allowedValue = ['q', 'status', 'offset'];
+  } else {
+    allowedValue = [];
+  }
+
+  const allowed = allowedValue;
 
   if (new Set(keys).size !== keys.length || keys.some((key): boolean => !allowed.includes(key))) {
     return invalid();

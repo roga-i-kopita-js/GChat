@@ -37,7 +37,9 @@ describe('committed dialog models', (): void => {
     finish({ status: 'ready', value: 'stale', error: null });
     const state = await model.getState();
 
-    expect(state.value).toBe('new commit');
+    const { value: stateValue } = state;
+
+    expect(stateValue).toBe('new commit');
     expect(received).toEqual(['new commit']);
     expect(model.getSnapshot()).toBe(state);
     expect(read).toHaveBeenCalledTimes(2);
