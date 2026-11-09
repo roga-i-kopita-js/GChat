@@ -14,7 +14,6 @@ import { retainFrontendUpdate } from '../shared/frontend-update-lease';
 import { NavigationProtectionRoot } from '../shared/navigation-protection';
 import type { ApplicationLoaderData } from './loaders';
 import { PwaUpdate } from './PwaUpdate';
-import { RoutePending } from './RoutePending';
 
 export function RequireSession(): JSX.Element {
   const { session } = useAuth();
@@ -137,12 +136,11 @@ export function App(): JSX.Element {
   const content = (
     <AuthProvider device={device}>
       <NavigationProtectionRoot session={device.session}>
-        <BootstrapProvider session={device.session}>
+        <BootstrapProvider>
           <CallsProvider>
             <div data-gchat-surface>
               <PwaUpdate />
 
-              <RoutePending />
               <Outlet />
               <IncomingCall />
             </div>

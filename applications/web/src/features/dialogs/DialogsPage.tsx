@@ -3,13 +3,15 @@ import './dialogs.css';
 import { MessageCircle } from 'lucide-react';
 import type { JSX } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
-import { Link, Outlet, useParams } from 'react-router';
+import { Link, Outlet, useParams, useRevalidator, useRouteLoaderData } from 'react-router';
 
 import { useBootstrap } from '../../shared/dialogs/context';
 import { DialogModelEvent } from '../../shared/dialogs/live-models';
 import { dialogError, type DialogRuntime } from '../../shared/dialogs/runtime';
-import { Avatar } from '../../shared/ui';
+import { Skeleton } from '../../shared/ui';
+import { UserCard } from '../users/UserCard';
 import { time } from './format';
+import type { DialogsData } from './loaders';
 
 function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
   const { dialogId } = useParams();
@@ -23,10 +25,10 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
   const result = useSyncExternalStore(subscribe, model.getSnapshot);
 
   useEffect((): (() => void) => {
-    runtime.section(true);
+    runtime.section(true, false);
 
     return (): void => runtime.section(false);
-  }, [runtime]);
+  }, [runtime, dialogId]);
   useLayoutEffect((): void => {
     if (scroll.current) {
       scroll.current.scrollTop = runtime.listScroll;
@@ -36,9 +38,6 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
   return (
     <div className={'dialogs-layout' + (dialogId ? ' dialog-selected' : '')}>
       <section className="dialogs-sidebar" aria-label="Диалоги">
-        <header>
-          <h1>Диалоги</h1>
-        </header>
         {state.storageWarning && (
           <p className="dialog-notice" role="status">
             {state.storageWarning}
@@ -58,7 +57,17 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
           }}
         >
           {result.status === 'starting' ? (
-            <p role="status">Загружаем диалоги…</p>
+            <div role="status" aria-label="Загрузка диалогов">
+              {[0, 1, 2, 3].map((key): JSX.Element => (
+                <div key={key} className="dialog-contact-loading">
+                  <Skeleton variant="circular" width="var(--ui-control-height)" />
+                  <div className="skeleton-copy">
+                    <Skeleton width="55%" />
+                    <Skeleton width="40%" height="var(--ui-font-caption)" />
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : result.status === 'error' ? (
             <p role="alert">{dialogError(result.error)}</p>
           ) : !result.items.length ? (
@@ -76,8 +85,11 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
                 aria-current={dialogId === dialog.dialog_id ? 'page' : undefined}
                 className={'dialog-contact' + (dialogId === dialog.dialog_id ? ' current' : '')}
               >
-                <Avatar name={dialog.peer_display_name} seed={dialog.peer_id} />
-                <span className="dialog-contact-name">{dialog.peer_display_name}</span>
+                <UserCard
+                  userId={dialog.peer_id}
+                  displayName={dialog.peer_display_name}
+                  subtitle="Последнее сообщение"
+                />
                 <span className="dialog-contact-meta">
                   <time>{time(dialog.last_message_at ?? dialog.created_at)}</time>
                   {dialog.has_unread_messages && (
@@ -99,21 +111,42 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
           )}
         </div>
       </section>
-      <Outlet context={runtime} />
+      <Outlet />
     </div>
   );
 }
 
 export function DialogsPage(): JSX.Element {
-  const { runtime, error, retry } = useBootstrap();
+  const { runtime: bootstrapRuntime, error, retry } = useBootstrap();
+  const index = useRouteLoaderData<DialogsData>('dialog-index');
+  const conversation = useRouteLoaderData<DialogsData>('dialog-conversation');
+  const descriptor = index ?? conversation;
+  const revalidator = useRevalidator();
+  const reloadedScope = useRef<DialogRuntime | null>(null);
+  const stale = descriptor?.runtime.signal.aborted ?? false;
+  const runtime = descriptor ? (stale ? null : descriptor.runtime) : bootstrapRuntime;
+
+  useEffect((): void => {
+    if (stale && bootstrapRuntime && reloadedScope.current !== bootstrapRuntime) {
+      reloadedScope.current = bootstrapRuntime;
+      void revalidator.revalidate();
+    }
+  }, [stale, bootstrapRuntime, revalidator]);
 
   return runtime ? (
     <Dialogs runtime={runtime} />
   ) : (
     <section className="dialog-empty">
       <p role={error ? 'alert' : 'status'}>{error ?? 'Подготавливаем переписку…'}</p>
+      <Outlet />
       {error && (
-        <button className="secondary" onClick={retry}>
+        <button
+          className="secondary"
+          onClick={(): void => {
+            retry();
+            void revalidator.revalidate();
+          }}
+        >
           Повторить
         </button>
       )}

@@ -1,0 +1,35 @@
+.user-card {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: var(--ui-space-3);
+  text-align: left;
+  line-height: var(--ui-leading-body);
+}
+.user-card > .avatar {
+  width: var(--ui-control-height);
+  height: var(--ui-control-height);
+  flex: none;
+  font-size: var(--ui-font-label);
+}
+.user-card-copy {
+  flex: 1;
+  min-width: 0;
+}
+.user-card-name,
+.user-card-subtitle {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-card-name {
+  font-size: var(--ui-font-body);
+  font-weight: var(--ui-weight-semibold);
+}
+.user-card-subtitle {
+  margin-top: var(--ui-space-0-5);
+  font-size: var(--ui-font-caption);
+  color: var(--ui-muted);
+}

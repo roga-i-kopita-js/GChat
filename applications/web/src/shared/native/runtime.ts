@@ -84,6 +84,7 @@ export class NativeRuntime {
     }
 
     this.navigationBinding = new NativeNavigationBinding(nativePlugin, navigation);
+    this.navigationReady();
   }
 
   private navigationReady(): void {

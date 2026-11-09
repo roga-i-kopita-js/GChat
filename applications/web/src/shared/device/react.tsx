@@ -2,6 +2,7 @@ import type { JSX, ReactElement, ReactNode } from 'react';
 import {
   createContext,
   Suspense,
+  useCallback,
   useContext,
   useEffect,
   useId,
@@ -167,7 +168,10 @@ export function useDeviceSettings(): {
 
   return {
     state,
-    refresh: (): Promise<import('./contract').DeviceState> => record.observer.refresh(),
+    refresh: useCallback(
+      (): Promise<import('./contract').DeviceState> => record.observer.refresh(),
+      [record],
+    ),
   };
 }
 

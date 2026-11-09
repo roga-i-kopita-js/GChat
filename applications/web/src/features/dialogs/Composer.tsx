@@ -11,6 +11,7 @@ import {
 } from '../../shared/dialogs/model';
 import { dialogError, type DialogRuntime } from '../../shared/dialogs/runtime';
 import { useNavigationProtection } from '../../shared/navigation-protection';
+import { Button } from '../../shared/ui';
 import { stickers } from './stickers';
 
 export function Composer({
@@ -131,8 +132,13 @@ export function Composer({
     const textarea = field.current;
 
     if (textarea) {
-      textarea.style.height = '44px';
-      textarea.style.height = Math.min(100, textarea.scrollHeight) + 'px';
+      textarea.style.height = 'auto';
+      const style = getComputedStyle(textarea);
+      const maxHeight = Number.parseFloat(style.maxHeight);
+      const borderHeight =
+        Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
+
+      textarea.style.height = Math.min(maxHeight, textarea.scrollHeight + borderHeight) + 'px';
     }
   }, [text]);
   async function resolveConflict(keepMine: boolean): Promise<void> {
@@ -306,7 +312,9 @@ export function Composer({
             }
           }}
         />
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           type="button"
           ref={toggle}
           className="dialog-icon"
@@ -315,15 +323,16 @@ export function Composer({
           onClick={(): void => setPanel(!panel)}
         >
           <Smile size={23} />
-        </button>
-        <button
+        </Button>
+        <Button
+          size="icon"
           type="submit"
           className="dialog-send"
           disabled={busy || conflict || !text.trim()}
           aria-label="Отправить сообщение"
         >
           <ArrowUp size={23} />
-        </button>
+        </Button>
       </form>
     </div>
   );

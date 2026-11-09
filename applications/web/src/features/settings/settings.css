@@ -1,66 +1,39 @@
-.app-shell:has(.settings-page) {
-  background: #f2f2f7;
-}
-.app-shell > .workspace.settings-active {
-  max-width: 704px;
-  padding: 0 12px 24px;
-}
 .settings-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   width: 100%;
-  color: #111;
-}
-.settings-heading {
-  display: flex;
-  align-items: center;
-  min-height: 56px;
-  gap: 4px;
-}
-.settings-heading h1 {
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-.settings-back {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
-  color: #007aff;
-  margin-left: -8px;
+  min-width: 0;
+  color: var(--ui-text);
+  background: var(--ui-canvas);
 }
 .settings-group {
-  margin: 0 0 20px;
+  margin: 0 0 var(--ui-space-5);
 }
 .settings-group h2 {
-  font-size: 12px;
-  font-weight: 400;
+  font-size: var(--ui-font-size-12);
+  font-weight: var(--ui-weight-regular);
   text-transform: uppercase;
-  letter-spacing: 0.025em;
+  letter-spacing: var(--ui-tracking-wide);
   color: #65656b;
-  margin: 0 16px 6px;
-}
-.settings-surface {
-  background: #fff;
-  border-radius: 12px;
-  overflow: hidden;
+  margin: 0 var(--ui-space-4) var(--ui-space-1-5);
 }
 .settings-row {
   display: flex;
   align-items: center;
   position: relative;
-  gap: 12px;
-  min-height: 52px;
-  padding: 10px 16px;
+  gap: var(--ui-space-3);
+  min-height: var(--ui-size-52);
+  padding: var(--ui-space-2-5) var(--ui-space-4);
 }
 .settings-row + .settings-row::before,
 .settings-surface > div + div > .settings-row::before {
   content: '';
   position: absolute;
   top: 0;
-  left: 56px;
+  left: var(--ui-size-56);
   right: 0;
-  height: 1px;
+  height: var(--ui-size-1);
   background: #e5e5ea;
 }
 .settings-row[href]:active,
@@ -68,10 +41,10 @@
   background: #e9e9ef;
 }
 .settings-icon {
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
+  flex: 0 0 var(--ui-size-28);
+  width: var(--ui-size-28);
+  height: var(--ui-size-28);
+  border-radius: var(--ui-radius-8);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -81,53 +54,56 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  font-size: 16px;
-  font-weight: 400;
+  font-size: var(--ui-font-label);
+  font-weight: var(--ui-weight-regular);
   overflow-wrap: anywhere;
   flex: 1;
 }
 .settings-row-copy small {
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   color: #65656b;
-  padding-top: 2px;
+  padding-top: var(--ui-space-0-5);
 }
 .settings-value {
   color: #65656b;
-  font-size: 14px;
+  font-size: var(--ui-font-body);
   max-width: 42%;
   overflow-wrap: anywhere;
   text-align: right;
 }
 .settings-chevron {
   color: #b6b6bd;
-  flex: 0 0 17px;
+  flex: 0 0 var(--ui-size-17);
 }
 .settings-note {
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: var(--ui-font-caption);
+  line-height: var(--ui-leading-relaxed);
   color: #65656b;
-  margin: -10px 16px 20px;
+  margin: calc(-1 * var(--ui-space-2-5)) var(--ui-space-4) var(--ui-space-5);
 }
 .settings-intro {
-  margin: 2px 16px 20px;
+  margin: var(--ui-space-0-5) var(--ui-space-4) var(--ui-space-5);
   color: #65656b;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--ui-font-body);
+  line-height: var(--ui-leading-relaxed);
 }
 .settings-action {
   color: #007aff;
   text-align: left;
-  min-height: 48px;
-  padding: 12px 16px;
+  min-height: var(--ui-size-48);
+  padding: var(--ui-space-3) var(--ui-space-4);
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--ui-space-2);
+  justify-content: flex-start;
+  border-radius: 0;
+  font-weight: var(--ui-weight-regular);
   background: #fff;
-  font-size: 16px;
+  font-size: var(--ui-font-label);
 }
 .settings-action + .settings-action {
-  border-top: 1px solid #e5e5ea;
+  border-top: var(--ui-size-1) solid #e5e5ea;
 }
 .settings-danger {
   color: #e53935;
@@ -136,68 +112,68 @@
   display: flex;
   align-items: center;
   flex-direction: column;
-  padding: 16px 12px 28px;
-  gap: 6px;
+  padding: var(--ui-space-4) var(--ui-space-3) var(--ui-space-7);
+  gap: var(--ui-space-1-5);
 }
 .settings-profile .avatar {
-  width: 76px;
-  height: 76px;
-  font-size: 28px;
-  margin-bottom: 6px;
+  width: var(--ui-size-76);
+  height: var(--ui-size-76);
+  font-size: var(--ui-font-size-28);
+  margin-bottom: var(--ui-space-1-5);
 }
 .settings-profile h2 {
-  font-size: 22px;
+  font-size: var(--ui-font-title);
   text-align: center;
   overflow-wrap: anywhere;
 }
 .settings-profile p {
   color: #65656b;
-  font-size: 14px;
+  font-size: var(--ui-font-body);
 }
 .settings-test-status {
-  padding: 12px 16px;
-  font-size: 14px;
+  padding: var(--ui-space-3) var(--ui-space-4);
+  font-size: var(--ui-font-body);
 }
 .settings-answers {
   display: flex;
-  border-top: 1px solid #e5e5ea;
+  border-top: var(--ui-size-1) solid #e5e5ea;
 }
 .settings-answers button {
-  min-height: 48px;
+  min-height: var(--ui-size-48);
   flex: 1;
   color: #007aff;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--ui-space-1-5);
   background: transparent;
 }
 .settings-answers button + button {
-  border-left: 1px solid #e5e5ea;
+  border-left: var(--ui-size-1) solid #e5e5ea;
 }
 .settings-error {
   background: #fff;
-  border-radius: 12px;
-  padding: 16px;
-  font-size: 14px;
-  margin: 16px 0;
+  border-radius: var(--ui-radius-12);
+  padding: var(--ui-space-4);
+  font-size: var(--ui-font-body);
+  margin: var(--ui-space-4) 0;
 }
 .settings-error p {
   color: #b42b30;
 }
 .settings-error button,
 .settings-file-actions button {
-  min-height: 44px;
+  min-height: var(--ui-control-height);
   background: transparent;
   color: #007aff;
   text-align: left;
-  padding: 8px 0;
+  padding: var(--ui-space-2) 0;
 }
 .settings-file-actions {
   display: flex;
-  gap: 20px;
+  gap: var(--ui-space-5);
   flex-wrap: wrap;
-  padding: 0 16px 0 56px;
+  padding: 0 var(--ui-space-4) 0 var(--ui-space-14);
 }
 .settings-spinner {
   animation: settings-spin 1s linear infinite;
@@ -209,15 +185,15 @@
 }
 @media (max-width: 380px) {
   .settings-row {
-    gap: 10px;
+    gap: var(--ui-space-2-5);
     flex-wrap: wrap;
   }
   .settings-row .settings-value {
-    width: calc(100% - 60px);
-    margin-left: 38px;
+    width: calc(100% - var(--ui-size-60));
+    margin-left: var(--ui-space-10);
     text-align: left;
     max-width: none;
-    font-size: 13px;
+    font-size: var(--ui-font-caption);
   }
   .settings-chevron {
     margin-left: auto;
@@ -229,38 +205,40 @@
   }
 }
 
-/* Labels remain separate at large zoom, and reserve the measured navigation height. */
-.app-shell {
-  padding-bottom: var(
-    --navigation-height,
-    calc(var(--tabs-height) + env(safe-area-inset-bottom, 0px))
-  );
-}
-.bottom-tab span {
-  min-width: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
 .settings-page {
   container-type: inline-size;
 }
 @container (max-width: 320px) {
   .settings-row {
     flex-wrap: wrap;
-    gap: 10px;
+    gap: var(--ui-space-2-5);
   }
   .settings-row-copy {
-    flex-basis: calc(100% - 66px);
+    flex-basis: calc(100% - var(--ui-size-66));
   }
   .settings-row[href] .settings-chevron {
     position: absolute;
-    right: 12px;
-    top: 18px;
+    right: var(--ui-size-12);
+    top: var(--ui-size-18);
   }
   .settings-row .settings-value {
-    flex-basis: calc(100% - 38px);
+    flex-basis: calc(100% - var(--ui-size-38));
     max-width: none;
-    margin-left: 38px;
+    margin-left: var(--ui-space-10);
     text-align: left;
   }
+}
+
+.settings-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  min-height: var(--ui-control-height);
+  margin-bottom: var(--ui-space-3);
+  color: var(--ui-accent);
+  text-decoration: none;
+}
+.settings-back:focus-visible {
+  outline: var(--ui-focus-width) solid var(--ui-focus);
+  outline-offset: var(--ui-focus-offset);
 }

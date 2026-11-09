@@ -280,7 +280,10 @@ export class DialogRuntime {
     return task;
   }
 
-  start(subscribe: (listener: (type: string, payload: unknown) => void) => () => void): void {
+  start(
+    subscribe: (listener: (type: string, payload: unknown) => void) => () => void,
+    refresh = true,
+  ): void {
     this.channel = new BroadcastChannel('gchat-dialog-events');
     this.channel.onmessage = (event: MessageEvent<unknown>): void => {
       const envelope = z
@@ -412,7 +415,10 @@ export class DialogRuntime {
       }
     }, 30000);
     this.state = { ...this.state, status: 'ready', storageWarning: this.storage.warning ?? null };
-    this.refresh();
+
+    if (refresh) {
+      this.refresh();
+    }
   }
 
   refresh(): void {
@@ -427,22 +433,22 @@ export class DialogRuntime {
     }
   }
 
-  section(visible: boolean): void {
+  section(visible: boolean, refresh = true): void {
     this.visibleSection = visible;
 
-    if (visible) {
+    if (visible && refresh) {
       this.refresh();
     }
   }
 
-  select(id: string | null): void {
+  select(id: string | null, refresh = true): void {
     if (this.selected?.id === id) {
       return;
     }
 
     this.selected = id ? { id, atBottom: true, openRead: true, shown: 0 } : null;
 
-    if (id) {
+    if (id && refresh) {
       void this.sync(id, true).catch((): void => {});
     }
   }

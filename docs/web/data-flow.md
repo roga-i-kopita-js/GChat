@@ -40,12 +40,23 @@ HTTP-клиент — `device.http` с интерфейсом переданно
 
 Action валидирует ввод и вызывает один сервис изменения. Form/fetcher и состояния Router отражают отправку. Успех запускает штатную ревалидацию matched loaders; shouldRevalidate отключает её только для маршрутов, не владеющих изменёнными данными, например descriptor диалога. Специальный API ручной инвалидации кеша не вводится. Такое разделение соответствует [Data mode](https://reactrouter.com/start/data/data-loading) и [actions](https://reactrouter.com/start/data/actions).
 
+По уточнению пользователя начальная загрузка данных каждой страницы выполняется её React Router loader при каждом входе, до рендера страницы. Компоненты и их эффекты не запускают начальное чтение. Device передаётся через типизированный Router context, результаты и ошибки начальной загрузки — через loaderData. Нужные существующие runtime остаются единственными владельцами живых данных.
+
+- Контакты, список и карточка admin сохраняют существующие loaders и штатную ревалидацию Router.
+- Каждый экран настроек имеет собственный loader, включая корневой профиль, «Основные» и неизвестный маршрут. Профиль читает текущую сессию; экраны устройства через адаптер device обновляют общий наблюдатель и аудиосостояние. Файловый loader также читает все страницы предоставленных доступов; список принадлежит loaderData. После выбора/удаления доступа и других успешных команд применяется revalidation, без эффекта чтения и копии списка в state.
+- Листовой loader диалогов получает общий bootstrap по экземпляру device, проверяет dialogId до HTTP, обеспечивает локальную модель и запускает первоначальную сверку runtime. При наличии локальной истории сетевое обновление не задерживает её показ; при отсутствии локальных данных loader ждёт первую попытку. Ошибки сети остаются в модели, локальная история доступна. Долгоживущий bootstrap доступен до React, один на device/session scope, останавливается при смене сессии и lifecycle.stop. Provider только подписывается и предоставляет этот же bootstrap; ожидание loader не зависит от монтирования Provider.
+- Эффекты диалогов только отмечают видимость раздела/выбор для таймера, прочтения и позиции скролла; они не запускают первоначальную загрузку. WS, foreground, периодическая сверка, история по жесту и пользовательские команды остаются у runtime. Loader не подтверждает прочтение до показа переписки.
+- request.signal отменяет ожидание loader и отбрасывает поздний результат. Отмена навигации не уничтожает общий bootstrap/сессию/WSS и не позволяет показать данные старого scope. При замене bootstrap старый descriptor немедленно скрывается; готовность нового scope запускает штатную revalidation Router, а не прямую загрузку из эффекта. Новых HTTP/native контрактов или второго кеша не вводится.
+
 ## Модели маршрутов
 
 DTO переиспользуются из generated SDK, без ручных схем HTTP. ScopeKey — безопасный идентификатор текущего server/account/session-generation, без токена; при его смене старые данные и формы удаляются из UI.
 
 ```ts
 import type { AdminUserDto, GroupDto, GroupMemberDto } from '@gchat/backend-api';
+import type { DeviceCore } from '../../shared/device';
+import type { DeviceState, FileRef } from '../../shared/device/contract';
+import type { DialogRuntime } from '../../shared/dialogs/runtime';
 
 export interface CallsPageData {
   scopeKey: string;
@@ -67,13 +78,17 @@ export interface AdminUserPageData {
 }
 
 export interface DialogsPageData {
-  scopeKey: string;
+  device: DeviceCore;
+  runtime: DialogRuntime;
   dialogId: string | null;
 }
 
 export type SettingsSection = 'microphone' | 'audio' | 'push' | 'camera' | 'geolocation' | 'files';
 export interface SettingsPageData {
-  section: SettingsSection;
+  device: DeviceCore;
+  state: DeviceState | null;
+  error: string | null;
+  entries?: FileRef[];
 }
 export interface LoginPageData {
   serverUrl: string;
@@ -96,8 +111,8 @@ export type FormResult<T> =
 | `/admin/users`                    | AdminUsersPageData, страницы по 25. Все фильтры и пагинация принадлежат URL                                                                                            | `q`: trim, до 80 символов; `status`: all/active/disabled; `offset`: безопасное целое ≥0, кратное 25        |
 | `/admin/users/:userId`            | Родительский список и AdminUserPageData дочерней карточки; отсутствие/отказ — errorElement, не пустая успешная карточка                                                | Те же q/status/offset, чтобы сохранить контекст списка                                                     |
 | `/dialogs` и `/dialogs/:dialogId` | DialogsPageData. Loader обеспечивает готовность локального scope и выбранной переписки; живые данные принадлежат DialogRuntime                                         | Нет                                                                                                        |
-| `/settings`, `/settings/general`  | Redirect с replace на `/settings/general/microphone`                                                                                                                   | Нет                                                                                                        |
-| `/settings/general/:section`      | SettingsPageData; section из union выше. Начальное чтение и изменения устройства приходят из сервисов device                                                           | Нет                                                                                                        |
+| `/settings`, `/settings/general`  | Профиль и список настроек по [Settings](settings.md); loaders текущей сессии и устройства                                                                                                                   | Нет                                                                                                        |
+| `/settings/general/:section`      | SettingsPageData; section из union выше. Loader читает состояние через device, последующие изменения приходят из его сервисов                                                           | Нет                                                                                                        |
 
 Web-loader канонизирует некорректные необязательные фильтры к значениям по умолчанию с replace. Невалидный path id даёт 404 до HTTP. Native использует тот же normalizer, но отклоняет неизвестные параметры/невалидные значения вместо незаметной смены цели. Hash в native-командах запрещён. Query `returnTo` не принимает origin, `//`, вложенный login/returnTo, токены и пароли. Служебный query Router для index action не принимается как native-цель.
 

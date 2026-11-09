@@ -1,12 +1,31 @@
 import type { JSX } from 'react';
-import { useNavigation } from 'react-router';
+import { useLayoutEffect, useState } from 'react';
+import { useNavigation, useRevalidator } from 'react-router';
+
+import { LoadingBar } from '../shared/ui';
 
 export function RoutePending(): JSX.Element | null {
   const navigation = useNavigation();
+  const revalidator = useRevalidator();
+  const busy = navigation.state !== 'idle' || revalidator.state !== 'idle';
+  const [visible, setVisible] = useState(busy);
 
-  return navigation.state === 'idle' ? null : (
-    <div className="tab-banner" role="status" aria-live="polite">
-      {navigation.state === 'submitting' ? 'Сохраняем…' : 'Загружаем страницу…'}
-    </div>
+  useLayoutEffect((): void => {
+    if (busy) {
+      setVisible(true);
+    }
+  }, [busy]);
+
+  return !busy && !visible ? null : (
+    <LoadingBar
+      className="route-loading-bar"
+      complete={!busy}
+      onComplete={(): void => {
+        if (!busy) {
+          setVisible(false);
+        }
+      }}
+      aria-label={navigation.state === 'submitting' ? 'Сохранение' : 'Загрузка страницы'}
+    />
   );
 }

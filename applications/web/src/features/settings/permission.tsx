@@ -24,7 +24,7 @@ export function PermissionSettings({
   );
 
   return (
-    <SettingsScreen title={titles[section]} parent="/settings/general" device={device}>
+    <SettingsScreen parent="/settings/general" title={titles[section]} device={device}>
       <p className="settings-intro">{descriptions[section]}</p>
       <Group>
         <Row

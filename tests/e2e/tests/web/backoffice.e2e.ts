@@ -4,6 +4,28 @@ const adminId = '00000000-0000-4000-8000-000000000001';
 const targetId = '00000000-0000-4000-8000-000000000002';
 const password = 'A new secure password 123';
 
+test('layout has no top bar and nested settings keep their back navigation', async ({
+  page,
+}): Promise<void> => {
+  await setup(page, 'user');
+  await expect(page.getByRole('banner', { name: 'Панель приложения' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /^Профиль:/ })).toHaveCount(0);
+  const main = page.getByRole('main');
+
+  expect((await main.boundingBox())!.y).toBe(0);
+  await page.getByRole('link', { name: 'Настройки', exact: true }).click();
+  const settings = page.getByRole('region', { name: 'Настройки', exact: true });
+
+  await expect(settings).toBeVisible();
+  await expect(settings.locator(':scope > header')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Основные', exact: true }).click();
+  const general = page.getByRole('region', { name: 'Основные', exact: true });
+
+  await expect(general).toBeVisible();
+  await general.getByRole('link', { name: 'Назад', exact: true }).click();
+  await expect(settings).toBeVisible();
+});
+
 function account(id = targetId, status = 'active'): Record<string, unknown> {
   return {
     id,
@@ -459,12 +481,16 @@ test('route changes keep the signaling owner and active call; incoming calls app
   };
   sendEvent({ call: current });
   await expect(page.getByTestId('call-status')).toHaveText('Разговор');
+  // The explicit reload above may replace an initial connection; measure route changes only.
+  const connectionsBeforeNavigation = connections;
+
+  expect(connectionsBeforeNavigation).toBeGreaterThan(0);
   await openAdmin(page);
   await expect(page).toHaveURL(/\/admin\/users$/);
   await expect(page.getByRole('link', { name: 'Вернуться к звонку' })).toBeVisible();
   await page.getByRole('link', { name: 'Вернуться к звонку' }).click();
   await expect(page.getByTestId('call-status')).toHaveText('Разговор');
-  expect(connections).toBe(1);
+  expect(connections).toBe(connectionsBeforeNavigation);
   current = {
     ...current,
     state: 'ended',
@@ -475,6 +501,14 @@ test('route changes keep the signaling owner and active call; incoming calls app
   sendEvent({ call: current });
   await expect(page.getByTestId('call-status')).not.toHaveText('Разговор');
   await openAdmin(page);
+  await page.evaluate((): void => {
+    localStorage.setItem('debug', '');
+    window.dispatchEvent(new Event('focus'));
+  });
+  await page.getByRole('button', { name: 'Диагностика', exact: true }).click();
+  const diagnostics = page.getByRole('dialog', { name: 'Диагностика соединения', exact: true });
+
+  await expect(diagnostics).toBeVisible();
   current = {
     ...current,
     call_id: '00000000-0000-4000-8000-000000000011',
@@ -488,9 +522,20 @@ test('route changes keep the signaling owner and active call; incoming calls app
   };
   sendEvent({ call: current });
   await expect(page.getByRole('dialog', { name: 'Входящий звонок' })).toBeVisible();
+  await expect(diagnostics).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Принять', exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/admin\/users$/);
-  expect(connections).toBe(1);
+  expect(connections).toBe(connectionsBeforeNavigation);
+  current = {
+    ...current,
+    state: 'ended',
+    ended_at: new Date().toISOString(),
+    end_reason: 'ended',
+    version: 2,
+  };
+  sendEvent({ call: current });
+  await expect(page.getByRole('button', { name: 'Диагностика', exact: true })).toBeVisible();
+  await expect(diagnostics).toHaveCount(0);
 });
 
 test('a completed operation shows credentials without redirecting a user who left the page', async ({
@@ -617,9 +662,9 @@ test('search waits for a typing pause and cancels pending work when leaving the 
   page,
 }): Promise<void> => {
   await page.clock.install();
-  await page.clock.pauseAt(new Date());
   await setup(page, 'admin', '/admin/users?offset=25');
   await expect(page.getByRole('region', { name: 'Список аккаунтов' })).toContainText('Анна');
+  await page.clock.pauseAt(new Date(await page.evaluate((): number => Date.now() + 1000)));
   const queries: string[] = [];
 
   page.on('request', (request): void => {
@@ -645,6 +690,7 @@ test('search waits for a typing pause and cancels pending work when leaving the 
 
   await page.clock.fastForward(1);
   await request;
+  await page.clock.fastForward(150);
   expect(queries).toEqual(['anna']);
   await expect(page).toHaveURL(/\/admin\/users\?q=anna$/);
   await search.fill('maxim');
@@ -738,6 +784,225 @@ test('contact group belongs to the URL and survives reload and browser history',
   ).toBeVisible();
 });
 
+test('contacts reload on each route entry without a timer or focus refresh', async ({
+  page,
+}): Promise<void> => {
+  await setup(page, 'user', '/settings');
+  await page.clock.install();
+  let groupsRead = 0;
+  let membersRead = 0;
+  let name = 'Первый собеседник';
+
+  await page.route('**/api/groups', async (route): Promise<void> => {
+    groupsRead++;
+    await route.fulfill({
+      json: { groups: [{ id: '00000000-0000-4000-8000-000000000031', name: 'Команда' }] },
+    });
+  });
+  await page.route('**/api/groups/*/members', async (route): Promise<void> => {
+    membersRead++;
+    await route.fulfill({ json: { members: [{ id: targetId, display_name: name }] } });
+  });
+  await page.goto('/calls');
+  await expect(
+    page.getByRole('button', { name: 'Первый собеседник Голосовой звонок' }),
+  ).toBeVisible();
+  await page.clock.fastForward(61000);
+  await page.evaluate((): void => {
+    window.dispatchEvent(new Event('focus'));
+  });
+  expect([groupsRead, membersRead]).toEqual([1, 1]);
+
+  await page.getByRole('link', { name: 'Настройки', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Настройки', exact: true })).toBeVisible();
+  name = 'Изменённый собеседник';
+  await page.getByRole('link', { name: 'Звонки', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Изменённый собеседник Голосовой звонок' }),
+  ).toBeVisible();
+  expect([groupsRead, membersRead]).toEqual([2, 2]);
+
+  await page.getByRole('link', { name: 'Настройки', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Настройки', exact: true })).toBeVisible();
+  name = 'Собеседник после возврата';
+  await page.goBack();
+  await expect(
+    page.getByRole('button', { name: 'Собеседник после возврата Голосовой звонок' }),
+  ).toBeVisible();
+  expect([groupsRead, membersRead]).toEqual([3, 3]);
+});
+
+test('settings loader finishes the device read before mounting its page', async ({
+  page,
+}): Promise<void> => {
+  await setup(page, 'user');
+  await page
+    .getByRole('navigation', { name: 'Основные разделы' })
+    .getByRole('link', { name: 'Настройки', exact: true })
+    .click();
+  await expect(page.getByRole('region', { name: 'Настройки', exact: true })).toBeVisible();
+  await page.evaluate((): void => {
+    const query = navigator.permissions.query.bind(navigator.permissions);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve): void => {
+      release = resolve;
+    });
+
+    Reflect.set(window, 'releaseSettingsRead', release);
+    Object.defineProperty(navigator.permissions, 'query', {
+      configurable: true,
+      value: async (descriptor: PermissionDescriptor): Promise<PermissionStatus> => {
+        await gate;
+
+        return query(descriptor);
+      },
+    });
+  });
+  await page.getByRole('link', { name: /Основные/ }).click({ noWaitAfter: true });
+  await expect(
+    page.getByRole('progressbar', { name: 'Загрузка страницы', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Основные', exact: true })).toHaveCount(0);
+  await page.evaluate((): void => {
+    Reflect.get(window, 'releaseSettingsRead')();
+  });
+  await expect(page.getByRole('region', { name: 'Основные', exact: true })).toBeVisible();
+});
+
+test('layout loading bar covers file revalidation without navigating away', async ({
+  page,
+}): Promise<void> => {
+  await page.addInitScript((): void => {
+    Object.defineProperty(window, 'showOpenFilePicker', { value: undefined });
+  });
+  await setup(page, 'user', '/settings/general/files');
+  await expect(page.getByRole('region', { name: 'Файлы и папки', exact: true })).toBeVisible();
+  await page.evaluate((): void => {
+    const query = navigator.permissions.query.bind(navigator.permissions);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve): void => {
+      release = resolve;
+    });
+
+    Reflect.set(window, 'releaseSettingsRead', release);
+    Object.defineProperty(navigator.permissions, 'query', {
+      configurable: true,
+      value: async (descriptor: PermissionDescriptor): Promise<PermissionStatus> => {
+        await gate;
+
+        return query(descriptor);
+      },
+    });
+  });
+  const chooser = page.waitForEvent('filechooser');
+
+  await page.getByRole('button', { name: 'Выбрать файл', exact: true }).click();
+  await (
+    await chooser
+  ).setFiles({
+    name: 'loading-fixture.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('fixture'),
+  });
+  const bar = page.getByRole('progressbar', { name: 'Загрузка страницы', exact: true });
+
+  await expect(bar).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Файлы и папки', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/general\/files$/);
+  await page.evaluate((): void => {
+    Reflect.get(window, 'releaseSettingsRead')();
+  });
+  await expect(page.getByText('loading-fixture.txt', { exact: true })).toBeVisible();
+  await expect(bar).toHaveCount(0);
+});
+
+test('settings read current device permissions on each route entry without a change event', async ({
+  page,
+}): Promise<void> => {
+  await page.addInitScript((): void => {
+    Reflect.set(window, 'testMicrophonePermission', 'prompt');
+    Object.defineProperty(navigator.permissions, 'query', {
+      value: async ({ name }: { name: string }): Promise<PermissionStatus> =>
+        Object.assign(new EventTarget(), {
+          name,
+          onchange: null,
+          state: name === 'microphone' ? Reflect.get(window, 'testMicrophonePermission') : 'prompt',
+        }) as PermissionStatus,
+    });
+  });
+  await setup(page, 'user');
+  await page.goto('/settings/general');
+  const microphone = page.getByRole('link', { name: /Микрофон/ });
+
+  await expect(microphone).toContainText('Не запрошен');
+  await page.evaluate((): void => {
+    Reflect.set(window, 'testMicrophonePermission', 'denied');
+  });
+  const nav = page.getByRole('navigation', { name: 'Основные разделы' });
+
+  await nav.getByRole('link', { name: 'Звонки', exact: true }).click();
+  await nav.getByRole('link', { name: 'Настройки', exact: true }).click();
+  await page.getByRole('link', { name: /Основные/ }).click();
+  await expect(microphone).toContainText('Запрещён');
+  await page.evaluate((): void => {
+    Reflect.set(window, 'testMicrophonePermission', 'granted');
+  });
+  await microphone.click();
+  await expect(page.getByText('Разрешён', { exact: true })).toBeVisible();
+});
+
+test('settings follow the audio service output and invalidate hearing confirmation by output ID', async ({
+  page,
+}): Promise<void> => {
+  await setup(page, 'user');
+  await page.addInitScript((): void => {
+    const outputs = ['one', 'two'].map((id): object => ({
+      deviceId: id,
+      groupId: 'test',
+      kind: 'audiooutput',
+      label: 'Тестовая гарнитура',
+    }));
+
+    Reflect.set(window, 'testAudioOutput', 0);
+    Object.defineProperty(navigator.mediaDevices, 'selectAudioOutput', {
+      value: async (): Promise<object> => outputs[Reflect.get(window, 'testAudioOutput')],
+    });
+    Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', {
+      configurable: true,
+      value: async (): Promise<object[]> => outputs,
+    });
+    Object.defineProperty(HTMLMediaElement.prototype, 'setSinkId', {
+      value: async (): Promise<void> => {},
+    });
+    Object.defineProperty(AudioContext.prototype, 'setSinkId', {
+      value: async (): Promise<void> => {},
+    });
+  });
+  await page.goto('/settings/general/audio');
+  await page.getByRole('button', { name: 'Выбрать аудиовыход' }).click();
+  await expect(page.getByText('Тестовая гарнитура', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Проверить звук' }).click();
+  await page.getByRole('button', { name: 'Слышу', exact: true }).click();
+  await expect(page.getByText('Слышимость подтверждена вами.', { exact: true })).toBeVisible();
+
+  await page.evaluate((): void => {
+    Reflect.set(window, 'testAudioOutput', 1);
+  });
+  await page.getByRole('button', { name: 'Выбрать аудиовыход' }).click();
+  await expect(page.getByText('Слышимость подтверждена вами.', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Тестовая гарнитура', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: 'Назад', exact: true }).click();
+  await expect(page.getByText('Тестовая гарнитура', { exact: true })).toBeVisible();
+
+  await page.evaluate((): void => {
+    Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', {
+      value: async (): Promise<object[]> => [],
+    });
+    navigator.mediaDevices.dispatchEvent(new Event('devicechange'));
+  });
+  await expect(page.getByText('Системный выход', { exact: true })).toBeVisible();
+});
+
 test('loads page modules on demand and keeps the parent list across nested detail navigation', async ({
   page,
 }): Promise<void> => {
@@ -774,11 +1039,63 @@ test('loads page modules on demand and keeps the parent list across nested detai
   );
 });
 
+for (const width of [390, 1280]) {
+  test(`loading bar reaches the right edge before disappearing at ${width}px`, async ({
+    page,
+  }): Promise<void> => {
+    await page.setViewportSize({ width, height: 844 });
+    await setup(page);
+    await expect(page.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
+    await page.evaluate((): void => {
+      Reflect.set(window, 'loadingBarCompletion', null);
+      document.addEventListener('animationend', (event: AnimationEvent): void => {
+        const element = event.target;
+
+        if (
+          !(element instanceof HTMLElement) ||
+          !element.classList.contains('ui-loading-bar-complete') ||
+          event.pseudoElement !== '::before'
+        ) {
+          return;
+        }
+
+        const rect = element.getBoundingClientRect();
+        const fill = getComputedStyle(element, '::before');
+        const transform = new DOMMatrixReadOnly(fill.transform);
+
+        Reflect.set(window, 'loadingBarCompletion', {
+          right: rect.left + parseFloat(fill.width) * transform.a,
+          visible: element.isConnected && Number(getComputedStyle(element).opacity) > 0,
+        });
+      });
+    });
+    await page
+      .getByRole('navigation', { name: 'Основные разделы' })
+      .getByRole('link', { name: 'Настройки', exact: true })
+      .click();
+    await expect(page.getByRole('region', { name: 'Настройки', exact: true })).toBeVisible();
+    await expect
+      .poll((): Promise<number> =>
+        page.evaluate((): number => Reflect.get(window, 'loadingBarCompletion')?.right ?? -1),
+      )
+      .toBeCloseTo(width, 1);
+    expect(
+      await page.evaluate((): boolean => Reflect.get(window, 'loadingBarCompletion').visible),
+    ).toBe(true);
+    await expect(page.getByRole('progressbar')).toHaveCount(0);
+  });
+}
+
 test('shows pending navigation while importing settings and resolves nested settings routes', async ({
   page,
 }): Promise<void> => {
   await setup(page);
-  await expect(page.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
+  const content = page.getByRole('main', { name: 'Звонки', exact: true });
+
+  await expect(content).toBeVisible();
+  const contentTop = await content.evaluate(
+    (element): number => element.getBoundingClientRect().top,
+  );
   let release!: () => void;
   const gate = new Promise<void>((resolve): void => {
     release = resolve;
@@ -794,21 +1111,50 @@ test('shows pending navigation while importing settings and resolves nested sett
   await page.getByRole('link', { name: 'Настройки', exact: true }).click();
 
   try {
-    await expect(page.getByRole('status').filter({ hasText: 'Загружаем страницу…' })).toBeVisible();
+    const bar = page.getByRole('progressbar', { name: 'Загрузка страницы', exact: true });
+
+    await expect(bar).toBeVisible();
+    await expect(page.getByText('Загружаем страницу…', { exact: true })).toHaveCount(0);
+    const bounds = await bar.boundingBox();
+
+    expect(bounds!.x).toBe(0);
+    expect(bounds!.y).toBe(0);
+    expect(bounds!.width).toBe(page.viewportSize()!.width);
+    expect(bounds!.height).toBe(2);
+    const transform = await bar.evaluate(
+      (element): string => getComputedStyle(element, '::after').transform,
+    );
+
+    await expect
+      .poll((): Promise<string> =>
+        bar.evaluate((element): string => getComputedStyle(element, '::after').transform),
+      )
+      .not.toBe(transform);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(
+      await bar.evaluate((element): string => getComputedStyle(element, '::after').animationName),
+    ).toBe('none');
     await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toBeVisible();
+    await expect
+      .poll((): Promise<number> =>
+        content.evaluate((element): number => element.getBoundingClientRect().top),
+      )
+      .toBe(contentTop);
   } finally {
     release();
   }
 
-  await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Настройки', exact: true })).toBeVisible();
+  await expect(page.getByRole('progressbar')).toHaveCount(0);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.getByRole('link', { name: 'Основные', exact: false }).click();
   await expect(page).toHaveURL(/\/settings\/general$/);
   await page.getByRole('link', { name: /Микрофон/ }).click();
-  await expect(page.getByRole('heading', { name: 'Микрофон', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Микрофон', exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Микрофон', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Микрофон', exact: true })).toBeVisible();
   await page.goto('/settings/general/unknown');
-  await expect(page.getByRole('heading', { name: 'Настройка не найдена' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Настройка не найдена' })).toBeVisible();
 });
 
 test('contains lazy import failures inside the section and preserves the application shell', async ({
@@ -843,10 +1189,10 @@ test('settings imports only the page being opened', async ({ page }): Promise<vo
   });
   await setup(page);
   await page.getByRole('link', { name: 'Настройки', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Настройки', exact: true })).toBeVisible();
   expect([...pages]).toEqual(['SettingsIndexRoute']);
   await page.getByRole('link', { name: 'Основные', exact: false }).click();
-  await expect(page.getByRole('heading', { name: 'Основные', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Основные', exact: true })).toBeVisible();
   expect([...pages]).toEqual(['SettingsIndexRoute', 'SettingsGeneralRoute']);
 
   for (const [name, module] of [
@@ -860,10 +1206,10 @@ test('settings imports only the page being opened', async ({ page }): Promise<vo
     const before = new Set(pages);
 
     await page.getByRole('link', { name: new RegExp(name) }).click();
-    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name, exact: true })).toBeVisible();
     expect([...pages].filter((item): boolean => !before.has(item))).toEqual([module]);
     await page.getByRole('link', { name: 'Назад', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Основные', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Основные', exact: true })).toBeVisible();
   }
 });
 

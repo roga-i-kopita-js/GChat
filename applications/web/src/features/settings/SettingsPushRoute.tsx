@@ -16,7 +16,7 @@ export function SettingsPushRoute(): JSX.Element {
   );
 
   return (
-    <SettingsScreen title={titles.push} parent="/settings/general" device={device}>
+    <SettingsScreen parent="/settings/general" title={titles.push} device={device}>
       <p className="settings-intro">{descriptions.push}</p>
       <Group>
         <Row

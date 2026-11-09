@@ -58,9 +58,12 @@ export class DeviceObserver {
     void read();
   }
 
-  async refresh(): Promise<DeviceState> {
+  async refresh(signal?: AbortSignal): Promise<DeviceState> {
+    signal?.throwIfAborted();
     const generation = this.generation;
     const value = await this.bridge.execute({ command: 'device.state.read', args: {} });
+
+    signal?.throwIfAborted();
 
     if (generation !== this.generation) {
       throw new DeviceError('CANCELLED');

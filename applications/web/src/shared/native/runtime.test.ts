@@ -1,3 +1,4 @@
+import { createMemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Mocks = {
@@ -12,6 +13,8 @@ type Mocks = {
     | 'logout'
     | 'placeCall'
     | 'sendWsMessage'
+    | 'navigationReady'
+    | 'completeNavigation'
     | 'addListener',
     ReturnType<typeof vi.fn>
   >;
@@ -29,6 +32,8 @@ const mock = vi.hoisted((): Mocks => ({
     logout: vi.fn(),
     placeCall: vi.fn(),
     sendWsMessage: vi.fn(),
+    navigationReady: vi.fn(),
+    completeNavigation: vi.fn(),
     addListener: vi.fn(),
   },
 }));
@@ -39,9 +44,10 @@ vi.mock('@capacitor/core', (): object => ({
 }));
 
 import { NativeCallsClient } from '../calls/native-client';
+import { DeviceNavigation } from '../device/navigation';
 import { currentSession, login, logout, request } from '../session/session';
 import { bridgeError, serverUrl } from './bridge';
-import { nativeRuntime, type NativeState } from './runtime';
+import { NativeRuntime, nativeRuntime, type NativeState } from './runtime';
 
 function token(sid = 'A', suffix = 'one'): string {
   return (
@@ -161,6 +167,76 @@ describe('native bridge handshake and synchronization', (): void => {
     expect(JSON.stringify(nativeRuntime.getSnapshot())).not.toContain(token());
     expect(currentSession()?.access_token).toBe(token());
   });
+
+  it.each(['before', 'after'] as const)(
+    'delivers the pending native transition when the router attaches %s native readiness',
+    async (attachment): Promise<void> => {
+      const runtime = new NativeRuntime();
+      const router = createMemoryRouter(
+        [
+          { path: '/login', element: null },
+          { path: '/calls', element: null },
+        ],
+        { initialEntries: ['/login'] },
+      );
+      const navigation = new DeviceNavigation(router, (to): string => to);
+      const requestId = crypto.randomUUID();
+
+      mock.plugin.webReady.mockImplementation(async (): Promise<void> => {
+        const cycleId = runtime.getSnapshot().cycleId;
+
+        mock.listeners.get('route')?.({ cycleId, path: '/calls', accessToken: token() });
+        mock.listeners.get('callSnapshot')?.({
+          cycleId,
+          call: null,
+          runtime: { status: 'offline', muted: false },
+        });
+      });
+      mock.plugin.navigationReady.mockImplementation(async (value): Promise<void> => {
+        expect(mock.listeners.has('navigationCommand')).toBe(true);
+        mock.listeners.get('navigationCommand')?.({
+          navigationVersion: 1,
+          cycleId: value.cycleId,
+          requestId,
+          command: 'navigate',
+          args: { to: '/calls', replace: true },
+        });
+      });
+      mock.plugin.completeNavigation.mockResolvedValue(undefined);
+
+      try {
+        if (attachment === 'before') {
+          runtime.attachNavigation(navigation);
+          expect(mock.plugin.navigationReady).not.toHaveBeenCalled();
+        }
+
+        await runtime.ready();
+        expect(runtime.getSnapshot().phase).toBe('ready');
+
+        if (attachment === 'after') {
+          runtime.attachNavigation(navigation);
+        }
+
+        await vi.waitFor((): void => {
+          expect(mock.plugin.completeNavigation).toHaveBeenCalledWith({
+            navigationVersion: 1,
+            cycleId: runtime.getSnapshot().cycleId,
+            requestId,
+            result: {
+              id: requestId,
+              outcome: 'committed',
+              location: { pathname: '/calls', search: '', hash: '' },
+            },
+          });
+        });
+        expect(mock.plugin.navigationReady).toHaveBeenCalledTimes(1);
+        expect(router.state.location.pathname).toBe('/calls');
+      } finally {
+        runtime.stop();
+        navigation.stop();
+      }
+    },
+  );
 
   it('ignores messages and delayed token results from a previous cycle and aborts its HTTP requests', async (): Promise<void> => {
     await ready();

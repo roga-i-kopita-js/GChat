@@ -177,12 +177,10 @@ node tests/e2e/scripts/ios-call-stand.mjs peer
 
 Native подключается к `https://<LAN_IP>:8446`; Web peer на Mac — к `http://127.0.0.1:5187`. Native использует существующий header-based WSS; браузер — свой обычный билетный handshake. APNs/Web Push выключены в этом backend-процессе. Секреты читаются из `.local/backend.json`, не выводятся и не передаются Web. По окончании остановить три процесса и выполнить `docker compose -f tests/e2e/ios-call-turn.yml down`; обычный loopback Compose автоматически не останавливается и его данные не удаляются.
 
-
 ## Изолированная проверка device и маршрутов
 
 `pnpm --filter @gchat/e2e test:device` сначала собирает SDK и проверяет типы Web, затем запускает отдельный Vite на loopback:5175 без backend, Docker и реальных аккаунтов. Реальный Chromium проверяет OPFS, постоянные FileRef, защиту корней, межвкладочные Web Locks и перенос между областями; маршрутная регрессия backoffice использует существующие HTTP/WS fixtures. Этот набор проверяет настоящий UI/Router и платформенные браузерные API, но не подтверждает реальный backend, аудиопередачу или iOS. Для backend/медиа остаётся основной системный конфиг.
 
 Не запускайте пересборку SDK одновременно с Vite/E2E: обновление dist вызывает HMR и может заменить контексты React во время сценария. Сначала завершите проверки/сборки, затем запускайте E2E.
-
 
 Для регрессии удаления Query на уже подготовленном **изолированном** E2E-стенде: `pnpm --filter @gchat/e2e exec playwright test --config router.config.ts`. Конфиг проверяет настоящие диалоги и браузерные звонки и допускает reuse тестового backend/Web. `GCHAT_ROUTER_WEB_PORT` задаёт порт Web (по умолчанию 5173); origin должен совпадать с SIGNALING_BROWSER_ORIGINS backend. Скрипты reset по-прежнему очищают только E2E-звонки; рабочая инфраструктура для этого конфига запрещена.

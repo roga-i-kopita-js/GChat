@@ -1,0 +1,60 @@
+.ui-loading-bar {
+  position: relative;
+  width: 100%;
+  height: var(--ui-loading-bar-height);
+  overflow: hidden;
+  background: var(--ui-loading-bar-track);
+  pointer-events: none;
+}
+.ui-loading-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--ui-loading-bar-color);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+.ui-loading-bar::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: var(--ui-loading-bar-segment-width);
+  background: var(--ui-loading-bar-color);
+  animation: ui-loading-bar-slide var(--ui-loading-bar-duration) linear infinite;
+}
+.ui-loading-bar-complete::before {
+  animation: ui-loading-bar-fill var(--ui-loading-bar-finish-duration) ease-out forwards;
+}
+.ui-loading-bar-complete {
+  animation: ui-loading-bar-dismiss var(--ui-loading-bar-fade-duration) linear
+    var(--ui-loading-bar-finish-duration) forwards;
+}
+@keyframes ui-loading-bar-fill {
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes ui-loading-bar-dismiss {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes ui-loading-bar-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-loading-bar::after {
+    animation: none;
+    width: 100%;
+  }
+  .ui-loading-bar-complete::before {
+    animation: none;
+    transform: scaleX(1);
+  }
+}

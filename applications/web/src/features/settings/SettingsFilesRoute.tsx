@@ -1,20 +1,22 @@
 import { File, Folder } from 'lucide-react';
 import type { JSX } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { useLoaderData } from 'react-router';
 
 import { DeviceError, type FileRef } from '../../shared/device/contract';
 import { deviceErrorMessage } from '../../shared/device/messages';
 import { Modal } from '../../shared/ui';
 import { useCalls } from '../calls/CallsProvider';
 import { descriptions, titles } from './labels';
+import type { SettingsData } from './loaders';
 import { Group, Row, SettingsAction, SettingsScreen } from './ui';
 import { useSettingsDevice } from './useSettingsDevice';
 
 export function SettingsFilesRoute(): JSX.Element {
   const device = useSettingsDevice();
-  const { state, api, run, setBusy, setError, busy } = device;
+  const { api, run, setBusy, setError, busy } = device;
   const { incoming } = useCalls();
-  const [entries, setEntries] = useState<FileRef[]>([]);
+  const { entries = [] } = useLoaderData<SettingsData>();
   const [lostAccess, setLostAccess] = useState<Set<string>>(new Set());
   const [forget, setForget] = useState<FileRef | null>(null);
   const generation = useRef(0);
@@ -24,39 +26,6 @@ export function SettingsFilesRoute(): JSX.Element {
       generation.current++;
     };
   }, []);
-  useEffect((): (() => void) => {
-    let cancelled = false;
-
-    async function load(): Promise<void> {
-      const all: FileRef[] = [];
-      let cursor: string | null = null;
-
-      do {
-        const page = await api.files.listAccesses({ cursor, limit: 100 });
-
-        if (cancelled) {
-          return;
-        }
-
-        all.push(...page.entries);
-        cursor = page.nextCursor;
-      } while (cursor);
-
-      setEntries(all);
-    }
-
-    if (state) {
-      void load().catch((cause: unknown): void => {
-        if (!cancelled) {
-          setError(deviceErrorMessage(cause));
-        }
-      });
-    }
-
-    return (): void => {
-      cancelled = true;
-    };
-  }, [api, state]);
   useEffect((): void => {
     if (incoming) {
       setForget(null);
@@ -105,7 +74,7 @@ export function SettingsFilesRoute(): JSX.Element {
   );
 
   return (
-    <SettingsScreen title={titles.files} parent="/settings/general" device={device}>
+    <SettingsScreen parent="/settings/general" title={titles.files} device={device}>
       <p className="settings-intro">{descriptions.files}</p>
       <Group>
         {action('Выбрать файл', (): void => {

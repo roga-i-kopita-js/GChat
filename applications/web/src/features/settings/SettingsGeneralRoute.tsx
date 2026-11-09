@@ -8,7 +8,7 @@ import { useSettingsDevice } from './useSettingsDevice';
 
 export function SettingsGeneralRoute(): JSX.Element {
   const device = useSettingsDevice();
-  const { state } = device;
+  const { state, audio } = device;
   const status = (key: Resource): string => {
     if (!state) {
       return 'Проверяем…';
@@ -32,7 +32,7 @@ export function SettingsGeneralRoute(): JSX.Element {
   const pushLabel = pushStatus(state);
 
   return (
-    <SettingsScreen title="Основные" parent="/settings" device={device}>
+    <SettingsScreen parent="/settings" title="Основные" device={device}>
       <Group title="Звук">
         <Row
           icon={Mic}
@@ -45,7 +45,7 @@ export function SettingsGeneralRoute(): JSX.Element {
           icon={Headphones}
           color="#ff9f0a"
           title="Динамики и звук"
-          value={state?.audio.routeName ?? 'Системный выход'}
+          value={audio.output?.name ?? 'Системный выход'}
           to="/settings/general/audio"
         />
       </Group>

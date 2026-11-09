@@ -1,3 +1,6 @@
+import './tokens.css';
+import './Select.css';
+
 import { ChevronDown } from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
 
@@ -24,7 +27,7 @@ export function Select({
       >
         {children}
       </select>
-      <ChevronDown size={18} aria-hidden="true" />
+      <ChevronDown className="ui-select-icon" aria-hidden="true" />
     </div>
   );
 }

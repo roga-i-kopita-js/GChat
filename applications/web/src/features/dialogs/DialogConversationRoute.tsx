@@ -11,18 +11,18 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { Link, useNavigate, useOutletContext, useParams } from 'react-router';
+import { Link, useLoaderData, useNavigate } from 'react-router';
 import { VList, type VListHandle } from 'virtua';
-import { z } from 'zod';
 
-import { useDevice } from '../../shared/device/react';
+import type { DeviceCore } from '../../shared/device';
 import { DialogModelEvent } from '../../shared/dialogs/live-models';
 import { type DialogMessage, isStickerId, type PendingMessage } from '../../shared/dialogs/model';
 import { dialogError, type DialogRuntime, type DialogView } from '../../shared/dialogs/runtime';
-import { Avatar } from '../../shared/ui';
+import { Avatar, Button, PageHeader, Skeleton, Text } from '../../shared/ui';
 import { useCalls } from '../calls/CallsProvider';
 import { Composer } from './Composer';
 import { time } from './format';
+import type { DialogsData } from './loaders';
 import { stickers } from './stickers';
 
 function Content({ content }: { content: DialogMessage['content'] }): JSX.Element {
@@ -41,9 +41,16 @@ function Content({ content }: { content: DialogMessage['content'] }): JSX.Elemen
     <span>Стикер</span>
   );
 }
-function Room({ runtime, id }: { runtime: DialogRuntime; id: string }): JSX.Element {
+function Room({
+  runtime,
+  id,
+  device,
+}: {
+  runtime: DialogRuntime;
+  id: string;
+  device: DeviceCore;
+}): JSX.Element {
   const navigate = useNavigate();
-  const device = useDevice();
   const { ongoing, setPerson, setMobile } = useCalls();
   const model = useMemo(
     (): ReturnType<DialogRuntime['conversationModel']> => runtime.conversationModel(id),
@@ -58,23 +65,32 @@ function Room({ runtime, id }: { runtime: DialogRuntime; id: string }): JSX.Elem
   const [error, setError] = useState('');
 
   useEffect((): (() => void) => {
-    runtime.select(id);
+    runtime.select(id, false);
 
     return (): void => runtime.select(null);
   }, [runtime, id]);
   const data = result.view;
+  const loadingPeer = !data?.record.dialog && result.status !== 'error' && !data?.error;
 
   return (
     <section className="dialog-room" aria-label="Переписка">
-      <header className="dialog-room-header">
+      <PageHeader className="dialog-room-header" aria-busy={loadingPeer}>
         <Link to="/dialogs" className="dialog-icon dialog-back" aria-label="Назад к диалогам">
           <ArrowLeft size={22} />
         </Link>
-        {data?.record.dialog && (
+        {data?.record.dialog ? (
           <Avatar name={data.record.dialog.peer_display_name} seed={data.record.dialog.peer_id} />
-        )}
-        <h2>{data?.record.dialog?.peer_display_name ?? 'Переписка'}</h2>
-        <button
+        ) : loadingPeer ? (
+          <Skeleton variant="circular" width="var(--ui-control-height)" />
+        ) : null}
+        <Skeleton loading={loadingPeer} className="dialog-room-title">
+          <Text as="h2" variant="heading">
+            {data?.record.dialog?.peer_display_name ?? 'Переписка'}
+          </Text>
+        </Skeleton>
+        <Button
+          variant="ghost"
+          size="icon"
           className="dialog-icon"
           aria-label={
             ongoing
@@ -99,8 +115,8 @@ function Room({ runtime, id }: { runtime: DialogRuntime; id: string }): JSX.Elem
           }}
         >
           <Phone size={19} />
-        </button>
-      </header>
+        </Button>
+      </PageHeader>
       {data?.error && (
         <div className="dialog-error" role="alert">
           {data.error}
@@ -407,17 +423,19 @@ function Feed({
 }
 
 export function DialogConversationRoute(): JSX.Element {
-  const { dialogId } = useParams();
-  const runtime = useOutletContext<DialogRuntime>();
+  const { device, runtime, dialogId } = useLoaderData<DialogsData>();
 
-  if (dialogId && !z.string().uuid().safeParse(dialogId).success) {
+  if (!dialogId) {
+    throw new Error('Conversation loader requires a dialog id');
+  }
+
+  if (runtime.signal.aborted) {
     return (
-      <div className="dialog-empty">
-        <h2>Диалог недоступен</h2>
-        <Link to="/dialogs">К диалогам</Link>
-      </div>
+      <section className="dialog-empty" role="status">
+        Подготавливаем переписку…
+      </section>
     );
   }
 
-  return <Room key={dialogId} runtime={runtime} id={dialogId!} />;
+  return <Room key={dialogId} device={device} runtime={runtime} id={dialogId} />;
 }

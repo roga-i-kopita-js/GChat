@@ -1,0 +1,64 @@
+.ui-skeleton {
+  position: relative;
+  display: block;
+  min-width: 0;
+  width: var(--ui-skeleton-width, 100%);
+  height: var(--ui-skeleton-height, var(--ui-skeleton-line-height));
+  border-radius: var(--ui-skeleton-radius);
+}
+.ui-skeleton-rectangular {
+  height: var(--ui-skeleton-height, var(--ui-control-height));
+}
+.ui-skeleton-circular {
+  flex-shrink: 0;
+  width: var(--ui-skeleton-width, var(--ui-control-height));
+  height: var(--ui-skeleton-height, var(--ui-skeleton-width, var(--ui-control-height)));
+  border-radius: var(--ui-radius-full);
+}
+.ui-skeleton-with-content {
+  display: grid;
+  width: var(--ui-skeleton-width, auto);
+  height: var(--ui-skeleton-height, auto);
+}
+.ui-skeleton-inline {
+  display: inline-block;
+  vertical-align: middle;
+}
+.ui-skeleton-inline.ui-skeleton-with-content {
+  display: inline-grid;
+}
+.ui-skeleton-content {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+.ui-skeleton-loading {
+  overflow: hidden;
+  pointer-events: none;
+}
+.ui-skeleton-loading > .ui-skeleton-content {
+  visibility: hidden;
+}
+.ui-skeleton-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--ui-skeleton-background);
+  animation: ui-skeleton-pulse var(--ui-skeleton-duration) ease-in-out infinite alternate;
+}
+.ui-skeleton-text.ui-skeleton-loading::after {
+  inset-block: var(--ui-skeleton-text-inset);
+}
+.ui-skeleton-static::after {
+  animation: none;
+}
+@keyframes ui-skeleton-pulse {
+  to {
+    opacity: var(--ui-skeleton-pulse-opacity);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton-loading::after {
+    animation: none;
+  }
+}

@@ -17,9 +17,10 @@ import { deviceErrorMessage } from '../../shared/device/messages';
 import { useDevice, useDevicePresentation } from '../../shared/device/react';
 import { useBootstrap } from '../../shared/dialogs/context';
 import { dialogError } from '../../shared/dialogs/runtime';
-import { Avatar, Select } from '../../shared/ui';
+import { Button, Select, Skeleton } from '../../shared/ui';
 import { LazyPanel } from '../../shared/ui/LazyPanel';
 import { useAuth } from '../auth/AuthProvider';
+import { UserCard } from '../users/UserCard';
 import { CallCardSlot } from './CallCardSlot';
 import { useCalls } from './CallsProvider';
 import type { ContactsData } from './contacts';
@@ -47,7 +48,6 @@ export function CallsPage(): JSX.Element {
     contacts.sid === user?.sid
       ? contacts.members.filter((member): boolean => member.id !== user?.sub)
       : [];
-  const selectedGroup = groups.find((group): boolean => group.id === groupId);
   const setGroupId = (id: string | null): void => {
     setParams(id ? { group: id } : {});
   };
@@ -56,12 +56,9 @@ export function CallsPage(): JSX.Element {
   const attempt = useRef(0);
   const preparingRef = useRef(false);
 
-  useEffect(
-    (): (() => void) => (): void => {
-      attempt.current++;
-    },
-    [],
-  );
+  useEffect((): void => {
+    attempt.current++;
+  }, []);
 
   async function dial(peer: string): Promise<void> {
     if (preparingRef.current) {
@@ -127,60 +124,51 @@ export function CallsPage(): JSX.Element {
       )}
       <div className="content-grid">
         <section className={'contact-panel' + (mobile ? ' mobile-hidden' : '')}>
-          <div className="panel-title">
-            <span className="group-icon">
-              <Users size={19} />
-            </span>
-            <div>
-              {groups.length > 1 || user.role === 'admin' ? (
-                <Select
-                  aria-label="Группа контактов"
-                  className="contacts-group-select"
-                  value={groupId ?? ''}
-                  onChange={(value): void => {
-                    setGroupId(value || null);
-                    setPerson(null);
-                    setMobile(false);
-                  }}
-                >
-                  {user.role === 'admin' && <option value="">Все пользователи</option>}
-                  {groups.map((group): JSX.Element => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </Select>
-              ) : (
-                <h2>{selectedGroup?.name ?? 'Мои контакты'}</h2>
-              )}
-              <p>
-                {currentMembers.length
-                  ? `${currentMembers.length} собеседников`
-                  : 'Голосовые звонки один на один'}
-              </p>
+          {(groups.length > 1 || user.role === 'admin') && (
+            <div className="contact-controls">
+              <Select
+                aria-label="Группа контактов"
+                className="contacts-group-select"
+                value={groupId ?? ''}
+                onChange={(value): void => {
+                  setGroupId(value || null);
+                  setPerson(null);
+                  setMobile(false);
+                }}
+              >
+                {user.role === 'admin' && <option value="">Все пользователи</option>}
+                {groups.map((group): JSX.Element => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </Select>
             </div>
-          </div>
+          )}
           {contacts.error ? (
             <div className="list-empty">
               <WifiOff size={30} />
               <h3>Не удалось загрузить контакты</h3>
               <p>Проверьте соединение и попробуйте ещё раз.</p>
-              <button
-                className="secondary"
+              <Button
+                variant="secondary"
                 onClick={(): void => {
                   void revalidator.revalidate();
                 }}
               >
                 <RefreshCw size={16} /> Повторить
-              </button>
+              </Button>
             </div>
           ) : contacts.sid !== user.sid ||
             (revalidator.state === 'loading' && !currentMembers.length) ? (
-            <div className="skeleton-list" aria-label="Загрузка контактов">
+            <div className="skeleton-list" role="status" aria-label="Загрузка контактов">
               {[0, 1, 2, 3].map((id): JSX.Element => (
                 <div className="skeleton-row" key={id}>
-                  <i />
-                  <span />
+                  <Skeleton variant="circular" width="var(--ui-control-height)" />
+                  <div className="skeleton-copy">
+                    <Skeleton width="65%" />
+                    <Skeleton width="40%" height="var(--ui-font-caption)" />
+                  </div>
                 </div>
               ))}
             </div>
@@ -213,21 +201,25 @@ export function CallsPage(): JSX.Element {
                     onClick={(): void => select(member)}
                     disabled={ongoing && peerId !== member.id}
                   >
-                    <Avatar name={member.display_name} />
-                    <span className="contact-name">
-                      <strong>{member.display_name}</strong>
-                      <small>Голосовой звонок</small>
-                    </span>
+                    <UserCard
+                      userId={member.id}
+                      displayName={member.display_name}
+                      subtitle="Голосовой звонок"
+                    />
                   </button>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="contact-call"
                     aria-label={`Написать: ${member.display_name}`}
                     disabled={!dialogs}
                     onClick={(): void => write(member.id)}
                   >
                     <MessageCircle size={18} />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="contact-call"
                     aria-label={`Позвонить: ${member.display_name}`}
                     disabled={!enabled || ongoing || preparing}
@@ -237,7 +229,7 @@ export function CallsPage(): JSX.Element {
                     }}
                   >
                     <Phone size={18} />
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>

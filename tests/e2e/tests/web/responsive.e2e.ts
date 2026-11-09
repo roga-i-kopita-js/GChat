@@ -159,8 +159,11 @@ for (const viewport of [
       await nav.getByRole('link', { name: section, exact: true }).click();
       await expect(banner).toBeInViewport();
       await expect(banner).toContainText('Анна Смирнова');
-      await page.evaluate((): void => window.scrollTo(0, document.body.scrollHeight));
+      await page.locator('.app-viewport').evaluate((element): void => {
+        element.scrollTop = element.scrollHeight;
+      });
       await expect(banner).toBeInViewport();
+      expect(await page.evaluate((): number => window.scrollY)).toBe(0);
       await banner.click();
       await expect(page).toHaveURL(/\/calls$/);
       await expect(page.locator('.call-card')).toBeVisible();
@@ -176,7 +179,7 @@ for (const viewport of [
       .getByRole('link', { name: 'Настройки' })
       .click();
     await page.getByRole('link', { name: 'Основные', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Основные', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Основные', exact: true })).toBeVisible();
     await noOverflow(page);
     await page.screenshot({ path: info.outputPath('settings-general.png') });
     await page.getByRole('link', { name: /Микрофон/ }).click();
@@ -192,7 +195,7 @@ for (const viewport of [
     await noOverflow(page);
     await page.screenshot({ path: info.outputPath('audio-settings.png') });
     await page.goBack();
-    await expect(page.getByRole('heading', { name: 'Основные', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Основные', exact: true })).toBeVisible();
   });
 
   test(`compact account, forms, contacts and incoming call at ${viewport.width}px`, async ({
@@ -272,6 +275,190 @@ for (const viewport of [
   { width: 390, height: 844 },
   { width: 1280, height: 800 },
 ]) {
+  test(`layout keeps document fixed while long pages scroll at ${viewport.width}px`, async ({
+    page,
+  }): Promise<void> => {
+    await page.setViewportSize({ width: viewport.width, height: 400 });
+    await setup(page);
+    const users = Array.from({ length: 40 }, (_, index): typeof anna => ({
+      ...anna,
+      id: '00000000-0000-4000-8000-' + String(index + 100).padStart(12, '0'),
+      display_name: 'Контакт ' + index,
+      login: 'contact' + index,
+    }));
+
+    await page.route('**/api/groups/family/members', async (route): Promise<void> => {
+      await route.fulfill({
+        json: { members: [{ id: adminId, display_name: 'Admin' }, ...users] },
+      });
+    });
+    await page.route(
+      (url): boolean => url.pathname === '/api/admin/users',
+      async (route): Promise<void> => {
+        await route.fulfill({ json: { users, total: users.length } });
+      },
+    );
+    const nav = page.getByRole('navigation', { name: 'Основные разделы' });
+    const scroll = page.locator('.app-viewport');
+
+    for (const path of ['/calls', '/settings/general', '/admin/users']) {
+      await page.goto(path);
+      await expect(page.getByRole('main')).toBeVisible();
+      await expect(page.locator('body')).toHaveCSS('position', 'fixed');
+      await expect
+        .poll((): Promise<number> =>
+          scroll.evaluate((element): number => element.scrollHeight - element.clientHeight),
+        )
+        .toBeGreaterThan(100);
+      const menu = await nav.boundingBox();
+
+      await scroll.hover();
+      await page.mouse.wheel(0, 300);
+      await expect
+        .poll((): Promise<number> => scroll.evaluate((element): number => element.scrollTop))
+        .toBeGreaterThan(0);
+
+      for (const edge of ['end', 'start']) {
+        await scroll.evaluate((element, edge): void => {
+          element.scrollTop = edge === 'end' ? element.scrollHeight : 0;
+        }, edge);
+        await page.mouse.wheel(0, edge === 'end' ? 500 : -500);
+        await page.evaluate((): void => window.scrollTo(0, 200));
+        expect(await page.evaluate((): number => window.scrollY)).toBe(0);
+        expect(await nav.boundingBox()).toEqual(menu);
+      }
+
+      if (path === '/settings/general') {
+        await scroll.evaluate((element): void => {
+          element.scrollTop = element.scrollHeight;
+        });
+        const last = page.getByRole('link', { name: /Файлы и папки/ });
+
+        await expect(last).toBeInViewport();
+        const box = await last.boundingBox();
+
+        expect(box!.y + box!.height).toBeLessThanOrEqual(menu!.y);
+      }
+    }
+
+    await nav.getByRole('link', { name: 'Диалоги', exact: true }).click();
+    await expect(scroll).toHaveCSS('overflow-y', 'hidden');
+    await expect(scroll).toHaveJSProperty('scrollTop', 0);
+    await nav.getByRole('link', { name: 'Настройки', exact: true }).click();
+    await expect(scroll).toHaveCSS('overflow-y', 'auto');
+    await expect(scroll).toHaveJSProperty('scrollTop', 0);
+    await expect(nav).toBeInViewport();
+    await noOverflow(page);
+  });
+
+  test(`shared tokens update spacing, typography and controls at ${viewport.width}px`, async ({
+    page,
+  }): Promise<void> => {
+    await page.setViewportSize(viewport);
+    await setup(page);
+    await page
+      .getByRole('navigation', { name: 'Основные разделы' })
+      .getByRole('link', { name: 'Настройки', exact: true })
+      .click();
+    await expect(page.getByRole('region', { name: 'Настройки', exact: true })).toBeVisible();
+    await page.evaluate((): void => {
+      const style = document.documentElement.style;
+
+      style.setProperty('--ui-space-3', '16px');
+      style.setProperty('--ui-page-gutter', '16px');
+      style.setProperty('--ui-font-heading', '1.5rem');
+      style.setProperty('--ui-control-height', '52px');
+      style.setProperty('--ui-radius', '16px');
+    });
+    await expect(page.getByRole('main', { name: 'Настройки', exact: true })).toHaveCSS(
+      'padding-left',
+      '16px',
+    );
+    await expect(page.locator('.settings-page > .ui-page-header')).toHaveCount(0);
+    const radii = await page
+      .locator('.ui-card:not(.ui-page-surface)')
+      .evaluateAll((elements): string[] =>
+        elements.map((element): string => getComputedStyle(element).borderRadius),
+      );
+
+    expect(radii.length).toBeGreaterThan(1);
+    expect(radii.every((radius): boolean => radius === '16px')).toBe(true);
+    await expect(page.locator('.ui-page-surface')).toHaveCSS('border-radius', '0px');
+    await page.getByRole('button', { name: 'Выйти из аккаунта', exact: true }).click();
+    const modal = page.getByRole('dialog', { name: 'Выйти из GChat?', exact: true });
+
+    await expect(modal.getByRole('heading')).toHaveCSS('font-size', '24px');
+    await expect(modal.getByRole('button', { name: 'Закрыть', exact: true })).toHaveCSS(
+      'width',
+      '52px',
+    );
+    await expect(modal.getByRole('button', { name: 'Закрыть', exact: true })).toHaveCSS(
+      'height',
+      '52px',
+    );
+    await noOverflow(page);
+  });
+
+  test(`main sections keep one outer layout at ${viewport.width}px`, async ({
+    page,
+  }): Promise<void> => {
+    await page.setViewportSize(viewport);
+    await setup(page);
+    const nav = page.getByRole('navigation', { name: 'Основные разделы' });
+    const frames = [];
+
+    for (const section of ['Звонки', 'Диалоги', 'Настройки', 'Звонки']) {
+      await nav.getByRole('link', { name: section, exact: true }).click();
+      const content = page.getByRole('main', { name: section, exact: true });
+      const surface = content.locator(':scope > .ui-page-surface');
+
+      await expect(surface).toBeVisible();
+      await expect(page.getByRole('banner', { name: 'Панель приложения' })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: /^Профиль:/ })).toHaveCount(0);
+      await expect(page.locator('.app-shell')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+      await expect(surface).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+      await expect(surface).toHaveCSS('border-radius', '0px');
+      await expect(surface).toHaveCSS('border-top-width', '0px');
+      await expect(nav).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+
+      if (section === 'Настройки') {
+        await expect(page.locator('.settings-page')).toHaveCSS(
+          'background-color',
+          'rgb(255, 255, 255)',
+        );
+      }
+
+      await expect(
+        content.locator('.settings-heading, .panel-title, .dialogs-sidebar > .ui-page-header'),
+      ).toHaveCount(0);
+      await expect(content).toHaveCSS('padding', '0px');
+      const bounds = await surface.boundingBox();
+
+      expect(bounds!.x).toBe(0);
+      expect(bounds!.width).toBe(viewport.width);
+      frames.push(
+        await surface.evaluate((element): object => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+
+          return {
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            radius: style.borderRadius,
+            border: style.borderTopColor,
+          };
+        }),
+      );
+      await expect(nav).toBeInViewport();
+      await noOverflow(page);
+    }
+
+    for (const frame of frames.slice(1)) {
+      expect(frame).toEqual(frames[0]);
+    }
+  });
+
   test(`settings routes, file access and large text at ${viewport.width}px`, async ({
     page,
   }, info): Promise<void> => {
@@ -283,9 +470,9 @@ for (const viewport of [
     await page.goto('/settings/general');
     await expect(page.getByRole('link', { name: /Камера/ })).toBeVisible();
     await page.getByRole('link', { name: /Геопозиция/ }).click();
-    await expect(page.getByRole('heading', { name: 'Геопозиция', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Геопозиция', exact: true })).toBeVisible();
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'Геопозиция', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Геопозиция', exact: true })).toBeVisible();
     await page.getByRole('link', { name: 'Назад', exact: true }).click();
     await page.getByRole('link', { name: /Файлы и папки/ }).click();
     const chooser = page.waitForEvent('filechooser');
@@ -309,12 +496,22 @@ for (const viewport of [
       .click();
     await expect(page.getByText('Пока нет выбранных файлов', { exact: false })).toBeVisible();
     await page.getByRole('link', { name: 'Назад', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Основные', exact: true })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Основные', exact: true })).toBeVisible();
     await page.evaluate((): void => {
       document.documentElement.style.fontSize = '28px';
       document.body.style.zoom = '2';
     });
     await noOverflow(page);
+    const back = page.getByRole('link', { name: 'Назад', exact: true });
+    const bounds = await back.boundingBox();
+    const menu = await page.getByRole('navigation', { name: 'Основные разделы' }).boundingBox();
+
+    expect(bounds).not.toBeNull();
+    expect(menu).not.toBeNull();
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(menu!.y);
+    expect(
+      await back.evaluate((element): boolean => element.scrollWidth <= element.clientWidth),
+    ).toBe(true);
     await page.screenshot({ path: info.outputPath('settings-large-text.png') });
   });
 }

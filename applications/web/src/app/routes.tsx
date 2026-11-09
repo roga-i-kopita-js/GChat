@@ -2,6 +2,8 @@ import { Link, Navigate, Outlet, type RouteObject } from 'react-router';
 
 import { App, RequireAdmin, RequireSession } from './App';
 import { AppLayout } from './AppLayout';
+import { routeLoadingMiddleware } from './layout/route-loading';
+import { layoutRoute } from './layout/sections';
 import { applicationLoader, loginLoader } from './loaders';
 import { RouteErrorBoundary } from './RouteErrorBoundary';
 import { sessionMiddleware } from './session-middleware';
@@ -39,11 +41,17 @@ export function createApplicationRoutes(): RouteObject[] {
             },
             {
               Component: AppLayout,
+              middleware: [routeLoadingMiddleware],
               children: [
-                { index: true, element: <Navigate to="/calls" replace /> },
+                {
+                  index: true,
+                  handle: layoutRoute('calls'),
+                  element: <Navigate to="/calls" replace />,
+                },
                 {
                   id: 'contacts',
                   path: 'calls',
+                  handle: layoutRoute('calls'),
                   ErrorBoundary: RouteErrorBoundary,
                   lazy: {
                     loader: async (): Promise<
@@ -56,6 +64,7 @@ export function createApplicationRoutes(): RouteObject[] {
                 },
                 {
                   path: 'dialogs',
+                  handle: layoutRoute('dialogs', 'contained'),
                   ErrorBoundary: RouteErrorBoundary,
                   lazy: {
                     Component: async (): Promise<
@@ -64,8 +73,12 @@ export function createApplicationRoutes(): RouteObject[] {
                   },
                   children: [
                     {
+                      id: 'dialog-index',
                       index: true,
                       lazy: {
+                        loader: async (): Promise<
+                          typeof import('../features/dialogs/loaders').dialogsLoader
+                        > => (await import('../features/dialogs/loaders')).dialogsLoader,
                         Component: async (): Promise<
                           typeof import('../features/dialogs/DialogIndexRoute').DialogIndexRoute
                         > =>
@@ -73,9 +86,13 @@ export function createApplicationRoutes(): RouteObject[] {
                       },
                     },
                     {
+                      id: 'dialog-conversation',
                       path: ':dialogId',
                       ErrorBoundary: RouteErrorBoundary,
                       lazy: {
+                        loader: async (): Promise<
+                          typeof import('../features/dialogs/loaders').dialogsLoader
+                        > => (await import('../features/dialogs/loaders')).dialogsLoader,
                         Component: async (): Promise<
                           typeof import('../features/dialogs/DialogConversationRoute').DialogConversationRoute
                         > =>
@@ -87,12 +104,16 @@ export function createApplicationRoutes(): RouteObject[] {
                 },
                 {
                   path: 'settings',
+                  handle: layoutRoute('settings'),
                   Component: Outlet,
                   ErrorBoundary: RouteErrorBoundary,
                   children: [
                     {
                       index: true,
                       lazy: {
+                        loader: async (): Promise<
+                          typeof import('../features/settings/loaders').settingsProfileLoader
+                        > => (await import('../features/settings/loaders')).settingsProfileLoader,
                         Component: async (): Promise<
                           typeof import('../features/settings/SettingsIndexRoute').SettingsIndexRoute
                         > =>
@@ -102,11 +123,15 @@ export function createApplicationRoutes(): RouteObject[] {
                     },
                     {
                       path: 'general',
+                      handle: layoutRoute('settings'),
                       Component: Outlet,
                       children: [
                         {
                           index: true,
                           lazy: {
+                            loader: async (): Promise<
+                              typeof import('../features/settings/loaders').settingsLoader
+                            > => (await import('../features/settings/loaders')).settingsLoader,
                             Component: async (): Promise<
                               typeof import('../features/settings/SettingsGeneralRoute').SettingsGeneralRoute
                             > =>
@@ -116,7 +141,11 @@ export function createApplicationRoutes(): RouteObject[] {
                         },
                         {
                           path: 'microphone',
+                          handle: layoutRoute('settings'),
                           lazy: {
+                            loader: async (): Promise<
+                              typeof import('../features/settings/loaders').settingsLoader
+                            > => (await import('../features/settings/loaders')).settingsLoader,
                             Component: async (): Promise<
                               typeof import('../features/settings/SettingsMicrophoneRoute').SettingsMicrophoneRoute
                             > =>
@@ -126,7 +155,11 @@ export function createApplicationRoutes(): RouteObject[] {
                         },
                         {
                           path: 'audio',
+                          handle: layoutRoute('settings'),
                           lazy: {
+                            loader: async (): Promise<
+                              typeof import('../features/settings/loaders').settingsLoader
+                            > => (await import('../features/settings/loaders')).settingsLoader,
                             Component: async (): Promise<
                               typeof import('../features/settings/SettingsAudioRoute').SettingsAudioRoute
                             > =>
@@ -136,7 +169,11 @@ export function createApplicationRoutes(): RouteObject[] {
                         },
                         {
                           path: 'push',
+                          handle: layoutRoute('settings'),
                           lazy: {
+                            loader: async (): Promise<
+                              typeof import('../features/settings/loaders').settingsLoader
+                            > => (await import('../features/settings/loaders')).settingsLoader,
                             Component: async (): Promise<
                               typeof import('../features/settings/SettingsPushRoute').SettingsPushRoute
                             > =>
@@ -146,7 +183,11 @@ export function createApplicationRoutes(): RouteObject[] {
                         },
                         {
                           path: 'camera',
+                          handle: layoutRoute('settings'),
                           lazy: {
+                            loader: async (): Promise<
+                              typeof import('../features/settings/loaders').settingsLoader
+                            > => (await import('../features/settings/loaders')).settingsLoader,
                             Component: async (): Promise<
                               typeof import('../features/settings/SettingsCameraRoute').SettingsCameraRoute
                             > =>
@@ -156,7 +197,11 @@ export function createApplicationRoutes(): RouteObject[] {
                         },
                         {
                           path: 'geolocation',
+                          handle: layoutRoute('settings'),
                           lazy: {
+                            loader: async (): Promise<
+                              typeof import('../features/settings/loaders').settingsLoader
+                            > => (await import('../features/settings/loaders')).settingsLoader,
                             Component: async (): Promise<
                               typeof import('../features/settings/SettingsGeolocationRoute').SettingsGeolocationRoute
                             > =>
@@ -166,7 +211,11 @@ export function createApplicationRoutes(): RouteObject[] {
                         },
                         {
                           path: 'files',
+                          handle: layoutRoute('settings'),
                           lazy: {
+                            loader: async (): Promise<
+                              typeof import('../features/settings/loaders').settingsFilesLoader
+                            > => (await import('../features/settings/loaders')).settingsFilesLoader,
                             Component: async (): Promise<
                               typeof import('../features/settings/SettingsFilesRoute').SettingsFilesRoute
                             > =>
@@ -178,7 +227,11 @@ export function createApplicationRoutes(): RouteObject[] {
                     },
                     {
                       path: '*',
+                      handle: layoutRoute('settings'),
                       lazy: {
+                        loader: async (): Promise<
+                          typeof import('../features/settings/loaders').settingsLoader
+                        > => (await import('../features/settings/loaders')).settingsLoader,
                         Component: async (): Promise<
                           typeof import('../features/settings/SettingsMissingRoute').SettingsMissingRoute
                         > =>
@@ -190,6 +243,7 @@ export function createApplicationRoutes(): RouteObject[] {
                 },
                 {
                   path: 'admin',
+                  handle: layoutRoute('admin'),
                   Component: RequireAdmin,
                   ErrorBoundary: RouteErrorBoundary,
                   children: [

@@ -4,6 +4,50 @@ import { expect, test } from '@playwright/test';
 
 import { login } from '../../fixtures/web/actions';
 
+test('dialog loader replaces the old runtime when the authenticated session changes', async ({
+  page,
+}): Promise<void> => {
+  await login(page, 'anna');
+  await page.getByRole('button', { name: 'Написать: Максим Волков', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Максим Волков', exact: true })).toBeVisible();
+  await expect(page.getByRole('banner', { name: 'Панель приложения' })).toHaveCount(0);
+  await expect(page.locator('.dialog-room')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(page.locator('.dialog-composer-area')).toHaveCSS(
+    'background-color',
+    'rgb(255, 255, 255)',
+  );
+  const path = new URL(page.url()).pathname;
+  const previousRefresh = await page.evaluate(
+    (): string => JSON.parse(localStorage.getItem('gchat.session.v1')!).refresh_token,
+  );
+
+  try {
+    await page.evaluate(async (): Promise<void> => {
+      const modulePath = '/src/shared/session/browser-session.ts';
+      const session = await import(modulePath);
+
+      await session.login('maxim', 'gchat-web-test-password');
+    });
+    await expect(page.getByRole('heading', { name: 'Анна Смирнова', exact: true })).toBeVisible();
+    await expect(page.getByRole('banner', { name: 'Панель приложения' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Максим Волков', exact: true })).toHaveCount(0);
+    await expect(page.getByLabel('Сообщение', { exact: true })).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe(path);
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Анна Смирнова', exact: true })).toBeVisible();
+  } finally {
+    await page.request.post('/api/auth/logout', { data: { refresh_token: previousRefresh } });
+    const currentRefresh = await page.evaluate(
+      (): string | undefined =>
+        JSON.parse(localStorage.getItem('gchat.session.v1') ?? 'null')?.refresh_token,
+    );
+
+    if (currentRefresh) {
+      await page.request.post('/api/auth/logout', { data: { refresh_token: currentRefresh } });
+    }
+  }
+});
+
 test('dialogs send, recover unknown results, retain drafts, render stickers and preserve mobile navigation', async ({
   browser,
 }, testInfo): Promise<void> => {
@@ -130,7 +174,7 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
       await anna.evaluate((): boolean => document.documentElement.scrollWidth <= innerWidth),
     ).toBe(true);
     await anna.getByRole('link', { name: 'Назад к диалогам' }).click();
-    await expect(anna.getByRole('heading', { name: 'Диалоги', exact: true })).toBeVisible();
+    await expect(anna.getByRole('region', { name: 'Диалоги', exact: true })).toBeVisible();
     await anna.screenshot({ path: testInfo.outputPath('dialogs-mobile.png') });
     expect(errors).toEqual([]);
   } catch (error) {

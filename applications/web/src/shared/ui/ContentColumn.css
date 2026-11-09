@@ -1,0 +1,6 @@
+.ui-content-column {
+  width: 100%;
+  max-width: var(--ui-column-width);
+  margin-inline: auto;
+  padding: var(--ui-content-padding);
+}

@@ -22,6 +22,7 @@ import {
   useLoaderData,
   useLocation,
   useNavigate,
+  useNavigationType,
   useOutletContext,
   useParams,
   useRevalidator,
@@ -373,17 +374,22 @@ export function UsersPage({
   const loaded = useRouteLoaderData<AdminUsersData>('admin-users');
   const { q = '', status = 'all', offset = 0 } = loaded?.filters ?? {};
   const location = useLocation();
+  const navigationType = useNavigationType();
   const [searchInput, setSearchInput] = useState(q);
+  const editRevision = useRef(0);
+  const navigationRevision = useRef(0);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  useEffect((): (() => void) => {
-    setSearchInput(q);
-    clearTimeout(searchTimer.current);
-
-    return (): void => clearTimeout(searchTimer.current);
-  }, [q, location.key]);
+  useEffect((): (() => void) => (): void => clearTimeout(searchTimer.current), []);
+  useEffect((): void => {
+    if (navigationType === 'POP' || editRevision.current === navigationRevision.current) {
+      setSearchInput(q);
+      clearTimeout(searchTimer.current);
+    }
+  }, [q, location.key, navigationType]);
 
   function changeParams(values: Record<string, string>, replace = false): void {
+    navigationRevision.current = editRevision.current;
     clearTimeout(searchTimer.current);
     const changes = {
       ...values,
@@ -430,11 +436,7 @@ export function UsersPage({
 
   return (
     <section className="admin-workspace" aria-label="Управление аккаунтами">
-      <div className="admin-heading">
-        <div>
-          <h2>Аккаунты</h2>
-          <p>Доступ пользователей к GChat</p>
-        </div>
+      <div className="admin-page-actions">
         <button
           className="primary"
           onClick={(): void => {
@@ -456,6 +458,7 @@ export function UsersPage({
             onChange={(event): void => {
               const value = event.target.value;
 
+              editRevision.current++;
               setSearchInput(value);
               clearTimeout(searchTimer.current);
               searchTimer.current = setTimeout((): void => {

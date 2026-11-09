@@ -1,3 +1,4 @@
+import './shared/ui/tokens.css';
 import './style.css';
 
 import { BackendApi } from '@gchat/backend-api';

@@ -1,6 +1,7 @@
 import { BackendApi } from '@gchat/backend-api';
 
-import { DeviceError } from '../shared/device';
+import { type DeviceCore, DeviceError } from '../shared/device';
+import { isDevice } from '../shared/device/internals';
 import { deviceContext } from '../shared/device/router-context';
 
 export { deviceContext } from '../shared/device/router-context';
@@ -47,4 +48,14 @@ function isApplicationDevice(
   value: import('../shared/device/router-context').HttpSession,
 ): value is ApplicationDevice {
   return value.http instanceof BackendApi;
+}
+
+export function applicationCore(context: Readonly<RouterContextProvider>): DeviceCore<BackendApi> {
+  const device = applicationDevice(context);
+
+  if (!isDevice(device)) {
+    throw new DeviceError('INTEGRATION_ERROR');
+  }
+
+  return device;
 }

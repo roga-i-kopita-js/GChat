@@ -8,7 +8,7 @@ import { useSettingsDevice } from './useSettingsDevice';
 
 export function SettingsAudioRoute(): JSX.Element {
   const device = useSettingsDevice();
-  const { state, run, setSoundAnswer } = device;
+  const { audio, run, setSoundAnswer } = device;
   const action = (label: string, onClick: () => void): JSX.Element => (
     <SettingsAction device={device} onClick={onClick}>
       {label}
@@ -16,14 +16,14 @@ export function SettingsAudioRoute(): JSX.Element {
   );
 
   return (
-    <SettingsScreen title={titles.audio} parent="/settings/general" device={device}>
+    <SettingsScreen parent="/settings/general" title={titles.audio} device={device}>
       <p className="settings-intro">{descriptions.audio}</p>
       <Group>
         <Row
           icon={Headphones}
           color="#ff9f0a"
           title="Аудиовыход"
-          value={state?.audio.routeName ?? 'Системный выход'}
+          value={audio.output?.name ?? 'Системный выход'}
         />
         {action('Выбрать аудиовыход', (): void => {
           void run((): ReturnType<typeof device.api.audio.outputs.pick> =>

@@ -5,6 +5,7 @@ import type { CSSProperties, JSX, ReactNode } from 'react';
 import { Link } from 'react-router';
 
 import { deviceErrorMessage } from '../../shared/device/messages';
+import { Button, Card, ContentColumn, Text } from '../../shared/ui';
 import type { SettingsDevice } from './useSettingsDevice';
 
 function Badge({ icon: Icon, color }: { icon: LucideIcon; color: string }): JSX.Element {
@@ -36,10 +37,14 @@ export function Row({
     <>
       <Badge icon={icon} color={color} />
       <span className="settings-row-copy">
-        <span>{title}</span>
+        <Text variant="label">{title}</Text>
         {children}
       </span>
-      {value && <span className="settings-value">{value}</span>}
+      {value && (
+        <Text tone="muted" className="settings-value">
+          {value}
+        </Text>
+      )}
       {to && <ChevronRight className="settings-chevron" size={17} aria-hidden="true" />}
     </>
   );
@@ -56,8 +61,14 @@ export function Row({
 export function Group({ title, children }: { title?: string; children: ReactNode }): JSX.Element {
   return (
     <section className="settings-group">
-      {title && <h2>{title}</h2>}
-      <div className="settings-surface">{children}</div>
+      {title && (
+        <Text as="h2" variant="caption" tone="muted">
+          {title}
+        </Text>
+      )}
+      <Card padding="none" bordered={false} clip className="settings-surface">
+        {children}
+      </Card>
     </section>
   );
 }
@@ -75,31 +86,34 @@ export function SettingsScreen({
 }): JSX.Element {
   return (
     <section className="settings-page" aria-label={title}>
-      <div className="settings-heading">
+      <ContentColumn>
         {parent && (
-          <Link to={parent} aria-label="Назад" className="settings-back">
-            <ArrowLeft size={21} />
+          <Link className="settings-back" to={parent} aria-label="Назад">
+            <ArrowLeft size="var(--ui-icon-small)" aria-hidden="true" />
+            Назад
           </Link>
         )}
-        <h1>{title}</h1>
-      </div>
-      {children}
-      {device?.error && (
-        <div className="settings-error" role="alert">
-          <p>{device.error}</p>
-          <button
-            disabled={device.busy}
-            onClick={(): void => {
-              device.setError('');
-              void device
-                .refresh()
-                .catch((cause: unknown): void => device.setError(deviceErrorMessage(cause)));
-            }}
-          >
-            Обновить состояние
-          </button>
-        </div>
-      )}
+        {children}
+        {device?.error && (
+          <div className="settings-error" role="alert">
+            <Text as="p" tone="danger">
+              {device.error}
+            </Text>
+            <Button
+              variant="ghost"
+              disabled={device.busy}
+              onClick={(): void => {
+                device.setError('');
+                void device
+                  .refresh()
+                  .catch((cause: unknown): void => device.setError(deviceErrorMessage(cause)));
+              }}
+            >
+              Обновить состояние
+            </Button>
+          </div>
+        )}
+      </ContentColumn>
     </section>
   );
 }
@@ -114,9 +128,9 @@ export function SettingsAction({
   onClick(): void;
 }): JSX.Element {
   return (
-    <button className="settings-action" disabled={device.busy} onClick={onClick}>
+    <Button variant="ghost" className="settings-action" disabled={device.busy} onClick={onClick}>
       {children}
       {device.busy && <LoaderCircle className="settings-spinner" size={16} aria-hidden="true" />}
-    </button>
+    </Button>
   );
 }

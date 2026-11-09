@@ -1,0 +1,21 @@
+.ui-card {
+  min-width: 0;
+  border: var(--ui-border-width) solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  background: var(--ui-surface);
+}
+.ui-card-padding-none {
+  padding: 0;
+}
+.ui-card-padding-small {
+  padding: var(--ui-card-padding-small);
+}
+.ui-card-padding-medium {
+  padding: var(--ui-card-padding-medium);
+}
+.ui-card-borderless {
+  border: 0;
+}
+.ui-card-clip {
+  overflow: hidden;
+}

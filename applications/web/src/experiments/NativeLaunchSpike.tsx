@@ -8,17 +8,34 @@ export function NativeLaunchSpike(): ReactElement {
   }, []);
 
   return (
-    <main style={{ maxWidth: 440, margin: '48px auto', padding: 24 }}>
+    <main
+      style={{
+        maxWidth: 'var(--ui-size-440)',
+        margin: 'var(--ui-space-12) auto',
+        padding: 'var(--ui-space-6)',
+      }}
+    >
       <h1>Открыть GChat</h1>
       <p>Пробуем открыть приложение. Если переход не произошёл, нажмите кнопку ниже.</p>
       <p>
-        <a style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }} href={launchUrl}>
+        <a
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            minHeight: 'var(--ui-control-height)',
+          }}
+          href={launchUrl}
+        >
           Открыть GChat
         </a>
       </p>
       <p>
         <a
-          style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            minHeight: 'var(--ui-control-height)',
+          }}
           href={window.location.pathname}
         >
           Остаться в Web

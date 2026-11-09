@@ -1,21 +1,8 @@
-.app-shell.app-shell-dialogs {
-  height: 100dvh;
-  min-height: 0;
-  padding-bottom: 0;
-  overflow: hidden;
-}
-.app-shell-dialogs > .bottom-navigation {
-  position: static;
-  flex: none;
-}
-.app-shell > .workspace.dialogs-active {
-  height: auto;
-  min-height: 0;
-  flex: 1;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.dialogs-list,
+.dialog-feed,
+.dialog-stickers,
+.dialog-composer textarea {
+  overscroll-behavior-y: contain;
 }
 .dialogs-layout {
   display: flex;
@@ -33,38 +20,24 @@
   flex-direction: column;
   background: white;
 }
-.dialogs-sidebar > header,
-.dialog-room-header {
-  display: flex;
-  align-items: center;
-  min-height: 56px;
-  flex: none;
-  gap: 8px;
-  padding: 0 12px;
-  border-bottom: 1px solid #e7e9ed;
-  background: white;
-}
-.dialogs-sidebar h1,
-.dialog-room h2 {
-  font-size: 18px;
-  line-height: 1.3;
-  margin: 0;
-  font-weight: 600;
+.dialog-room-title {
   flex: 1;
   min-width: 0;
+}
+.dialog-room h2 {
   overflow-wrap: anywhere;
 }
 .dialog-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--ui-control-height);
+  min-height: var(--ui-control-height);
   border: 0;
   background: transparent;
   color: #007aff;
-  border-radius: 12px;
-  padding: 8px;
+  border-radius: var(--ui-radius-12);
+  padding: var(--ui-space-2);
   flex: none;
   text-decoration: none;
 }
@@ -72,15 +45,16 @@
   overflow-y: auto;
   flex: 1;
   min-height: 0;
-  padding: 4px;
+  padding: var(--ui-space-1);
 }
-.dialog-contact {
-  min-height: 72px;
+.dialog-contact,
+.dialog-contact-loading {
+  min-height: var(--ui-size-72);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-2-5) var(--ui-space-3);
+  border-radius: var(--ui-radius-10);
   color: inherit;
   text-decoration: none;
 }
@@ -88,34 +62,25 @@
 .dialog-contact.current {
   background: #eef5ff;
 }
-.dialog-contact .avatar,
 .dialog-room-header .avatar {
-  width: 44px;
-  height: 44px;
+  width: var(--ui-control-height);
+  height: var(--ui-control-height);
   flex: none;
-  font-size: 16px;
-}
-.dialog-contact-name {
-  font-size: 15px;
-  font-weight: 600;
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: var(--ui-font-label);
 }
 .dialog-contact-meta {
   display: flex;
+  flex: none;
   align-items: flex-end;
   flex-direction: column;
-  gap: 8px;
-  font-size: 11px;
+  gap: var(--ui-space-2);
+  font-size: var(--ui-font-size-11);
   color: #65656b;
 }
 .dialog-unread {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
+  width: var(--ui-size-9);
+  height: var(--ui-size-9);
+  border-radius: var(--ui-radius-full);
   background: #007aff;
 }
 .dialog-room {
@@ -124,7 +89,7 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  background: #edf2f4;
+  background: var(--ui-canvas);
 }
 .dialog-placeholder {
   display: none;
@@ -138,12 +103,12 @@
 .dialog-empty {
   display: flex;
   flex: 1;
-  min-height: 140px;
+  min-height: var(--ui-size-140);
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 12px;
-  padding: 24px 12px;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-6) var(--ui-space-3);
   text-align: center;
 }
 .dialog-empty > svg {
@@ -156,14 +121,14 @@
   margin: 0;
 }
 .dialog-empty p {
-  font-size: 14px;
+  font-size: var(--ui-font-body);
   color: #65656b;
 }
 .dialog-error,
 .dialog-notice {
   margin: 0;
-  padding: 10px 12px;
-  font-size: 13px;
+  padding: var(--ui-space-2-5) var(--ui-space-3);
+  font-size: var(--ui-font-caption);
   flex: none;
   overflow-wrap: anywhere;
 }
@@ -178,8 +143,8 @@
   border: 0;
   background: transparent;
   color: #0065cd;
-  min-height: 44px;
-  padding: 8px;
+  min-height: var(--ui-control-height);
+  padding: var(--ui-space-2);
   text-decoration: underline;
 }
 .dialog-notice {
@@ -187,14 +152,14 @@
   color: #624b18;
 }
 .dialog-disabled {
-  min-height: 64px;
-  padding: 16px;
+  min-height: var(--ui-size-64);
+  padding: var(--ui-space-4);
   color: #65656b;
-  background: #f8fafb;
+  background: var(--ui-surface);
   text-align: center;
   display: grid;
   place-items: center;
-  font-size: 13px;
+  font-size: var(--ui-font-caption);
 }
 .dialog-feed-wrapper {
   position: relative;
@@ -211,23 +176,23 @@
 .dialog-message-row {
   display: flex;
   justify-content: flex-start;
-  padding: 4px 12px;
+  padding: var(--ui-space-1) var(--ui-space-3);
 }
 .dialog-message-row.own {
   justify-content: flex-end;
 }
 .dialog-message {
-  min-width: 70px;
-  max-width: min(85%, 560px);
-  padding: 8px 11px 5px;
-  border-radius: 15px 15px 15px 5px;
+  min-width: var(--ui-size-70);
+  max-width: min(85%, var(--ui-size-560));
+  padding: var(--ui-space-2) var(--ui-space-3) var(--ui-space-1-5);
+  border-radius: var(--ui-radius-16) var(--ui-radius-16) var(--ui-radius-16) var(--ui-radius-6);
   background: white;
-  font-size: 15px;
-  line-height: 1.4;
+  font-size: var(--ui-font-size-15);
+  line-height: var(--ui-leading-message);
 }
 .own .dialog-message {
   background: #e3f3dc;
-  border-radius: 15px 15px 5px 15px;
+  border-radius: var(--ui-radius-16) var(--ui-radius-16) var(--ui-radius-6) var(--ui-radius-16);
 }
 .dialog-message.sticker {
   background: transparent;
@@ -246,9 +211,9 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: var(--ui-space-1);
   color: #56685d;
-  font-size: 11px;
+  font-size: var(--ui-font-size-11);
 }
 .dialog-message-meta > span {
   display: inline-flex;
@@ -256,65 +221,65 @@
 .dialog-retry {
   display: flex;
   flex-direction: column;
-  font-size: 12px;
+  font-size: var(--ui-font-size-12);
   color: #8d2630;
 }
 .dialog-load-older,
 .dialog-more {
-  min-height: 44px;
+  min-height: var(--ui-control-height);
   border: 0;
   background: transparent;
   color: #0065cd;
-  padding: 8px 12px;
+  padding: var(--ui-space-2) var(--ui-space-3);
 }
 .dialog-jump {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--ui-space-1-5);
   position: absolute;
-  bottom: 10px;
+  bottom: var(--ui-size-10);
   align-self: center;
-  border: 1px solid #e7e9ed;
-  border-radius: 22px;
-  min-height: 44px;
-  padding: 8px 15px;
+  border: var(--ui-size-1) solid #e7e9ed;
+  border-radius: var(--ui-radius-24);
+  min-height: var(--ui-control-height);
+  padding: var(--ui-space-2) var(--ui-space-4);
   background: white;
   color: #0065cd;
-  font-size: 13px;
-  box-shadow: 0 2px 8px #172d3c12;
+  font-size: var(--ui-font-caption);
+  box-shadow: 0 var(--ui-size-2) var(--ui-size-8) #172d3c12;
 }
 .dialog-composer-area {
   flex: none;
   position: relative;
-  background: #f8fafb;
+  background: var(--ui-surface);
 }
 .dialog-composer {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
-  padding: 8px;
+  gap: var(--ui-space-1);
+  padding: var(--ui-space-2);
   margin: 0;
 }
 .dialog-composer textarea {
   width: 100%;
   min-width: 0;
   resize: none;
-  min-height: 44px;
-  max-height: 100px;
-  padding: 11px 13px;
-  border: 1px solid #dce1e7;
+  min-height: var(--ui-control-height);
+  max-height: var(--ui-field-max-height);
+  padding: var(--ui-space-3) var(--ui-space-3-5);
+  border: var(--ui-size-1) solid #dce1e7;
   background: white;
-  border-radius: 20px;
-  font-size: 16px;
-  line-height: 20px;
+  border-radius: var(--ui-radius-20);
+  font-size: var(--ui-font-label);
+  line-height: var(--ui-leading-tight);
   color: #17191d;
   flex: 1;
 }
 .dialog-send {
   border: 0;
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
+  border-radius: var(--ui-radius-full);
+  width: var(--ui-control-height);
+  height: var(--ui-control-height);
   flex: none;
   background: #007aff;
   color: white;
@@ -329,13 +294,13 @@
   bottom: 100%;
   left: 0;
   right: 0;
-  max-height: min(240px, 40dvh);
+  max-height: min(var(--ui-size-240), 40dvh);
   overflow-y: auto;
   background: white;
-  border-top: 1px solid #e7e9ed;
-  box-shadow: 0 -5px 20px #172d3c12;
+  border-top: var(--ui-size-1) solid #e7e9ed;
+  box-shadow: 0 calc(-1 * var(--ui-size-5)) var(--ui-size-20) #172d3c12;
   z-index: 2;
-  padding: 4px 12px 8px;
+  padding: var(--ui-space-1) var(--ui-space-3) var(--ui-space-2);
 }
 .dialog-stickers > div:first-child {
   display: flex;
@@ -344,32 +309,32 @@
 }
 .dialog-sticker-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--ui-size-80), 1fr));
+  gap: var(--ui-space-2);
 }
 .dialog-sticker-grid button {
   border: 0;
   background: transparent;
   display: grid;
   place-items: center;
-  min-height: 80px;
-  border-radius: 10px;
+  min-height: var(--ui-size-80);
+  border-radius: var(--ui-radius-10);
 }
 .dialog-sticker-grid button:hover {
   background: #eef5ff;
 }
 .draft-conflict {
-  padding: 8px 12px;
+  padding: var(--ui-space-2) var(--ui-space-3);
   background: #fff6d9;
-  font-size: 13px;
+  font-size: var(--ui-font-caption);
 }
 @media (min-width: 801px) {
   .dialogs-sidebar,
   .dialog-selected .dialogs-sidebar {
     display: flex;
-    width: 304px;
+    width: var(--ui-size-304);
     flex: none;
-    border-right: 1px solid #e7e9ed;
+    border-right: var(--ui-size-1) solid #e7e9ed;
   }
   .dialog-placeholder,
   .dialogs-layout:not(.dialog-selected) > .dialog-room {
@@ -379,10 +344,10 @@
     display: none;
   }
   .dialog-composer {
-    gap: 8px;
-    padding: 10px 16px 8px;
+    gap: var(--ui-space-2);
+    padding: var(--ui-space-2-5) var(--ui-space-4) var(--ui-space-2);
   }
   .dialog-message-row {
-    padding: 4px 20px;
+    padding: var(--ui-space-1) var(--ui-space-5);
   }
 }

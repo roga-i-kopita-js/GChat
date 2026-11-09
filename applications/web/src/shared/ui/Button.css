@@ -1,0 +1,81 @@
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-space-2);
+  min-height: var(--ui-control-height);
+  padding: var(--ui-control-padding-block) var(--ui-control-padding-inline);
+  border: 0;
+  border-radius: var(--ui-control-radius);
+  font: inherit;
+  font-size: var(--ui-font-body);
+  font-weight: var(--ui-weight-semibold);
+  line-height: var(--ui-leading-compact);
+  cursor: pointer;
+  transition: background-color var(--ui-duration-fast);
+}
+.ui-button:disabled {
+  opacity: var(--ui-opacity-disabled);
+  cursor: default;
+}
+.ui-button:focus-visible {
+  outline: var(--ui-focus-width) solid var(--ui-focus);
+  outline-offset: var(--ui-focus-offset);
+}
+.ui-button svg {
+  flex-shrink: 0;
+}
+.ui-button-primary {
+  background: var(--ui-accent);
+  color: var(--ui-on-accent);
+}
+.ui-button-primary:hover:not(:disabled) {
+  background: var(--ui-accent-hover);
+}
+.ui-button-secondary {
+  background: var(--ui-secondary-surface);
+  color: var(--ui-secondary-text);
+}
+.ui-button-secondary:hover:not(:disabled) {
+  background: var(--ui-secondary-hover);
+}
+.ui-button-ghost {
+  background: transparent;
+  color: var(--ui-accent);
+}
+.ui-button-ghost:hover:not(:disabled) {
+  background: var(--ui-accent-surface);
+}
+.ui-button-tone-danger {
+  color: var(--ui-danger);
+}
+.ui-button-primary.ui-button-tone-danger {
+  background: var(--ui-danger);
+  color: var(--ui-on-accent);
+}
+.ui-button-primary.ui-button-tone-danger:hover:not(:disabled) {
+  background: var(--ui-danger-hover);
+}
+.ui-button-secondary.ui-button-tone-danger {
+  background: var(--ui-danger-surface);
+}
+.ui-button-secondary.ui-button-tone-danger:hover:not(:disabled),
+.ui-button-ghost.ui-button-tone-danger:hover:not(:disabled) {
+  background: var(--ui-danger-surface-hover);
+}
+.ui-button-size-small {
+  padding: var(--ui-space-2) var(--ui-space-3);
+  font-size: var(--ui-font-caption);
+}
+.ui-button-size-icon {
+  flex: none;
+  width: var(--ui-control-height);
+  height: var(--ui-control-height);
+  min-width: var(--ui-control-height);
+  padding: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-button {
+    transition: none;
+  }
+}
