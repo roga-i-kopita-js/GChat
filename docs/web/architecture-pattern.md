@@ -60,7 +60,7 @@ flowchart TD
 
 [AppLayout](../../applications/web/src/app/AppLayout.tsx) только собирает `LayoutProvider → LayoutOverlaysProvider → AppShell`.
 
-`layoutRoute(section, scroll)` записывает типизированный handle в статическое дерево. LayoutProvider читает последний подходящий handle из `useMatches`, вычисляет текущий раздел, название области, доступное меню и presentation-параметры. Вложенный экран наследует метаданные родителя. Определение раздела не требует разбора pathname; скрытие admin-пункта меню не заменяет проверку доступа обработчика.
+`layoutRoute(section, scroll, navigation)` записывает типизированный handle в статическое дерево. LayoutProvider читает последний подходящий handle из `useMatches`, вычисляет текущий раздел, название области, доступное меню, его видимость и presentation-параметры. Вложенный экран наследует метаданные родителя. Определение раздела не требует разбора pathname; скрытие admin-пункта меню не заменяет проверку доступа обработчика.
 
 AppShell (`applications/web/src/app/layout/AppShell.tsx`) размещает индикатор перехода, возврат к звонку, viewport с PageContent/PageSurface и Outlet, нижнее меню и окна. Шапку с заголовком, возвратом и предметными действиями собирает сама страница через PageHeader.
 

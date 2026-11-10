@@ -18,6 +18,7 @@ interface LayoutState {
   native: boolean;
   callNotices: boolean;
   navigation: LayoutNavigationItem[];
+  showNavigation: boolean;
 }
 
 const LayoutContext = createContext<LayoutState | null>(null);
@@ -48,6 +49,7 @@ export function LayoutProvider({ children }: { children: ReactNode }): JSX.Eleme
         section,
         label,
         navigation,
+        showNavigation: handle.layout.navigation === 'visible',
         contained: handle.layout.scroll === 'contained',
         native: presentation.callControls === 'host',
         callNotices: section === 'calls' || section === 'admin',

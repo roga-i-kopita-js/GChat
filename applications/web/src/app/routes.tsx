@@ -120,6 +120,7 @@ export function createApplicationRoutes(): RouteObject[] {
                     {
                       id: 'dialog-conversation',
                       path: ':dialogId',
+                      handle: layoutRoute('dialogs', 'contained', 'hidden'),
                       ErrorBoundary: RouteErrorBoundary,
                       lazy: {
                         loader: async (): Promise<

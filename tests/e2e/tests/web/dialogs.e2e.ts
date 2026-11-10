@@ -10,6 +10,30 @@ test('dialog loader replaces the old runtime when the authenticated session chan
   await login(page, 'anna');
   await page.getByRole('button', { name: 'Написать: Максим Волков', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Максим Волков', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Назад к диалогам', exact: true })).toBeVisible();
+  const insets = await page.context().newCDPSession(page);
+  const { send: overrideInsets } = insets;
+
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+
+    for (const bottom of [34, 0, 21]) {
+      await overrideInsets.bind(insets)('Emulation.setSafeAreaInsetsOverride', {
+        insets: { bottom },
+      });
+      await expect
+        .poll(async (): Promise<number> =>
+          page
+            .getByLabel('Сообщение', { exact: true })
+            .evaluate((element): number =>
+              Math.round(innerHeight - element.getBoundingClientRect().bottom),
+            ),
+        )
+        .toBe(Math.max(bottom, 8));
+    }
+  }
+
   await expect(page.getByRole('banner', { name: 'Панель приложения' })).toHaveCount(0);
   await expect(page.locator('.dialog-room')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(page.locator('.dialog-composer-area')).toHaveCSS(
@@ -37,6 +61,18 @@ test('dialog loader replaces the old runtime when the authenticated session chan
     expect(new URL(page.url()).pathname).toBe(path);
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Анна Смирнова', exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toHaveCount(0);
+    await page.getByRole('link', { name: 'Назад к диалогам', exact: true }).click();
+    await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toHaveCSS(
+      'padding-bottom',
+      '21px',
+    );
+    await page.getByRole('link', { name: 'Настройки', exact: true }).click();
+    await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toHaveCSS(
+      'padding-bottom',
+      '21px',
+    );
   } finally {
     await page.request.post('/api/auth/logout', { data: { refresh_token: previousRefresh } });
     const currentRefresh = await page.evaluate(
@@ -101,10 +137,7 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
     });
     const { getByRole: annaGetByRole3 } = anna;
 
-    await annaGetByRole3
-      .bind(anna)('navigation', { name: 'Основные разделы' })
-      .getByRole('link', { name: 'Диалоги', exact: true })
-      .click();
+    await annaGetByRole3.bind(anna)('link', { name: 'Назад к диалогам', exact: true }).click();
     const { getByRole: annaGetByRole4 } = anna;
 
     await expect(
@@ -221,6 +254,7 @@ test('dialogs send, recover unknown results, retain drafts, render stickers and 
     await annaGetByLabel4.bind(anna)('Сообщение', { exact: true }).fill(draft);
     const { getByRole: annaGetByRole6 } = anna;
 
+    await annaGetByRole6.bind(anna)('link', { name: 'Назад к диалогам', exact: true }).click();
     await annaGetByRole6.bind(anna)('link', { name: 'Звонки', exact: true }).click();
     await expect(anna).toHaveURL(/\/calls$/);
     const { goto: annaGoto } = anna;
@@ -446,6 +480,7 @@ test('tabs share one WSS, resolve draft conflicts explicitly, flush before updat
     .toBe(true);
   await page.reload();
   await expect(page.getByLabel('Сообщение', { exact: true })).toHaveValue(updateDraft);
+  await page.getByRole('link', { name: 'Назад к диалогам', exact: true }).click();
   await page.getByRole('link', { name: 'Настройки', exact: true }).click();
   await page.getByRole('button', { name: 'Выйти из аккаунта', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Выйти', exact: true }).click();

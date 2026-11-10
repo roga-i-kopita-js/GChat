@@ -1348,6 +1348,9 @@ button svg {
   --app-safe-area-bottom: 0;
   --app-safe-area-top: 0px;
 }
+.app-shell-without-navigation {
+  --app-content-safe-area-bottom: var(--app-safe-area-bottom);
+}
 .app-viewport {
   display: flex;
   flex-direction: column;
@@ -1422,7 +1425,9 @@ body:has(.app-shell) {
   bottom: 0;
   left: 0;
   right: 0;
-  min-height: calc(var(--tabs-height) + var(--app-safe-area-bottom));
+  min-height: calc(
+    var(--tabs-height) - var(--ui-space-1) + max(var(--ui-space-1), var(--app-safe-area-bottom))
+  );
   display: flex;
   flex-wrap: wrap;
   container-type: inline-size;
@@ -1432,7 +1437,7 @@ body:has(.app-shell) {
   row-gap: var(--ui-space-1);
   font-size: var(--ui-font-navigation);
   padding: var(--ui-space-1) max(var(--ui-space-3), env(safe-area-inset-right, 0))
-    calc(var(--ui-space-1) + var(--app-safe-area-bottom))
+    max(var(--ui-space-1), var(--app-safe-area-bottom))
     max(var(--ui-space-3), env(safe-area-inset-left, 0));
   border-top: var(--ui-size-1) solid #e4eaf1;
   background: var(--ui-surface);

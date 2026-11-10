@@ -154,6 +154,7 @@
 .dialog-disabled {
   min-height: var(--ui-size-64);
   padding: var(--ui-space-4);
+  padding-bottom: max(var(--ui-space-4), var(--app-content-safe-area-bottom, 0px));
   color: #65656b;
   background: var(--ui-surface);
   text-align: center;
@@ -254,10 +255,15 @@
   background: var(--ui-surface);
 }
 .dialog-composer {
+  --dialog-composer-bottom-padding: max(
+    var(--ui-space-2),
+    var(--app-content-safe-area-bottom, 0px)
+  );
   display: flex;
   align-items: flex-end;
   gap: var(--ui-space-1);
   padding: var(--ui-space-2);
+  padding-bottom: var(--dialog-composer-bottom-padding);
   margin: 0;
 }
 .dialog-composer textarea {
@@ -340,12 +346,9 @@
   .dialogs-layout:not(.dialog-selected) > .dialog-room {
     display: flex;
   }
-  .dialog-back {
-    display: none;
-  }
   .dialog-composer {
     gap: var(--ui-space-2);
-    padding: var(--ui-space-2-5) var(--ui-space-4) var(--ui-space-2);
+    padding: var(--ui-space-2-5) var(--ui-space-4) var(--dialog-composer-bottom-padding);
   }
   .dialog-message-row {
     padding: var(--ui-space-1) var(--ui-space-5);

@@ -12,10 +12,16 @@ import { useLayout } from './LayoutProvider';
 import { LayoutViewport } from './LayoutViewport';
 
 export function AppShell(): JSX.Element {
-  const { section, label, contained, native } = useLayout();
+  const { section, label, contained, native, showNavigation } = useLayout();
 
   return (
-    <div className={'app-shell' + (native ? ' app-shell-native' : '')}>
+    <div
+      className={
+        'app-shell' +
+        (native ? ' app-shell-native' : '') +
+        (showNavigation ? '' : ' app-shell-without-navigation')
+      }
+    >
       <RoutePending />
       <CallReturnBanner />
       <LayoutViewport>
@@ -31,7 +37,7 @@ export function AppShell(): JSX.Element {
           <DiagnosticsTrigger />
         </PageContent>
       </LayoutViewport>
-      <BottomNavigation />
+      {showNavigation && <BottomNavigation />}
       <LayoutOverlays />
     </div>
   );

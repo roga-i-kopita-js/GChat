@@ -3,7 +3,11 @@ import { type LucideIcon, MessageCircle, Phone, Settings, ShieldCheck } from 'lu
 export type LayoutSection = 'calls' | 'dialogs' | 'settings' | 'admin';
 
 export interface LayoutRouteHandle {
-  layout: { section: LayoutSection; scroll: 'page' | 'contained' };
+  layout: {
+    section: LayoutSection;
+    scroll: 'page' | 'contained';
+    navigation: 'visible' | 'hidden';
+  };
 }
 
 export interface LayoutNavigationItem {
@@ -30,8 +34,9 @@ export const layoutNavigation: LayoutNavigationItem[] = [
 export function layoutRoute(
   section: LayoutSection,
   scroll: 'page' | 'contained' = 'page',
+  navigation: 'visible' | 'hidden' = 'visible',
 ): LayoutRouteHandle {
-  return { layout: { section, scroll } };
+  return { layout: { section, scroll, navigation } };
 }
 
 export function isLayoutRouteHandle(value: unknown): value is LayoutRouteHandle {
@@ -47,6 +52,8 @@ export function isLayoutRouteHandle(value: unknown): value is LayoutRouteHandle 
     'section' in layout &&
     layoutNavigation.some((item): boolean => item.section === layout.section) &&
     'scroll' in layout &&
-    (layout.scroll === 'page' || layout.scroll === 'contained')
+    (layout.scroll === 'page' || layout.scroll === 'contained') &&
+    'navigation' in layout &&
+    (layout.navigation === 'visible' || layout.navigation === 'hidden')
   );
 }
