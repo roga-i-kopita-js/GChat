@@ -55,8 +55,6 @@ export function CallCard(): JSX.Element | null {
         <ArrowRight size={17} />
       </button>
     );
-  } else if (presentation.callControls === 'host') {
-    callActions = null;
   } else if (incoming) {
     callActions = (
       <>
@@ -102,7 +100,7 @@ export function CallCard(): JSX.Element | null {
           <button
             className={'round-action mute' + (state.muted ? ' muted' : '')}
             aria-pressed={state.muted}
-            disabled={!state.owner}
+            disabled={!enabled}
             onClick={(): void =>
               void (async () => {
                 try {
@@ -146,7 +144,7 @@ export function CallCard(): JSX.Element | null {
         {state.owner &&
           state.selected &&
           call.state !== 'ended' &&
-          presentation.callControls === 'application' && (
+          presentation.callingAvailable && (
             <Button variant="ghost" className="call-lock-button" onClick={lockScreen}>
               <LockKeyhole aria-hidden="true" /> Заблокировать
             </Button>
@@ -189,14 +187,16 @@ export function CallCard(): JSX.Element | null {
         </button>
       )}
       {incoming && state.error && <p role="alert">{state.error}</p>}
+      {!presentation.callingAvailable && (
+        <p className="call-hint">
+          Управление звонками недоступно. Обновите приложение для продолжения.
+        </p>
+      )}
       {state.owner && state.selected && call.state !== 'ended' && state.screenWakeLockWarning && (
         <p className="call-hint" role="status">
           Не удалось удержать экран включённым. Отключите автоблокировку в настройках устройства на
           время звонка.
         </p>
-      )}
-      {presentation.callControls === 'host' && call.state !== 'ended' && (
-        <p className="call-hint">Управление звонком доступно в приложении.</p>
       )}
       <div className="call-controls">{callActions}</div>
       <div className="call-bottom">

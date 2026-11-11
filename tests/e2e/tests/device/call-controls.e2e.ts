@@ -110,6 +110,9 @@ async function setup(
           configurable: true,
           value: undefined,
         });
+      }
+
+      if (outputSupport === 'none') {
         // A picker without renderer support cannot apply the chosen output.
         Object.assign(navigator.mediaDevices, {
           selectAudioOutput: async (): Promise<never> => {
@@ -340,7 +343,7 @@ test('picker cancellation is quiet and a late picker cannot change output after 
   expect(await page.evaluate(() => Reflect.get(window, 'selectedOutputs'))).toContain('output-1');
 });
 
-for (const support of ['none', 'mediaOnly'] as const) {
+for (const support of ['none'] as const) {
   test(`unsupported output routing (${support}) shows system guidance without failed actions`, async ({
     page,
   }) => {
@@ -387,4 +390,40 @@ test('disconnecting the selected output returns the call to the system route', a
   await expect(dialog).toContainText('Сейчас: Системный выход');
   await expect(dialog.getByRole('button', { name: 'Гарнитура', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => Reflect.get(window, 'selectedOutputs').at(-1))).toBe('');
+});
+
+test('Safari-style media-element routing offers real outputs without AudioContext.setSinkId', async ({
+  page,
+}) => {
+  await setup(page, 'mediaOnly');
+  await page.getByRole('button', { name: 'Аудиовыход', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Аудиовыход', exact: true });
+
+  await expect(dialog.getByRole('button', { name: 'Системный выбор', exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Гарнитура', exact: true }).click();
+  await expect(dialog).toContainText('Сейчас: Гарнитура');
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  expect(await page.evaluate(() => Reflect.get(window, 'selectedOutputs'))).toContain('output-1');
+  await dialog.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Включить звук', exact: true })).toHaveCount(0);
+  const routed = await page.evaluate(async (): Promise<boolean> => {
+    const path = '/src/shared/calls/context-output.ts';
+    const { ContextOutput } = await import(path);
+    const context = new AudioContext();
+    const output = new ContextOutput(context);
+
+    try {
+      await output.start();
+      await output.select('output-1');
+
+      return (
+        output.destination instanceof MediaStreamAudioDestinationNode && context.state === 'running'
+      );
+    } finally {
+      output.dispose();
+      await context.close();
+    }
+  });
+
+  expect(routed).toBe(true);
 });

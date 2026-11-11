@@ -25,7 +25,7 @@ export function LayoutOverlaysProvider({ children }: { children: ReactNode }): J
   const incoming = !!call && call.state === 'ringing' && call.recipient_id === session.identity?.id;
   const diagnosticsAvailable =
     debug &&
-    presentation.callControls === 'application' &&
+    presentation.loginNavigation === 'router' &&
     session.status === 'authenticated' &&
     !incoming;
 

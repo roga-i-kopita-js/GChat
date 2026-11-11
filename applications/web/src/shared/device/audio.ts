@@ -68,9 +68,7 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
       !embedded &&
       typeof this.client.setAudioOutput === 'function' &&
       typeof HTMLMediaElement !== 'undefined' &&
-      typeof HTMLMediaElement.prototype.setSinkId === 'function' &&
-      typeof AudioContext !== 'undefined' &&
-      typeof Reflect.get(AudioContext.prototype, 'setSinkId') === 'function';
+      typeof HTMLMediaElement.prototype.setSinkId === 'function';
 
     return {
       pick: embedded || (select && !!navigator.mediaDevices && canPick(navigator.mediaDevices)),

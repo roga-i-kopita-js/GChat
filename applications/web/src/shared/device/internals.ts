@@ -11,8 +11,6 @@ import type { DeviceObserver } from './observer';
 export interface PresentationState {
   revision: number;
   loginNavigation: 'router' | 'host';
-  callControls: 'application' | 'host';
-  incomingSurface: 'application' | 'host';
   callingAvailable: boolean;
   audioOutput: { pick: boolean; select: boolean };
   supportedEnvironment: boolean;

@@ -27,6 +27,9 @@ export class DeviceCalls implements CallsService {
   private acting = false;
   private commandFailure: DeviceError | null = null;
   private off: (() => void) | null = null;
+  private nativeEpoch = -1;
+  private nativeCallId: string | undefined;
+  private actionToken: symbol | null = null;
 
   constructor(
     readonly client: CallsClient,
@@ -45,13 +48,31 @@ export class DeviceCalls implements CallsService {
 
   sync = (): void => {
     const state = this.client.getSnapshot();
+    const native = nativeRuntime.getSnapshot();
+
+    if (
+      embedded &&
+      (this.nativeEpoch !== native.epoch || this.nativeCallId !== state.call?.call_id)
+    ) {
+      this.nativeEpoch = native.epoch;
+      this.nativeCallId = state.call?.call_id;
+      this.actionToken = null;
+      this.acting = false;
+      this.commandFailure = null;
+    }
+
     let controlValue: CallsState['control'];
 
     if (!state.owner) {
       controlValue = 'otherWindow';
-    } else if (embedded && nativeRuntime.getSnapshot().nativeCalls !== true) {
+    } else if (embedded && (native.nativeCalls !== true || !native.webCallControls)) {
       controlValue = 'unavailable';
-    } else if (state.call && state.call.state !== 'ended' && !state.selected) {
+    } else if (
+      state.call &&
+      state.call.state !== 'ended' &&
+      state.call.state !== 'ringing' &&
+      !state.selected
+    ) {
       controlValue = 'unavailable';
     } else {
       controlValue = 'available';
@@ -97,6 +118,10 @@ export class DeviceCalls implements CallsService {
       throw new DeviceError('UNSUPPORTED');
     }
 
+    if (embedded && !nativeRuntime.getSnapshot().webCallControls) {
+      throw new DeviceError('UNSUPPORTED_VERSION');
+    }
+
     if (!state.owner || state.busy || this.acting) {
       throw new DeviceError('BUSY');
     }
@@ -112,11 +137,20 @@ export class DeviceCalls implements CallsService {
     options?: CallOptions,
   ): Promise<void> {
     let acquired = false;
+    const token = Symbol();
+    const signal = this.signal();
+    const epoch = nativeRuntime.getSnapshot().epoch;
+    const callId = this.client.getSnapshot().call?.call_id;
+    const current = (): boolean =>
+      !signal.aborted &&
+      (!embedded || epoch === nativeRuntime.getSnapshot().epoch) &&
+      (operation === 'dial' || callId === this.client.getSnapshot().call?.call_id);
 
     try {
       this.guard(options);
       this.acting = true;
       acquired = true;
+      this.actionToken = token;
       this.sync();
       this.commandFailure = null;
       this.client.clearError();
@@ -128,12 +162,15 @@ export class DeviceCalls implements CallsService {
     } catch (cause) {
       const error = deviceFailure(cause, 'calls', operation);
 
-      this.commandFailure = error;
-      this.source.set({ ...this.source.getSnapshot(), error });
+      if (current()) {
+        this.commandFailure = error;
+        this.source.set({ ...this.source.getSnapshot(), error });
+      }
 
       throw error;
     } finally {
-      if (acquired) {
+      if (acquired && this.actionToken === token) {
+        this.actionToken = null;
         this.acting = false;
         this.sync();
       }
@@ -177,10 +214,6 @@ export class DeviceCalls implements CallsService {
     return this.action(
       'accept',
       async (): Promise<void> => {
-        if (embedded) {
-          throw new DeviceError('UNSUPPORTED');
-        }
-
         const call = this.client.getSnapshot().call;
 
         if (!call || call.state !== 'ringing' || call.recipient_id !== this.identityId()) {
@@ -197,10 +230,6 @@ export class DeviceCalls implements CallsService {
     return this.action(
       'end',
       async (): Promise<void> => {
-        if (embedded) {
-          throw new DeviceError('UNSUPPORTED');
-        }
-
         const call = this.client.getSnapshot().call;
 
         if (!call || call.state === 'ended') {
@@ -217,10 +246,6 @@ export class DeviceCalls implements CallsService {
     return this.action(
       'setMuted',
       async (): Promise<void> => {
-        if (embedded) {
-          throw new DeviceError('UNSUPPORTED');
-        }
-
         const state = this.client.getSnapshot();
 
         if (!state.call || state.call.state === 'ended' || !state.selected) {
@@ -228,7 +253,11 @@ export class DeviceCalls implements CallsService {
         }
 
         if (state.muted !== muted) {
-          this.client.mute();
+          if (this.client.setMuted) {
+            await this.client.setMuted(muted);
+          } else {
+            this.client.mute();
+          }
         }
       },
       options,

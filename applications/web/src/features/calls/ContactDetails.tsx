@@ -2,7 +2,7 @@ import { MessageCircle, Mic, Phone } from 'lucide-react';
 import type { JSX } from 'react';
 import { useState } from 'react';
 
-import { useDevice, useDevicePresentation } from '../../shared/device/react';
+import { useDevice } from '../../shared/device/react';
 import { Avatar, Modal } from '../../shared/ui';
 import { useCalls } from './CallsProvider';
 
@@ -16,7 +16,6 @@ export function ContactDetails({
   canWrite: boolean;
 }): JSX.Element | null {
   const device = useDevice();
-  const presentation = useDevicePresentation();
   const { person, enabled } = useCalls();
   const [confirm, setConfirm] = useState(false);
 
@@ -52,11 +51,7 @@ export function ContactDetails({
             <Avatar name={person.display_name} />
             <strong>{person.display_name}</strong>
           </div>
-          <p>
-            {presentation.callControls === 'host'
-              ? 'Звонок начнётся в приложении.'
-              : 'Браузер запросит разрешение на микрофон.'}
-          </p>
+          <p>Для звонка понадобится доступ к микрофону.</p>
           <div className="modal-actions">
             <button className="secondary" onClick={(): void => setConfirm(false)}>
               Отмена

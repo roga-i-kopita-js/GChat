@@ -6,7 +6,8 @@ import { pwaSupported } from '../pwa';
 import { browserTransport } from '../runtime/transport';
 import { identity, logout, readSession } from '../session/session';
 import { pushConfig, syncWebPush } from '../web-push';
-import { audioError, AudioPreparation, canRouteContext } from './audio-preparation';
+import { audioError, AudioPreparation } from './audio-preparation';
+import { ContextOutput } from './context-output';
 import type { Call } from './protocol';
 import {
   callResponse,
@@ -98,13 +99,7 @@ export class GChatClient {
         await this.audio.setSinkId(id);
       }
 
-      if (this.audioContext) {
-        if (!canRouteContext(this.audioContext)) {
-          throw new DeviceError('UNSUPPORTED');
-        }
-
-        await this.audioContext.setSinkId(id);
-      }
+      await this.contextOutput?.select(id);
 
       this.outputId = id;
       this.outputBlocked = false;
@@ -144,6 +139,7 @@ export class GChatClient {
   private iceRefresh?: ReturnType<typeof setTimeout>;
   private ringtone?: ReturnType<typeof setInterval>;
   private audioContext?: AudioContext;
+  private contextOutput?: ContextOutput;
   private stream?: MediaStream;
   private mediaEpoch = 0;
   private pc?: RTCPeerConnection;
@@ -243,8 +239,13 @@ export class GChatClient {
         this.stopConnection();
 
         if (sessionChanged || !this.sid) {
+          this.releaseRingtone();
           this.set({ ...initial });
         }
+      }
+
+      if (this.state.owner && !connection.owner) {
+        this.releaseRingtone();
       }
 
       this.set({ owner: connection.owner, connection: connection.status });
@@ -286,6 +287,7 @@ export class GChatClient {
       events();
       protect();
       this.stopConnection();
+      this.releaseRingtone();
       this.channel?.close();
     };
   }
@@ -999,13 +1001,14 @@ export class GChatClient {
   async enableRingtone(): Promise<void> {
     try {
       this.audioContext ??= new AudioContext();
+      this.contextOutput ??= new ContextOutput(this.audioContext);
       this.audioContext.onstatechange = (): void => {
         this.set({ audible: this.audioContext?.state === 'running' });
       };
-      await this.audioContext.resume();
+      await this.contextOutput.start();
 
-      if (this.outputId && canRouteContext(this.audioContext)) {
-        await this.audioContext.setSinkId(this.outputId);
+      if (this.outputId) {
+        await this.contextOutput.select(this.outputId);
       }
 
       this.set({ audible: this.audioContext.state === 'running' });
@@ -1036,7 +1039,7 @@ export class GChatClient {
       gain.gain.setValueAtTime(0.03, context.currentTime + 0.7);
       gain.gain.linearRampToValueAtTime(0, context.currentTime + 0.9);
       oscillator.connect(gain);
-      gain.connect(context.destination);
+      gain.connect(this.contextOutput?.destination ?? context.destination);
       oscillator.start();
       oscillator.stop(context.currentTime + 1);
       oscillator.onended = (): void => {
@@ -1239,6 +1242,23 @@ export class GChatClient {
       audioBlocked: false,
       stats: { sent: 0, received: 0, relay: false },
     });
+  }
+
+  private releaseRingtone(): void {
+    const context = this.audioContext;
+
+    this.audioContext = undefined;
+    this.contextOutput?.dispose();
+    this.contextOutput = undefined;
+
+    if (context) {
+      context.onstatechange = null;
+      void (async (): Promise<void> => {
+        try {
+          await context.close();
+        } catch {}
+      })();
+    }
   }
 
   private stopConnection(): void {

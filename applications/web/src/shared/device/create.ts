@@ -260,8 +260,6 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
   const presentation = new StateSource<PresentationState>({
     revision: 0,
     loginNavigation: embedded ? 'host' : 'router',
-    callControls: embedded ? 'host' : 'application',
-    incomingSurface: embedded ? 'host' : 'application',
     callingAvailable: !embedded,
     audioOutput: audio.getOutputSupport(),
     supportedEnvironment:
@@ -426,7 +424,7 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
         if (embedded) {
           presentation.set({
             ...presentation.getSnapshot(),
-            callingAvailable: native.nativeCalls === true,
+            callingAvailable: native.nativeCalls === true && native.webCallControls,
           });
 
           if (host || native.phase !== 'ready') {

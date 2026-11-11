@@ -13,7 +13,6 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
     private var capacitorDelegate: WebViewDelegationHandler?
     private var plugin: GChatPlugin?
     private var retryView: UIView?
-    private lazy var callControls = NativeCallControls(calls: calls, presenter: self)
 
     init(server: ServerOrigin, sessions: SessionManager, transport: SharedWebSocket, calls: NativeCallsCoordinator) {
         self.server = server
@@ -22,10 +21,6 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
         self.calls = calls
         super.init(nibName: nil, bundle: nil)
         calls.onChange = { [weak self] in self?.callsChanged() }
-        calls.onError = { [weak self] message in
-            guard let self, self.isViewLoaded else { return }
-            self.callControls.showError(message)
-        }
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(server:sessions:)") }
@@ -67,7 +62,6 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
     func callsChanged() {
         guard isViewLoaded else { return }
         plugin?.publishCalls()
-        callControls.update()
     }
 
     override func viewDidAppear(_ animated: Bool) {

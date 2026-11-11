@@ -11,6 +11,7 @@ import { useCalls } from '../calls/CallsProvider';
 import { useAuth } from './AuthProvider';
 import { loginDestination } from './navigation';
 import { loginFormSchema } from './request-schemas';
+import { SessionPending } from './SessionPending';
 
 export function LoginPage(): JSX.Element {
   const core = useDevice();
@@ -44,6 +45,10 @@ export function LoginPage(): JSX.Element {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (session && presentation.loginNavigation === 'host') {
+    return <SessionPending />;
   }
 
   if (session && presentation.loginNavigation === 'router') {

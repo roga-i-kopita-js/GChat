@@ -24,7 +24,6 @@
 		A20000000000000000000007 /* NativeAudioRoutePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007; };
 		A20000000000000000000008 /* NativeCallPictureInPicture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008; };
 		A20000000000000000000010 /* NativeCallsCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010; };
-		A20000000000000000000011 /* NativeCallControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011; };
 		A20000000000000000000012 /* CallSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012; };
 		A20000000000000000000013 /* WebRTCMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013; };
 		A20000000000000000000014 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014; };
@@ -55,7 +54,6 @@
 		A10000000000000000000007 /* NativeAudioRoutePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAudioRoutePicker.swift; sourceTree = "<group>"; };
 		A10000000000000000000008 /* NativeCallPictureInPicture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallPictureInPicture.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* NativeCallsCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeCallsCoordinator.swift; path = "NativeCallsCoordinator.swift"; sourceTree = "<group>"; };
-		A10000000000000000000011 /* NativeCallControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeCallControls.swift; path = "NativeCallControls.swift"; sourceTree = "<group>"; };
 		A10000000000000000000012 /* CallSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CallSystem.swift; path = "../../CallHarness/CallSystem.swift"; sourceTree = "<group>"; };
 		A10000000000000000000013 /* WebRTCMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WebRTCMedia.swift; path = "../../CallHarness/WebRTCMedia.swift"; sourceTree = "<group>"; };
 		A10000000000000000000014 /* WebRTC.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = WebRTC.xcframework; path = "../../WebRTC/Artifacts/WebRTC.xcframework"; sourceTree = "<group>"; };
@@ -102,7 +100,6 @@
 				A10000000000000000000014 /* WebRTC.xcframework */,
 				A10000000000000000000013 /* WebRTCMedia.swift */,
 				A10000000000000000000012 /* CallSystem.swift */,
-				A10000000000000000000011 /* NativeCallControls.swift */,
 				A10000000000000000000010 /* NativeCallsCoordinator.swift */,
 				A10000000000000000000007 /* NativeAudioRoutePicker.swift */,
 				A10000000000000000000006 /* NativeMediaController.swift */,
@@ -208,7 +205,6 @@
 				A20000000000000000000008 /* NativeCallPictureInPicture.swift in Sources */,
 				A20000000000000000000013 /* WebRTCMedia.swift in Sources */,
 				A20000000000000000000012 /* CallSystem.swift in Sources */,
-				A20000000000000000000011 /* NativeCallControls.swift in Sources */,
 				A20000000000000000000010 /* NativeCallsCoordinator.swift in Sources */,
 				A20000000000000000000007 /* NativeAudioRoutePicker.swift in Sources */,
 				A20000000000000000000006 /* NativeMediaController.swift in Sources */,
@@ -361,6 +357,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gchat.app;
 				GCHAT_DISPLAY_NAME = GChat;
+				GCHAT_TEST_BUILD = NO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				GCHAT_APNS_ENVIRONMENT = development;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -386,6 +383,7 @@
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gchat.app;
 				GCHAT_DISPLAY_NAME = GChat;
+				GCHAT_TEST_BUILD = NO;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				GCHAT_APNS_ENVIRONMENT = production;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

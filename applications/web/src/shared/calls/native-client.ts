@@ -28,6 +28,7 @@ export type CallsClient = Pick<
   audioPreparation?: GChatClient['audioPreparation'];
   setAudioOutput?: GChatClient['setAudioOutput'];
   testSound?: GChatClient['testSound'];
+  setMuted?(muted: boolean): Promise<void>;
 };
 
 /** Contains no browser signaling, audio, locks, device registration or session storage. */
@@ -36,7 +37,7 @@ export class NativeCallsClient implements CallsClient {
     owner: true,
     connection: 'offline',
     call: null,
-    selected: true,
+    selected: false,
     muted: false,
     busy: false,
     error: null,
@@ -48,6 +49,7 @@ export class NativeCallsClient implements CallsClient {
   };
   private listeners = new Set<() => void>();
   private lastFailure: unknown = null;
+  private controlToken: symbol | null = null;
 
   getLastFailure(): unknown {
     return this.lastFailure;
@@ -76,8 +78,10 @@ export class NativeCallsClient implements CallsClient {
     const sync = (): void => {
       const snapshot = nativeRuntime.getSnapshot();
 
-      if (this.epoch !== snapshot.epoch) {
+      if (this.epoch !== snapshot.epoch || this.state.call?.call_id !== snapshot.call?.call_id) {
         this.epoch = snapshot.epoch;
+        this.controlToken = null;
+        this.lastFailure = null;
         this.set({ busy: false, error: null });
       }
 
@@ -85,6 +89,7 @@ export class NativeCallsClient implements CallsClient {
         call: snapshot.call,
         connection: snapshot.nativeCalls === false ? 'offline' : snapshot.runtime.status,
         muted: snapshot.runtime.muted,
+        selected: snapshot.runtime.selected ?? false,
       });
     };
 
@@ -96,6 +101,7 @@ export class NativeCallsClient implements CallsClient {
   async dial(peerId: string): Promise<void> {
     if (
       !embedded ||
+      !nativeRuntime.getSnapshot().webCallControls ||
       this.state.busy ||
       this.state.connection !== 'online' ||
       (this.state.call && this.state.call.state !== 'ended')
@@ -104,6 +110,10 @@ export class NativeCallsClient implements CallsClient {
     }
 
     const signal = nativeRuntime.getSignal();
+    const token = Symbol();
+
+    this.controlToken = token;
+    const current = (): boolean => !signal.aborted && this.controlToken === token;
 
     this.set({ busy: true, error: null });
 
@@ -115,13 +125,13 @@ export class NativeCallsClient implements CallsClient {
       // Acknowledgement is not a call DTO. Unknown results are never retried.
       await invoke((): Promise<void> => nativePlugin.placeCall({ peerId }));
     } catch (cause) {
-      this.lastFailure = cause;
-
-      if (!signal.aborted) {
+      if (current()) {
+        this.lastFailure = cause;
         this.set({ error: errorMessage(cause, 'Не удалось начать звонок') });
       }
     } finally {
-      if (!signal.aborted) {
+      if (current()) {
+        this.controlToken = null;
         this.set({ busy: false });
       }
     }
@@ -132,6 +142,7 @@ export class NativeCallsClient implements CallsClient {
   }
 
   clearError(): void {
+    this.lastFailure = null;
     this.set({ error: null });
   }
 
@@ -147,9 +158,63 @@ export class NativeCallsClient implements CallsClient {
 
   async playAudio(): Promise<void> {}
 
-  async accept(): Promise<void> {}
+  private async control(
+    operation: (options: { cycleId: string; callId: string }) => Promise<void>,
+  ): Promise<void> {
+    const snapshot = nativeRuntime.getSnapshot();
+    const call = this.state.call;
 
-  async end(): Promise<void> {}
+    if (!snapshot.webCallControls) {
+      throw bridgeError({ code: 'UNSUPPORTED_VERSION' });
+    }
+
+    if (this.state.busy) {
+      throw bridgeError({ code: 'BUSY' });
+    }
+
+    if (!call || call.state === 'ended' || snapshot.phase !== 'ready') {
+      throw bridgeError({ code: 'INVALID_STATE' });
+    }
+
+    const signal = nativeRuntime.getSignal();
+    const token = Symbol();
+
+    this.controlToken = token;
+    const current = (): boolean =>
+      !signal.aborted && this.controlToken === token && this.state.call?.call_id === call.call_id;
+
+    this.set({ busy: true, error: null });
+
+    try {
+      await invoke(() => operation({ cycleId: snapshot.cycleId, callId: call.call_id }));
+    } catch (cause) {
+      if (current() && this.state.call?.state !== 'ended') {
+        this.lastFailure = cause;
+        this.set({ error: errorMessage(cause, 'Не удалось выполнить действие звонка') });
+
+        throw cause;
+      }
+    } finally {
+      if (current()) {
+        this.controlToken = null;
+        this.set({ busy: false });
+      }
+    }
+  }
+
+  async accept(): Promise<void> {
+    await this.control((options) => nativePlugin.acceptCall(options));
+  }
+
+  async end(): Promise<void> {
+    await this.control((options) => nativePlugin.endCall(options));
+  }
+
+  async setMuted(muted: boolean): Promise<void> {
+    if (this.state.muted !== muted) {
+      await this.control((options) => nativePlugin.setCallMuted({ ...options, muted }));
+    }
+  }
 
   mute(): void {}
 }

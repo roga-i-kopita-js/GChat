@@ -1,7 +1,7 @@
 import type { JSX } from 'react';
 import { lazy } from 'react';
 
-import { useDevice, useDevicePresentation } from '../../shared/device/react';
+import { useDevice } from '../../shared/device/react';
 import { LazyPanel } from '../../shared/ui/LazyPanel';
 import { useCalls } from './CallsProvider';
 
@@ -16,7 +16,6 @@ const Card = lazy(async (): Promise<{ default: typeof import('./CallCard').CallC
 /** Keep essential incoming/active call controls usable even if the UI chunk fails. */
 function CallCardFallback({ failed = false }: { failed?: boolean }): JSX.Element | null {
   const device = useDevice();
-  const presentation = useDevicePresentation();
   const { call, incoming, enabled, state, status } = useCalls();
 
   if (!call) {
@@ -40,7 +39,7 @@ function CallCardFallback({ failed = false }: { failed?: boolean }): JSX.Element
       </p>
       <p>{status}</p>
       {state.error && <p role="alert">{state.error}</p>}
-      {presentation.callControls === 'application' && call.state !== 'ended' && (
+      {call.state !== 'ended' && (
         <div className="call-controls">
           {incoming && (
             <button
@@ -74,7 +73,6 @@ function CallCardFallback({ failed = false }: { failed?: boolean }): JSX.Element
           )}
         </div>
       )}
-      {presentation.callControls === 'host' && <p>Управление звонком доступно в приложении.</p>}
     </div>
   );
 }

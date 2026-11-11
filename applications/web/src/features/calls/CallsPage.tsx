@@ -14,7 +14,7 @@ import { useLoaderData, useNavigate, useRevalidator, useSearchParams } from 'rea
 
 import type { Member } from '../../shared/calls/protocol';
 import { deviceErrorMessage } from '../../shared/device/messages';
-import { useDevice, useDevicePresentation } from '../../shared/device/react';
+import { useDevice } from '../../shared/device/react';
 import { useBootstrap } from '../../shared/dialogs/context';
 import { dialogError } from '../../shared/dialogs/runtime';
 import { Button, Select, Skeleton } from '../../shared/ui';
@@ -37,7 +37,6 @@ const ContactDetails = lazy(
 
 export function CallsPage(): JSX.Element {
   const device = useDevice();
-  const presentation = useDevicePresentation();
   const { user } = useAuth();
   const { runtime: dialogs } = useBootstrap();
   const navigate = useNavigate();
@@ -226,7 +225,7 @@ export function CallsPage(): JSX.Element {
   let detailPanel;
 
   if (call) {
-    detailPanel = (presentation.callControls === 'host' || !incoming) && <CallCardSlot />;
+    detailPanel = !incoming && <CallCardSlot />;
   } else if (person) {
     detailPanel = (
       <LazyPanel

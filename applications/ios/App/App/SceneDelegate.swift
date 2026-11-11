@@ -89,9 +89,18 @@ final class ShellViewController: UIViewController {
 
     private func open(_ server: ServerOrigin) {
         UserDefaults.standard.set(server.url.absoluteString, forKey: serverKey)
+        let bundle = Bundle.main.bundleIdentifier!
+        var authService = bundle + ".auth"
+        #if DEBUG
+        if Bundle.main.object(forInfoDictionaryKey: "GChatTestBuild") as? String == "YES",
+           bundle == "com.gchat.bridgeharness" || bundle.hasPrefix("com.gchat.bridgeharness.dev.") {
+            // Keychain survives uninstall: a test install must not restore old harness sessions.
+            authService = bundle + ".test.auth"
+        }
+        #endif
         let manager = SessionManager(
             server: server,
-            storage: KeychainSessionStorage(service: Bundle.main.bundleIdentifier! + ".auth"),
+            storage: KeychainSessionStorage(service: authService),
             transport: HTTPAuthTransport(),
             onClear: { session in
                 guard let account = session.accountID else { return }

@@ -31,10 +31,10 @@ export function CallNotices(): JSX.Element {
         </button>
       </div>
     );
-  } else if (presentation.callControls === 'host' && !presentation.callingAvailable) {
+  } else if (!presentation.callingAvailable) {
     callNotice = (
       <div role="status" className="tab-banner">
-        Звонки в этой сборке приложения пока недоступны.
+        Управление звонками недоступно. Обновите приложение для продолжения.
       </div>
     );
   } else if (state.connection !== 'online') {

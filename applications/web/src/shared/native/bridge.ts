@@ -37,6 +37,9 @@ interface NativePlugin {
   logout(): Promise<void>;
   getAccessToken(options: { forceRefresh: boolean }): Promise<unknown>;
   placeCall(options: { peerId: string }): Promise<void>;
+  acceptCall(options: { cycleId: string; callId: string }): Promise<void>;
+  endCall(options: { cycleId: string; callId: string }): Promise<void>;
+  setCallMuted(options: { cycleId: string; callId: string; muted: boolean }): Promise<void>;
   sendWsMessage(options: { cycleId: string; message: WsRequest }): Promise<void>;
   addListener(name: string, listener: (event: unknown) => void): Promise<PluginListenerHandle>;
 }
@@ -75,6 +78,10 @@ const messages: Record<string, string> = {
   NETWORK_ERROR: 'Проверьте соединение и повторите попытку',
   RATE_LIMITED: 'Слишком много запросов. Попробуйте позже',
   FORBIDDEN: 'Действие недоступно',
+  INVALID_STATE: 'Действие недоступно в текущем состоянии звонка',
+  BUSY: 'Дождитесь завершения действия',
+  CANCELLED: 'Действие отменено',
+  PERMISSION_DENIED: 'Разрешите доступ к микрофону в настройках приложения',
 };
 
 export function bridgeError(cause: unknown): ClientError {

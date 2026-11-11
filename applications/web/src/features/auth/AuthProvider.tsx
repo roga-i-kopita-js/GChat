@@ -5,6 +5,7 @@ import { useRevalidator } from 'react-router';
 import type { ApplicationDevice } from '../../app/device';
 import { SessionEvent } from '../../shared/device';
 import { useDeviceState } from '../../shared/device/react';
+import { SessionPending } from './SessionPending';
 
 type AuthState = {
   session: boolean;
@@ -49,6 +50,10 @@ export function AuthProvider({
           role: state.identity.role,
         }
       : null;
+
+  if (state.status === 'starting' || state.status === 'error') {
+    return <SessionPending />;
+  }
 
   return <AuthContext value={{ session: !!user, user }}>{children}</AuthContext>;
 }

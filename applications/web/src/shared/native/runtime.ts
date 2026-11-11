@@ -19,6 +19,7 @@ export const nativeCallSchema = callSchema.strict();
 const runtimeSchema = z.strictObject({
   status: z.enum(['offline', 'connecting', 'online']),
   muted: z.boolean(),
+  selected: z.boolean().optional(),
 });
 const routeSchema = z.strictObject({
   cycleId: z.string(),
@@ -38,6 +39,7 @@ const capabilitiesSchema = z.strictObject({
   httpVersion: z.literal(1),
   navigationVersion: z.literal(1),
   nativeCalls: z.boolean(),
+  webCallControls: z.literal(true).optional(),
   nativeWebSocket: z.boolean().optional(),
   mediaVersion: z.literal(1).optional(),
   dialogStorageVersion: z.literal(1).optional(),
@@ -50,6 +52,7 @@ export interface NativeState {
   dialogNotificationsVersion?: 1;
   dialogIntent?: { intentId: string; dialogId: string };
   nativeCalls: boolean | null;
+  webCallControls: boolean;
   nativeWebSocket: boolean;
   wsStatus: 'offline' | 'connecting' | 'online';
   cycleId: string;
@@ -65,6 +68,7 @@ export interface NativeState {
 export class NativeRuntime {
   private state: NativeState = {
     nativeCalls: null,
+    webCallControls: false,
     nativeWebSocket: false,
     wsStatus: 'offline',
     cycleId: '',
@@ -386,6 +390,7 @@ export class NativeRuntime {
       cycleId: crypto.randomUUID(),
       error: null,
       nativeCalls: null,
+      webCallControls: false,
       nativeWebSocket: false,
     });
     this.deadline = setTimeout((): void => {
@@ -421,6 +426,7 @@ export class NativeRuntime {
 
       this.set({
         nativeCalls: parsedCapabilities.data.nativeCalls,
+        webCallControls: parsedCapabilities.data.webCallControls === true,
         mediaVersion: parsedCapabilities.data.mediaVersion,
         dialogStorageVersion: parsedCapabilities.data.dialogStorageVersion,
         dialogNotificationsVersion: parsedCapabilities.data.dialogNotificationsVersion,

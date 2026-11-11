@@ -51,7 +51,7 @@ export function LayoutProvider({ children }: { children: ReactNode }): JSX.Eleme
         navigation,
         showNavigation: handle.layout.navigation === 'visible',
         contained: handle.layout.scroll === 'contained',
-        native: presentation.callControls === 'host',
+        native: presentation.loginNavigation === 'host',
         callNotices: section === 'calls' || section === 'admin',
       }}
     >

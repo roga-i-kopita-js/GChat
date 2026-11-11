@@ -64,7 +64,8 @@ import UIKit
         return controller.selected || controller.state.phase == .ringing
     }
     var runtime: [String: Any] {
-        ["status": controller == nil ? "offline" : transport.status, "muted": muted]
+        ["status": controller == nil ? "offline" : transport.status, "muted": muted,
+         "selected": hasLocalCall && !incoming]
     }
     var callObject: Any { call?.bridgeObject as Any? ?? NSNull() }
 
@@ -96,6 +97,8 @@ import UIKit
 
     private func clear() {
         generation += 1
+        webControl = nil
+        webControlAuthorized = nil
         let previous = controller
         controller = nil; sessionID = nil; account = nil; sequenceStore = nil
         previous?.onChange = nil; previous?.onError = nil
@@ -140,20 +143,55 @@ import UIKit
         guard generation == revision, self.controller === controller, stillAuthorized() else { throw NativeError.unavailable }
         try await controller.placeCall(peerID: peer)
     }
-    func answer() async throws { try await system.answer() }
-    func end() async throws { try await system.end() }
-    func toggleMute() async throws { try await system.mute(!muted) }
+    enum WebControl { case answer, end, mute(Bool) }
+    private var webControl: UUID?
+    private var webControlAuthorized: (@MainActor () -> Bool)?
+
+    func control(_ operation: WebControl, callID: UUID,
+                 stillAuthorized: @escaping @MainActor () -> Bool) async throws {
+        guard webControl == nil || webControlAuthorized?() == false else { throw DeviceCommandError("BUSY") }
+        guard let controller, call?.call_id == callID, hasLocalCall else { throw DeviceCommandError("INVALID_STATE") }
+        let revision = generation
+        let requestID = UUID()
+        webControl = requestID
+        defer { if webControl == requestID { webControl = nil; webControlAuthorized = nil } }
+        let authorized: @MainActor () -> Bool = { [weak self] in
+            guard let self else { return false }
+            return self.generation == revision && self.controller === controller &&
+                self.call?.call_id == callID && self.hasLocalCall && stillAuthorized()
+        }
+        webControlAuthorized = authorized
+        guard authorized() else { throw DeviceCommandError("CANCELLED") }
+        do {
+            switch operation {
+            case .answer:
+                guard incoming else { throw DeviceCommandError("INVALID_STATE") }
+                try await requireMicrophone()
+                guard authorized(), incoming else { throw DeviceCommandError("CANCELLED") }
+                try await system.answer(authorized: authorized)
+            case .end:
+                try await system.end(authorized: authorized)
+            case .mute(let value):
+                guard controller.selected, phase == .active || phase == .connecting else { throw DeviceCommandError("INVALID_STATE") }
+                if muted != value { try await system.mute(value, authorized: authorized) }
+            }
+        } catch {
+            if generation == revision, self.controller === controller { controller.refreshCurrent() }
+            throw error
+        }
+    }
     func foreground() { controller?.refreshCurrent(); changed() }
     func prepareLogout() async throws {
         if hasLocalCall { try await controller?.endCall() }
     }
     private func requireMicrophone() async throws {
+        if AVAudioSession.sharedInstance().recordPermission == .granted { return }
         let granted = await withCheckedContinuation { continuation in
             AVAudioSession.sharedInstance().requestRecordPermission { continuation.resume(returning: $0) }
         }
         guard granted else {
             onError?("Разрешите доступ к микрофону для GChat в настройках iPhone.")
-            throw NativeError.unavailable
+            throw DeviceCommandError("PERMISSION_DENIED")
         }
     }
 }

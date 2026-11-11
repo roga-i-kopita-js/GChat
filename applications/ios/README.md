@@ -13,7 +13,7 @@
 
 Добавлен [командный bridge устройства](../../docs/web/device-bridge.md): разрешения микрофона/камеры/геопозиции, краткие аудиотесты, чтение push-настроек, системные файловые диалоги и файловые команды NativeCore с сохранением bookmarks. Общий [модуль настроек Web](../../docs/web/settings.md) использует один `execute`, а native восстанавливает его маршруты после foreground. Разрешения и предоставленные файловые доступы не привязаны к аккаунту или серверу; незавершённые операции отменяются при смене сессии. Системные сценарии этого расширения на физическом устройстве ещё требуют приёмки.
 
-Подключена [основная звонковая композиция](../../docs/ios/native-app.md): оболочка возвращает `nativeCalls: true`, использует общие с Audio Test libwebrtc/CallKit-адаптеры и нативный DirectCallController поверх единственного WSS. Web показывает реальные безопасные снимки и передаёт `placeCall`; ответ, завершение и mute доступны в нативной панели, которую можно свернуть для работы с Web. Движок принадлежит оболочке и не пересоздаётся при смене Web cycle. PushKit и полный Gate 1/2 ещё не приняты; локальная интеграция не означает готовности публичного релиза.
+Подключена [основная звонковая композиция](../../docs/ios/native-app.md): оболочка возвращает `nativeCalls: true`, использует общие с Audio Test libwebrtc/CallKit-адаптеры и нативный DirectCallController поверх единственного WSS. PWA и iOS показывают [один Web-экран звонка](../../docs/design/call-screen.md); ответ, отклонение, отмена, завершение и mute передаются нативному владельцу через bridge. Отдельная нативная панель удалена. Движок принадлежит оболочке и не пересоздаётся при смене Web cycle. PushKit и полный Gate 1/2 ещё не приняты; локальная интеграция не означает готовности публичного релиза.
 
 Реализовано [расширение bridge общим нативным WebSocket](../../docs/web/README.md#общий-websocket-через-native): NativeCore владеет WSS, авторизацией, регистрацией устройства, переподключением и применением политики из БД. `wsState` отделён от runtime звонка. UUID устройства сохраняется отдельно для выбранного сервера и native-сессии; чужая учётная запись не использует прежнюю привязку. Соединение восстанавливается из сохранённой сессии независимо от загрузки Web и переживает навигацию/перезапуск WebView. Фоновая работа требует отдельного контура звонков и проверки iOS. Мотивация — в [D008](../../docs/architecture/decisions/D008-capacitor-bridge.md#общий-нативный-wss-и-доступ-web-через-bridge).
 
@@ -89,6 +89,32 @@ xcrun devicectl device process launch \
 Автоматическая подпись обращается в Apple Developer и при необходимости регистрирует устройство и создаёт профиль в выбранном Team. Эти параметры относятся только к данной сборке и не сохраняют личный Team/UDID в проекте. Каталог DerivedData не переносите между сборками: кеш SwiftPM может содержать абсолютные пути к XCFramework. При смене каталога используйте новый, чтобы Xcode заново разрешил зависимости. Зависимости закреплены в [SPM lock-файле](App/CapApp-SPM/Package.resolved) и lock-файле Xcode workspace; при обновлении Capacitor сохраняйте согласованность их pins с `Package.swift`.
 
 Если приложение установлено, но запуск отклонён из-за недоверенного профиля, на iPhone откройте «Настройки → Основные → VPN и управление устройством» и подтвердите доверие к профилю своего разработчика. После подтверждения повторите команду запуска. Доверие к разработчику приложения и доверие к HTTPS-сертификату стенда настраиваются независимо.
+
+## Отдельное приложение «GChat Тест»
+
+[Контракт тестовой установки](../../docs/ios/native-app.md#отдельная-тестовая-установка) сохраняет основной GChat и его сессию. Используйте отдельный bundle identifier `com.gchat.bridgeharness.dev.<суффикс команды>` из существующего тестового provisioning-профиля. Задайте его как GCHAT_IOS_TEST_BUNDLE_ID; остальные параметры подписи — из раздела установки выше.
+
+```sh
+xcodebuild \
+  -project applications/ios/App/App.xcodeproj \
+  -scheme GChat -configuration Debug \
+  -destination "id=${GCHAT_IOS_DEVICE_ID:?Set iPhone UDID}" \
+  -derivedDataPath applications/ios/DerivedData \
+  DEVELOPMENT_TEAM="${GCHAT_IOS_TEAM_ID:?Set Signing Team}" \
+  PRODUCT_BUNDLE_IDENTIFIER="${GCHAT_IOS_TEST_BUNDLE_ID:?Set separate test bundle identifier}" \
+  GCHAT_DISPLAY_NAME='GChat Тест' GCHAT_TEST_BUILD=YES \
+  CODE_SIGN_ENTITLEMENTS=../BridgeHarness/BridgeHarness.entitlements build
+
+xcrun devicectl device install app \
+  --device "$GCHAT_IOS_DEVICE_ID" \
+  applications/ios/DerivedData/Build/Products/Debug-iphoneos/App.app
+
+xcrun devicectl device process launch \
+  --device "$GCHAT_IOS_DEVICE_ID" "$GCHAT_IOS_TEST_BUNDLE_ID" \
+  -- --bridge-server https://192.168.178.22:8449
+```
+
+Сборка использует полный интерфейс основного приложения. Зарезервированный тестовый identifier и пустые APNs entitlements позволяют использовать существующий профиль стенда; установку production-профиля и проверку push это не заменяет. Сертификат HTTPS должен быть доверенным на iPhone. Web публикуется отдельно под `/apps/client` и `/apps/static`.
 
 ## HTTPS-стенд для Simulator и iPhone
 

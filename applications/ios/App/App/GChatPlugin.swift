@@ -1,5 +1,6 @@
 import Capacitor
 import Foundation
+import CoreFoundation
 import GChatCore
 
 @objc(GChatPlugin)
@@ -20,6 +21,9 @@ import GChatCore
         CAPPluginMethod(name: "logout", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getAccessToken", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "placeCall", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "acceptCall", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "endCall", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setCallMuted", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "sendWsMessage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "mediaCommand", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "executeDeviceCommand", returnType: CAPPluginReturnPromise)
@@ -147,7 +151,7 @@ import GChatCore
 
     private func handleGetCapabilities(_ call: CAPPluginCall) {
         traceHarness("capabilities")
-        call.resolve(["bridgeVersion": 1, "platform": "ios", "httpVersion": 1, "navigationVersion": 1, "mediaVersion": 1, "nativeAuth": true, "nativeCalls": true, "nativeWebSocket": true, "dialogStorageVersion": 1, "dialogNotificationsVersion": 1])
+        call.resolve(["bridgeVersion": 1, "platform": "ios", "httpVersion": 1, "navigationVersion": 1, "mediaVersion": 1, "nativeAuth": true, "nativeCalls": true, "webCallControls": true, "nativeWebSocket": true, "dialogStorageVersion": 1, "dialogNotificationsVersion": 1])
     }
 
     @objc nonisolated func webReady(_ call: CAPPluginCall) {
@@ -296,6 +300,7 @@ import GChatCore
                 #if DEBUG
                 let bundle = Bundle.main.bundleIdentifier ?? ""
                 if !wasReady, self.navigation.isReady,
+                   Bundle.main.object(forInfoDictionaryKey: "GChatTestBuild") as? String != "YES",
                    (bundle == "com.gchat.bridgeharness" || bundle.hasPrefix("com.gchat.bridgeharness.dev.")),
                    let cycle = self.cycle {
                     self.runNavigationSmoke(cycle: cycle, initialRoute: initialRoute)
@@ -439,6 +444,45 @@ import GChatCore
                 try await calls.place(id, stillAuthorized: { [weak self] in
                     self?.cycle == cycle && self?.authRevision == revision && self?.httpAuthenticated == true
                 })
+                call.resolve()
+            } catch { reject(call, error) }
+        }
+    }
+
+    @objc nonisolated func acceptCall(_ call: CAPPluginCall) {
+        Task { @MainActor in self.handleCallControl(call, operation: .answer) }
+    }
+
+    @objc nonisolated func endCall(_ call: CAPPluginCall) {
+        Task { @MainActor in self.handleCallControl(call, operation: .end) }
+    }
+
+    @objc nonisolated func setCallMuted(_ call: CAPPluginCall) {
+        Task { @MainActor in
+            guard let muted = (call.options as? [String: Any])?["muted"] as? NSNumber,
+                  CFGetTypeID(muted) == CFBooleanGetTypeID() else { self.reject(call, NativeError.validation); return }
+            self.handleCallControl(call, operation: .mute(muted.boolValue))
+        }
+    }
+
+    private func handleCallControl(_ call: CAPPluginCall, operation: NativeCallsCoordinator.WebControl) {
+        let keys: Set<String>
+        if case .mute = operation { keys = ["cycleId", "callId", "muted"] }
+        else { keys = ["cycleId", "callId"] }
+        guard let cycle = call.getString("cycleId"), UUID(uuidString: cycle) != nil,
+              let callID = call.getString("callId").flatMap(UUID.init(uuidString:)),
+              let options = call.options as? [String: Any], Set(options.keys) == keys else {
+            reject(call, NativeError.validation); return
+        }
+        let revision = authRevision
+        let authorized: @MainActor () -> Bool = { [weak self] in
+            self?.cycle == cycle && self?.authRevision == revision && self?.httpAuthenticated == true
+        }
+        guard authorized() else { reject(call, DeviceCommandError("CANCELLED")); return }
+        Task { @MainActor in
+            do {
+                try await calls.control(operation, callID: callID, stillAuthorized: authorized)
+                guard authorized() else { throw DeviceCommandError("CANCELLED") }
                 call.resolve()
             } catch { reject(call, error) }
         }
@@ -592,6 +636,8 @@ import GChatCore
     private func reject(_ call: CAPPluginCall, _ error: Error) {
         if let failure = error as? AuthFailure {
             call.reject("Authentication failed", failure.code, nil, ["retryAfter": failure.retryAfter])
+        } else if let failure = error as? DeviceCommandError {
+            call.reject("Call operation failed", failure.code)
         } else {
             call.reject("Native operation failed", (error as? NativeError)?.rawValue ?? NativeError.network.rawValue)
         }

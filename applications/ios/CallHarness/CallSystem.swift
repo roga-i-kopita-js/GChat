@@ -7,6 +7,36 @@ import GChatCore
     private var controller = CXCallController()
     private var reported: UUID?
     private var active = false
+    private struct PendingControl {
+        let authorized: @MainActor () -> Bool
+        let continuation: CheckedContinuation<Void, Error>
+    }
+    private var pendingControls: [UUID: PendingControl] = [:]
+    private var completedControls = Set<UUID>()
+
+    private func authorized(_ action: CXAction) -> Bool {
+        if completedControls.contains(action.uuid) { return false }
+        return pendingControls[action.uuid]?.authorized() ?? true
+    }
+
+    private func complete(_ action: CXAction, error: Error? = nil) {
+        guard let pending = pendingControls.removeValue(forKey: action.uuid) else { return }
+        completedControls.insert(action.uuid)
+        if let error { pending.continuation.resume(throwing: error) }
+        else { pending.continuation.resume() }
+    }
+
+    /// Web waits for execution, rather than treating transaction admission as success.
+    private func request(_ action: CXAction, authorized: @escaping @MainActor () -> Bool) async throws {
+        guard authorized() else { throw NativeError.unavailable }
+        try await withCheckedThrowingContinuation { continuation in
+            pendingControls[action.uuid] = PendingControl(authorized: authorized, continuation: continuation)
+            controller.request(CXTransaction(action: action)) { [weak self] error in
+                guard let error else { return }
+                Task { @MainActor in self?.complete(action, error: error) }
+            }
+        }
+    }
     var onAnswer: (() async throws -> Void)?
     var onPrepareAudio: (() throws -> Void)?
     var onEnd: (() async throws -> Void)?
@@ -64,9 +94,11 @@ import GChatCore
         guard let call, phase != .ended, !unavailable else {
             if let reported { provider?.reportCall(with: reported, endedAt: Date(), reason: unavailable ? .answeredElsewhere : .remoteEnded) }
             reported = nil; active = false
+            completedControls.removeAll()
             return
         }
         if reported != call.call_id {
+            completedControls.removeAll()
             // A restored selected active call is represented as an outgoing system call.
             guard phase == .ringing || selected else { return }
             do { try onPrepareAudio?() }
@@ -118,37 +150,53 @@ import GChatCore
             self.controller.callObserver.setDelegate(self, queue: .main)
             self.providerState = "reset"; self.onStatus?()
             self.reported = nil; self.active = false; self.onReset?()
+            let pending = self.pendingControls.values
+            self.pendingControls.removeAll()
+            for control in pending { control.continuation.resume(throwing: NativeError.unavailable) }
         }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
         Task { @MainActor [weak self] in
-            guard let self, self.reported == action.callUUID else { action.fail(); return }
+            guard let self, self.provider === provider, self.reported == action.callUUID else { action.fail(); return }
             provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
             action.fulfill()
         }
     }
     nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
         Task { @MainActor [weak self] in
-            guard let self, self.reported == action.callUUID else { action.fail(); return }
+            guard let self else { action.fail(); return }
+            guard self.provider === provider, self.reported == action.callUUID, self.authorized(action) else {
+                action.fail(); self.complete(action, error: NativeError.unavailable); return
+            }
             do {
                 try await self.onAnswer?()
                 action.fulfill()
-            } catch { action.fail(); self.failed(error) }
+                self.complete(action)
+            } catch { action.fail(); self.complete(action, error: error); self.failed(error) }
         }
     }
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         Task { @MainActor [weak self] in
-            guard let self, self.reported == action.callUUID else { action.fail(); return }
-            do { try await self.onEnd?(); action.fulfill() }
-            catch { action.fail(); self.failed(error) }
+            guard let self else { action.fail(); return }
+            guard self.provider === provider, self.reported == action.callUUID, self.authorized(action) else {
+                action.fail(); self.complete(action, error: NativeError.unavailable); return
+            }
+            do { try await self.onEnd?(); action.fulfill(); self.complete(action) }
+            catch { action.fail(); self.complete(action, error: error); self.failed(error) }
         }
     }
     nonisolated func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
         Task { @MainActor [weak self] in
-            guard let self, self.reported == action.callUUID else { action.fail(); return }
-            self.onMute?(action.isMuted); action.fulfill()
+            guard let self else { action.fail(); return }
+            guard self.provider === provider, self.reported == action.callUUID, self.authorized(action) else {
+                action.fail(); self.complete(action, error: NativeError.unavailable); return
+            }
+            self.onMute?(action.isMuted); action.fulfill(); self.complete(action)
         }
+    }
+    nonisolated func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
+        Task { @MainActor [weak self] in self?.complete(action, error: NativeError.unavailable) }
     }
     nonisolated func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
         Task { @MainActor [weak self] in self?.onAudio?(true, audioSession) }
@@ -170,5 +218,20 @@ import GChatCore
     func mute(_ value: Bool) async throws {
         guard let reported else { throw NativeError.unavailable }
         try await controller.request(CXTransaction(action: CXSetMutedCallAction(call: reported, muted: value)))
+    }
+
+    func answer(authorized: @escaping @MainActor () -> Bool) async throws {
+        guard let reported else { throw NativeError.unavailable }
+        try await request(CXAnswerCallAction(call: reported), authorized: authorized)
+    }
+
+    func end(authorized: @escaping @MainActor () -> Bool) async throws {
+        guard let reported else { throw NativeError.unavailable }
+        try await request(CXEndCallAction(call: reported), authorized: authorized)
+    }
+
+    func mute(_ value: Bool, authorized: @escaping @MainActor () -> Bool) async throws {
+        guard let reported else { throw NativeError.unavailable }
+        try await request(CXSetMutedCallAction(call: reported, muted: value), authorized: authorized)
     }
 }

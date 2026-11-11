@@ -12,6 +12,9 @@ type Mocks = {
     | 'login'
     | 'logout'
     | 'placeCall'
+    | 'acceptCall'
+    | 'endCall'
+    | 'setCallMuted'
     | 'sendWsMessage'
     | 'navigationReady'
     | 'completeNavigation'
@@ -31,6 +34,9 @@ const mock = vi.hoisted((): Mocks => ({
     login: vi.fn(),
     logout: vi.fn(),
     placeCall: vi.fn(),
+    acceptCall: vi.fn(),
+    endCall: vi.fn(),
+    setCallMuted: vi.fn(),
     sendWsMessage: vi.fn(),
     navigationReady: vi.fn(),
     completeNavigation: vi.fn(),
@@ -44,6 +50,7 @@ vi.mock('@capacitor/core', (): object => ({
 }));
 
 import { NativeCallsClient } from '../calls/native-client';
+import { DeviceCalls } from '../device/calls';
 import { DeviceNavigation } from '../device/navigation';
 import { currentSession, login, logout, request } from '../session/session';
 import { bridgeError, serverUrl } from './bridge';
@@ -73,7 +80,7 @@ function emit(name: string, payload: object, cycleId = nativeRuntime.getSnapshot
 }
 
 function snapshot(call: NativeState['call'] = null): void {
-  emit('callSnapshot', { call, runtime: { status: 'online', muted: false } });
+  emit('callSnapshot', { call, runtime: { status: 'online', muted: false, selected: true } });
 }
 
 async function ready(): Promise<void> {
@@ -128,6 +135,7 @@ beforeEach((): void => {
     platform: 'ios',
     nativeAuth: true,
     nativeCalls: true,
+    webCallControls: true,
   });
   mock.plugin.addListener.mockImplementation(
     async (
@@ -497,6 +505,219 @@ it('uses only placeCall, does not fabricate call state on acknowledgement, and n
   expect(mock.plugin.placeCall).toHaveBeenCalledTimes(2);
   expect(client.getSnapshot().error).toBe('Проверьте соединение и повторите попытку');
   stop();
+});
+
+describe('shared call screen commands on iOS', (): void => {
+  async function controls(): Promise<{
+    client: NativeCallsClient;
+    calls: DeviceCalls;
+    stop(): void;
+  }> {
+    await ready();
+    const client = new NativeCallsClient();
+    const stopClient = client.start();
+    const calls = new DeviceCalls(
+      client,
+      () => 'user',
+      {
+        execute: async (): Promise<never> => {
+          throw new Error('Unexpected device command');
+        },
+      },
+      nativeRuntime.getSignal,
+    );
+
+    calls.start();
+
+    return {
+      client,
+      calls,
+      stop: (): void => {
+        calls.stop();
+        stopClient();
+      },
+    };
+  }
+
+  it('routes answer, mute and end through native with the current call and cycle, without fabricating state', async (): Promise<void> => {
+    const { client, calls, stop } = await controls();
+    const incoming = { ...call(), caller_id: 'peer', recipient_id: 'user' };
+
+    emit('callStateChanged', { call: incoming });
+    emit('callRuntimeChanged', { status: { status: 'online', muted: false, selected: false } });
+    const args = { cycleId: nativeRuntime.getSnapshot().cycleId, callId: incoming.call_id };
+
+    try {
+      await calls.accept();
+      expect(mock.plugin.acceptCall).toHaveBeenCalledExactlyOnceWith(args);
+      expect(client.getSnapshot().call?.state).toBe('ringing');
+      emit('callStateChanged', { call: { ...incoming, version: 2, state: 'active' } });
+      emit('callRuntimeChanged', { status: { status: 'online', muted: false, selected: true } });
+      await calls.setMuted(true);
+      expect(mock.plugin.setCallMuted).toHaveBeenCalledExactlyOnceWith({ ...args, muted: true });
+      expect(client.getSnapshot().muted).toBe(false);
+      emit('callRuntimeChanged', { status: { status: 'online', muted: true, selected: true } });
+      await calls.setMuted(true);
+      expect(mock.plugin.setCallMuted).toHaveBeenCalledTimes(1);
+      await calls.end();
+      expect(mock.plugin.endCall).toHaveBeenCalledExactlyOnceWith(args);
+      expect(client.getSnapshot().call?.state).toBe('active');
+    } finally {
+      stop();
+    }
+  });
+
+  it('does not clear a pending control when an earlier dial acknowledgement arrives', async (): Promise<void> => {
+    const { client, stop } = await controls();
+    let completeDial!: () => void;
+    let completeMute!: () => void;
+
+    mock.plugin.placeCall.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        completeDial = resolve;
+      }),
+    );
+    mock.plugin.setCallMuted.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        completeMute = resolve;
+      }),
+    );
+
+    try {
+      const dial = client.dial('c9308a56-c680-49ee-a664-e36566311112');
+
+      emit('callStateChanged', { call: { ...call(), state: 'active' } });
+      const mute = client.setMuted(true);
+
+      completeDial();
+      await dial;
+      expect(client.getSnapshot().busy).toBe(true);
+      completeMute();
+      await mute;
+      expect(client.getSnapshot().busy).toBe(false);
+    } finally {
+      stop();
+    }
+  });
+
+  it('blocks repeated clicks and reports sanitized failures without retrying an unknown result', async (): Promise<void> => {
+    const { calls, stop } = await controls();
+
+    emit('callStateChanged', { call: call() });
+    let reject!: (cause: unknown) => void;
+
+    mock.plugin.endCall.mockReturnValueOnce(
+      new Promise((_resolve, fail): void => {
+        reject = fail;
+      }),
+    );
+
+    try {
+      const pending = calls.end();
+      const assertion = expect(pending).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+
+      const { busy: pendingBusy } = await calls.getState();
+
+      expect(pendingBusy).toBe(true);
+      await expect(calls.end()).rejects.toMatchObject({ code: 'BUSY' });
+      expect(mock.plugin.endCall).toHaveBeenCalledTimes(1);
+      reject({ code: 'NETWORK_ERROR', message: 'native secret' });
+      await assertion;
+      const { error, busy } = await calls.getState();
+
+      expect(error?.code).toBe('NETWORK_ERROR');
+      expect(JSON.stringify(error)).not.toContain('native secret');
+      expect(busy).toBe(false);
+      expect(mock.plugin.endCall).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
+  it.each(['cycle', 'call', 'logout'] as const)(
+    'discards a delayed command failure after %s changes',
+    async (change): Promise<void> => {
+      const { client, calls, stop } = await controls();
+
+      emit('callStateChanged', { call: call() });
+      let reject!: (cause: unknown) => void;
+
+      mock.plugin.endCall.mockReturnValueOnce(
+        new Promise((_resolve, fail): void => {
+          reject = fail;
+        }),
+      );
+
+      try {
+        const pending = (async (): Promise<void> => {
+          try {
+            await calls.end();
+          } catch {}
+        })();
+
+        if (change === 'cycle') {
+          await ready();
+        } else if (change === 'logout') {
+          emit('loggedOut', {});
+        } else {
+          emit('callStateChanged', {
+            call: { ...call(), call_id: 'c9308a56-c680-49ee-a664-e36566311112' },
+          });
+        }
+
+        reject({ code: 'NETWORK_ERROR' });
+        await pending;
+        expect(client.getSnapshot().error).toBeNull();
+        const { error, busy } = await calls.getState();
+
+        expect(error).toBeNull();
+        expect(busy).toBe(false);
+      } finally {
+        stop();
+      }
+    },
+  );
+
+  it('does not offer local control over a call selected on another device', async (): Promise<void> => {
+    const { client, calls, stop } = await controls();
+
+    try {
+      emit('callStateChanged', { call: { ...call(), state: 'active' } });
+      emit('callRuntimeChanged', { status: { status: 'online', muted: false, selected: false } });
+      expect(client.getSnapshot().selected).toBe(false);
+      const { control } = await calls.getState();
+
+      expect(control).toBe('unavailable');
+      await expect(calls.setMuted(true)).rejects.toMatchObject({ code: 'INVALID_STATE' });
+      expect(mock.plugin.setCallMuted).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
+  });
+
+  it('keeps an older shell usable for navigation but never invokes unsupported control methods', async (): Promise<void> => {
+    mock.plugin.getCapabilities.mockResolvedValueOnce({
+      bridgeVersion: 1,
+      httpVersion: 1,
+      navigationVersion: 1,
+      platform: 'ios',
+      nativeAuth: true,
+      nativeCalls: true,
+    });
+    const { calls, stop } = await controls();
+
+    try {
+      emit('callStateChanged', { call: call() });
+      expect(nativeRuntime.getSnapshot().phase).toBe('ready');
+      const { control } = await calls.getState();
+
+      expect(control).toBe('unavailable');
+      await expect(calls.end()).rejects.toMatchObject({ code: 'UNSUPPORTED_VERSION' });
+      expect(mock.plugin.endCall).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
+  });
 });
 
 describe('shared native WebSocket', (): void => {

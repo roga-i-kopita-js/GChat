@@ -140,7 +140,8 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
   }
 
   const status = callStatus;
-  const enabled = state.owner && state.connection === 'online' && !state.busy;
+  const enabled =
+    presentation.callingAvailable && state.owner && state.connection === 'online' && !state.busy;
 
   const value: CallsRuntime = {
     state,
@@ -162,13 +163,9 @@ export function CallsProvider({ children }: { children: ReactNode }): JSX.Elemen
   return (
     <CallsContext value={value}>
       {children}
-      {locked &&
-        ongoing &&
-        state.owner &&
-        state.selected &&
-        presentation.callControls === 'application' && (
-          <CallScreenLock unlock={() => setLocked(false)} />
-        )}
+      {locked && ongoing && state.owner && state.selected && presentation.callingAvailable && (
+        <CallScreenLock unlock={() => setLocked(false)} />
+      )}
     </CallsContext>
   );
 }

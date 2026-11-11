@@ -1,3 +1,5 @@
+import { ContextOutput } from './context-output';
+
 export function audioError(cause: unknown): string {
   const name = cause instanceof Error ? cause.name : '';
 
@@ -16,15 +18,8 @@ export function audioError(cause: unknown): string {
   return 'Не удалось проверить аудио. Проверьте настройки браузера и устройства.';
 }
 
-interface OutputContext extends AudioContext {
-  setSinkId(id: string): Promise<void>;
-}
 interface OutputDevices extends MediaDevices {
   selectAudioOutput(): Promise<MediaDeviceInfo>;
-}
-
-export function canRouteContext(context: AudioContext): context is OutputContext {
-  return 'setSinkId' in context && typeof context.setSinkId === 'function';
 }
 
 export function canSelectOutput(devices: MediaDevices): devices is OutputDevices {
@@ -35,6 +30,7 @@ export function canSelectOutput(devices: MediaDevices): devices is OutputDevices
 export class AudioPreparation {
   private epoch = 0;
   private context?: AudioContext;
+  private output?: ContextOutput;
 
   constructor(private readonly available: () => boolean) {}
 
@@ -43,6 +39,8 @@ export class AudioPreparation {
     const context = this.context;
 
     this.context = undefined;
+    this.output?.dispose();
+    this.output = undefined;
 
     if (context) {
       void (async () => {
@@ -90,12 +88,15 @@ export class AudioPreparation {
     this.context = context;
 
     try {
+      const output = new ContextOutput(context);
+
+      this.output = output;
       // Resume directly in the click gesture, before awaiting device routing.
-      await context.resume();
+      await output.start();
       this.check(epoch);
 
-      if (sinkId && canRouteContext(context)) {
-        await context.setSinkId(sinkId);
+      if (sinkId) {
+        await output.select(sinkId);
       }
 
       this.check(epoch);
@@ -113,7 +114,7 @@ export class AudioPreparation {
       gain.gain.setValueAtTime(0.05, context.currentTime + 0.7);
       gain.gain.linearRampToValueAtTime(0, context.currentTime + 0.9);
       oscillator.connect(gain);
-      gain.connect(context.destination);
+      gain.connect(output.destination);
       oscillator.onended = (): void => {
         oscillator.disconnect();
         gain.disconnect();
