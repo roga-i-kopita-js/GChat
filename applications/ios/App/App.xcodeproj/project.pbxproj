@@ -23,7 +23,17 @@
 		A20000000000000000000006 /* NativeMediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000006; };
 		A20000000000000000000007 /* NativeAudioRoutePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007; };
 		A20000000000000000000008 /* NativeCallPictureInPicture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008; };
+		A20000000000000000000010 /* NativeCallsCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010; };
+		A20000000000000000000011 /* NativeCallControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011; };
+		A20000000000000000000012 /* CallSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012; };
+		A20000000000000000000013 /* WebRTCMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013; };
+		A20000000000000000000014 /* WebRTC in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014; };
+		A30000000000000000000014 /* WebRTC in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A40000000000000000000014 /* Embed Frameworks */ = {isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 10; name = "Embed Frameworks"; files = (A30000000000000000000014, ); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		A10000000000000000000004 /* DeviceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceController.swift; sourceTree = "<group>"; };
@@ -44,6 +54,11 @@
 		A10000000000000000000006 /* NativeMediaController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMediaController.swift; sourceTree = "<group>"; };
 		A10000000000000000000007 /* NativeAudioRoutePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAudioRoutePicker.swift; sourceTree = "<group>"; };
 		A10000000000000000000008 /* NativeCallPictureInPicture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallPictureInPicture.swift; sourceTree = "<group>"; };
+		A10000000000000000000010 /* NativeCallsCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeCallsCoordinator.swift; path = "NativeCallsCoordinator.swift"; sourceTree = "<group>"; };
+		A10000000000000000000011 /* NativeCallControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeCallControls.swift; path = "NativeCallControls.swift"; sourceTree = "<group>"; };
+		A10000000000000000000012 /* CallSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CallSystem.swift; path = "../../CallHarness/CallSystem.swift"; sourceTree = "<group>"; };
+		A10000000000000000000013 /* WebRTCMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WebRTCMedia.swift; path = "../../CallHarness/WebRTCMedia.swift"; sourceTree = "<group>"; };
+		A10000000000000000000014 /* WebRTC.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = WebRTC.xcframework; path = "../../WebRTC/Artifacts/WebRTC.xcframework"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -52,6 +67,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+				A20000000000000000000014 /* WebRTC in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,6 +99,11 @@
 				A10000000000000000000002 /* GChatPlugin.swift */,
 				A10000000000000000000004 /* DeviceController.swift */,
 				A10000000000000000000008 /* NativeCallPictureInPicture.swift */,
+				A10000000000000000000014 /* WebRTC.xcframework */,
+				A10000000000000000000013 /* WebRTCMedia.swift */,
+				A10000000000000000000012 /* CallSystem.swift */,
+				A10000000000000000000011 /* NativeCallControls.swift */,
+				A10000000000000000000010 /* NativeCallsCoordinator.swift */,
 				A10000000000000000000007 /* NativeAudioRoutePicker.swift */,
 				A10000000000000000000006 /* NativeMediaController.swift */,
 				A10000000000000000000005 /* NativeCameraCapture.swift */,
@@ -108,6 +129,7 @@
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
+				A40000000000000000000014 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -184,6 +206,10 @@
 				A20000000000000000000002 /* GChatPlugin.swift in Sources */,
 				A20000000000000000000004 /* DeviceController.swift in Sources */,
 				A20000000000000000000008 /* NativeCallPictureInPicture.swift in Sources */,
+				A20000000000000000000013 /* WebRTCMedia.swift in Sources */,
+				A20000000000000000000012 /* CallSystem.swift in Sources */,
+				A20000000000000000000011 /* NativeCallControls.swift in Sources */,
+				A20000000000000000000010 /* NativeCallsCoordinator.swift in Sources */,
 				A20000000000000000000007 /* NativeAudioRoutePicker.swift in Sources */,
 				A20000000000000000000006 /* NativeMediaController.swift in Sources */,
 				A20000000000000000000005 /* NativeCameraCapture.swift in Sources */,
@@ -255,6 +281,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ARCHS = arm64;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -307,6 +334,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ARCHS = arm64;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -325,6 +353,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ARCHS = arm64;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -349,6 +378,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ARCHS = arm64;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

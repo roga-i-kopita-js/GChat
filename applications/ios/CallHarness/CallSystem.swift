@@ -66,22 +66,26 @@ import GChatCore
             reported = nil; active = false
             return
         }
-        let provider = ensureProvider()
         if reported != call.call_id {
             // A restored selected active call is represented as an outgoing system call.
             guard phase == .ringing || selected else { return }
             do { try onPrepareAudio?() }
             catch { failed(error); return }
+        }
+        // Provider creation registers the audio session with CallKit. Prepare first,
+        // including on a cold start; a failed preparation must leave no provider.
+        let provider = ensureProvider()
+        if reported != call.call_id {
             reported = call.call_id
             if call.caller_id == accountID || phase != .ringing {
                 reportStatus = "запрос исходящего"; onStatus?()
-                let action = CXStartCallAction(call: call.call_id, handle: CXHandle(type: .generic, value: "GChat test peer"))
+                let action = CXStartCallAction(call: call.call_id, handle: CXHandle(type: .generic, value: "GChat"))
                 controller.request(CXTransaction(action: action)) { [weak self] error in
                     if let error { Task { @MainActor in self?.failed(error) } }
                 }
             } else {
                 let update = CXCallUpdate()
-                update.remoteHandle = CXHandle(type: .generic, value: "GChat test peer")
+                update.remoteHandle = CXHandle(type: .generic, value: "GChat")
                 update.hasVideo = false
                 reportStatus = "reportNewIncomingCall отправлен"; onStatus?()
                 provider.reportNewIncomingCall(with: call.call_id, update: update) { [weak self] error in
@@ -161,5 +165,10 @@ import GChatCore
     func end() async throws {
         guard let reported else { throw NativeError.unavailable }
         try await controller.request(CXTransaction(action: CXEndCallAction(call: reported)))
+    }
+
+    func mute(_ value: Bool) async throws {
+        guard let reported else { throw NativeError.unavailable }
+        try await controller.request(CXTransaction(action: CXSetMutedCallAction(call: reported, muted: value)))
     }
 }

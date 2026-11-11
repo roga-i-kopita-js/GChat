@@ -63,6 +63,21 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
     super();
   }
 
+  getOutputSupport(): { pick: boolean; select: boolean } {
+    const select =
+      !embedded &&
+      typeof this.client.setAudioOutput === 'function' &&
+      typeof HTMLMediaElement !== 'undefined' &&
+      typeof HTMLMediaElement.prototype.setSinkId === 'function' &&
+      typeof AudioContext !== 'undefined' &&
+      typeof Reflect.get(AudioContext.prototype, 'setSinkId') === 'function';
+
+    return {
+      pick: embedded || (select && !!navigator.mediaDevices && canPick(navigator.mediaDevices)),
+      select,
+    };
+  }
+
   readonly volume = {
     showControl: async (options?: CallOptions): Promise<void> => {
       if (!embedded) {
@@ -117,7 +132,7 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
         throw new DeviceError('CANCELLED');
       }
 
-      if (!navigator.mediaDevices || !canPick(navigator.mediaDevices)) {
+      if (!this.getOutputSupport().pick || !canPick(navigator.mediaDevices)) {
         throw new DeviceError('UNSUPPORTED');
       }
 
@@ -158,12 +173,7 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
         throw new DeviceError('INVALID_ARGUMENT');
       }
 
-      if (
-        !this.client.setAudioOutput ||
-        typeof HTMLMediaElement.prototype.setSinkId !== 'function' ||
-        typeof AudioContext === 'undefined' ||
-        !('setSinkId' in AudioContext.prototype)
-      ) {
+      if (!this.getOutputSupport().select) {
         throw new DeviceError('UNSUPPORTED');
       }
 

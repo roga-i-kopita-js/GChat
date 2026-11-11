@@ -93,6 +93,34 @@ import XCTest
         XCTAssertThrowsError(try policy([["direction": "unknown", "message_pattern": "rtc.*"]]))
     }
 
+    func testNativeRevocationAndConnectionHooksSurviveDetachedWebConsumer() async {
+        let client = SharedWebSocket(server: server, access: { _ in nil }, readDevice: { _ in nil }, saveDevice: { _, _ in })
+        var states: [String] = []
+        var revoked = false
+        client.onNativeState = { states.append($0) }
+        client.onNativeInvalidSession = { revoked = true }
+        client.onState = nil
+        client.onInvalidSession = nil
+        client.attach(cycle: nil)
+        client.start(sessionID: "fixture-session")
+        await waitFor { revoked }
+        XCTAssertEqual(client.status, "offline")
+        XCTAssertTrue(states.contains("connecting"))
+        XCTAssertEqual(states.last, "offline")
+        client.stop()
+    }
+
+    func testNativeRevocationPrecedesWebSessionNotification() async {
+        let client = SharedWebSocket(server: server, access: { _ in nil }, readDevice: { _ in nil }, saveDevice: { _, _ in })
+        var events: [String] = []
+        client.onNativeInvalidSession = { events.append("native") }
+        client.onInvalidSession = { events.append("web") }
+        client.start(sessionID: "fixture-session")
+        await waitFor { events.count == 2 }
+        XCTAssertEqual(events, ["native", "web"])
+        client.stop()
+    }
+
     func testRegistersAndLoadsPolicyBeforeEnablingWeb() async throws {
         let socket = TestSocket()
         let client = await start(socket)

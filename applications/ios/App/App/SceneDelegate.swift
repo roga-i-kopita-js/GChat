@@ -4,6 +4,10 @@ import GChatCore
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        (window?.rootViewController as? ShellViewController)?.becameActive()
+    }
+
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession,
                options connectionOptions: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
@@ -56,6 +60,9 @@ final class ShellViewController: UIViewController {
     private var child: UIViewController?
     private let serverKey = "gchat.server.v1"
     private var transport: SharedWebSocket?
+    private var calls: NativeCallsCoordinator?
+
+    func becameActive() { calls?.foreground() }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -98,18 +105,21 @@ final class ShellViewController: UIViewController {
             readDevice: { UserDefaults.standard.string(forKey: deviceKey + "." + $0) },
             saveDevice: { sessionID, deviceID in UserDefaults.standard.set(deviceID, forKey: deviceKey + "." + sessionID) }
         )
+        self.calls?.bind(nil)
         self.transport?.stop()
         self.transport = transport
+        let calls = NativeCallsCoordinator(server: server, transport: transport)
+        self.calls = calls
+        transport.onInvalidSession = { Task { try? await manager.invalidate() } }
         // Restore native connectivity even when the remote Web cannot load.
-        Task { @MainActor in
-            transport.onInvalidSession = {
-                Task { try? await manager.invalidate() }
-            }
+        Task { @MainActor [weak self] in
             if let session = try? await manager.restore(), let id = session.sessionID {
+                guard self?.transport === transport else { return }
+                calls.bind(session)
                 transport.start(sessionID: id)
             }
         }
-        let main = MainViewController(server: server, sessions: manager, transport: transport)
+        let main = MainViewController(server: server, sessions: manager, transport: transport, calls: calls)
         main.onChangeServer = { [weak self] in
             guard let self else { return }
             UserDefaults.standard.removeObject(forKey: self.serverKey)
@@ -119,6 +129,8 @@ final class ShellViewController: UIViewController {
     }
 
     private func selectServer() {
+        calls?.bind(nil)
+        calls = nil
         transport?.stop()
         transport = nil
         let startup = ServerViewController()

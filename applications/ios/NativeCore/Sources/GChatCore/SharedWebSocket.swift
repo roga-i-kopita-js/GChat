@@ -37,9 +37,11 @@ public struct WebSocketPolicy: Decodable {
     public private(set) var status = "offline"
     public var boundDeviceID: String? { sessionID.flatMap { readDevice($0) } }
     public var onState: ((String) -> Void)?
+    public var onNativeState: ((String) -> Void)?
     public var onWebMessage: ((String, [String: Any]) -> Void)?
     public var onNativeMessage: (([String: Any]) -> Void)?
     public var onInvalidSession: (() -> Void)?
+    public var onNativeInvalidSession: (() -> Void)?
 
     private struct Pending {
         let type: String
@@ -103,6 +105,7 @@ public struct WebSocketPolicy: Decodable {
 
     private func setStatus(_ value: String) {
         status = value
+        onNativeState?(value)
         onState?(value)
     }
 
@@ -300,7 +303,7 @@ public struct WebSocketPolicy: Decodable {
             } catch {
                 if let failure = error as? AuthFailure, failure.retryAfter.isFinite { retryAfter = max(0, failure.retryAfter) }
                 if (error as? NativeError) == .invalidSession || (error as? AuthFailure)?.code == "SESSION_INVALID" {
-                    if revision == generation { stop(); onInvalidSession?() }
+                    if revision == generation { stop(); onNativeInvalidSession?(); onInvalidSession?() }
                     return
                 }
             }

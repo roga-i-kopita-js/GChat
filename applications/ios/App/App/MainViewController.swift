@@ -8,16 +8,24 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
     let server: ServerOrigin
     let sessions: SessionManager
     let transport: SharedWebSocket
+    let calls: NativeCallsCoordinator
     var onChangeServer: (() -> Void)?
     private var capacitorDelegate: WebViewDelegationHandler?
     private var plugin: GChatPlugin?
     private var retryView: UIView?
+    private lazy var callControls = NativeCallControls(calls: calls, presenter: self)
 
-    init(server: ServerOrigin, sessions: SessionManager, transport: SharedWebSocket) {
+    init(server: ServerOrigin, sessions: SessionManager, transport: SharedWebSocket, calls: NativeCallsCoordinator) {
         self.server = server
         self.sessions = sessions
         self.transport = transport
+        self.calls = calls
         super.init(nibName: nil, bundle: nil)
+        calls.onChange = { [weak self] in self?.callsChanged() }
+        calls.onError = { [weak self] message in
+            guard let self, self.isViewLoaded else { return }
+            self.callControls.showError(message)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(server:sessions:)") }
@@ -50,9 +58,21 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
         content.add(WeakMessageHandler(self), name: "bridge")
         content.addUserScript(WKUserScript(source: "window.GChatRuntime = 'native';",
                                            injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        let plugin = GChatPlugin(server: server, sessions: sessions, transport: transport)
+        let plugin = GChatPlugin(server: server, sessions: sessions, transport: transport, calls: calls)
         self.plugin = plugin
         bridge.registerPluginInstance(plugin)
+        callsChanged()
+    }
+
+    func callsChanged() {
+        guard isViewLoaded else { return }
+        plugin?.publishCalls()
+        callControls.update()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        calls.foreground()
     }
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {

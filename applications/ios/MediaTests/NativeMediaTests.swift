@@ -4,6 +4,57 @@ import UIKit
 import XCTest
 import GChatCore
 
+@MainActor final class CallSystemPreparationTests: XCTestCase {
+    private func record(state: String, account: UUID) throws -> DirectCallRecord {
+        let date = "2026-11-10T21:00:00.000Z"
+        let value: [String: Any] = [
+            "call_id": UUID().uuidString, "caller_id": UUID().uuidString,
+            "recipient_id": account.uuidString, "state": state, "version": 0,
+            "created_at": date, "started_at": state == "active" ? date as Any : NSNull(),
+            "ended_at": NSNull(), "end_reason": NSNull(),
+            "ringing_deadline": state == "ringing" ? date as Any : NSNull(),
+            "connecting_deadline": NSNull(), "recovery_id": NSNull(), "recovery_deadline": NSNull(),
+        ]
+        return try JSONDecoder().decode(DirectCallRecord.self,
+            from: JSONSerialization.data(withJSONObject: value))
+    }
+
+    func testAudioPreparationFailureDoesNotCreateSystemProvider() throws {
+        let system = CallSystem()
+        let account = UUID()
+        var preparations = 0
+        var errors = 0
+        system.onPrepareAudio = { [unowned system] in
+            preparations += 1
+            XCTAssertTrue(system.diagnostics.contains("provider: не создан"))
+            throw NativeError.unavailable
+        }
+        system.onError = { _ in errors += 1 }
+
+        system.update(call: try record(state: "ringing", account: account), phase: .ringing,
+            accountID: account, selected: false, connected: false, unavailable: false)
+
+        XCTAssertEqual(preparations, 1)
+        XCTAssertEqual(errors, 1)
+        XCTAssertTrue(system.diagnostics.contains("provider: не создан"))
+        // A later reconciliation can retry preparation without a stale provider.
+        system.update(call: try record(state: "ringing", account: account), phase: .ringing,
+            accountID: account, selected: false, connected: false, unavailable: false)
+        XCTAssertEqual(preparations, 2)
+    }
+
+    func testUnselectedRestoredCallDoesNotCreateSystemProvider() throws {
+        let system = CallSystem()
+        let account = UUID()
+        system.onPrepareAudio = { XCTFail("Another device owns this active call") }
+
+        system.update(call: try record(state: "active", account: account), phase: .active,
+            accountID: account, selected: false, connected: false, unavailable: false)
+
+        XCTAssertTrue(system.diagnostics.contains("provider: не создан"))
+    }
+}
+
 final class NativeCaptureFileTests: XCTestCase {
     private func sample(_ frame: Int) throws -> CMSampleBuffer {
         var pixel: CVPixelBuffer?

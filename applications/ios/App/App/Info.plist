@@ -43,6 +43,8 @@
 	<string>GChat запрашивает разрешение геопозиции только по вашему действию в настройках. Координаты не сохраняются и не передаются.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array><string>audio</string><string>voip</string></array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

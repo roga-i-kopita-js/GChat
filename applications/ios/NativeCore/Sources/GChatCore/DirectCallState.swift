@@ -29,6 +29,18 @@ public struct DirectCallRecord: Decodable, Equatable, Sendable {
     public let connecting_deadline: String?
     public let version: Int
 
+    /// Full safe bridge DTO. Optional server fields remain explicit JSON nulls.
+    public var bridgeObject: [String: Any] {
+        ["call_id": call_id.uuidString.lowercased(), "state": state.rawValue,
+         "caller_id": caller_id.uuidString.lowercased(), "recipient_id": recipient_id.uuidString.lowercased(),
+         "created_at": created_at, "started_at": started_at as Any? ?? NSNull(),
+         "ended_at": ended_at as Any? ?? NSNull(), "end_reason": end_reason as Any? ?? NSNull(),
+         "recovery_id": recovery_id?.uuidString.lowercased() as Any? ?? NSNull(),
+         "recovery_deadline": recovery_deadline as Any? ?? NSNull(),
+         "ringing_deadline": ringing_deadline as Any? ?? NSNull(),
+         "connecting_deadline": connecting_deadline as Any? ?? NSNull(), "version": version]
+    }
+
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case call_id, state, caller_id, recipient_id, created_at, started_at, ended_at, end_reason
         case recovery_id, recovery_deadline, ringing_deadline, connecting_deadline, version

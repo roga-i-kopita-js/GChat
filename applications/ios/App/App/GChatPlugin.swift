@@ -57,6 +57,7 @@ import GChatCore
     private let server: ServerOrigin
     private let sessions: SessionManager
     private let transport: SharedWebSocket
+    private let calls: NativeCallsCoordinator
     private var cycle: String?
     private var authRevision = 0
     private var lastRoute = "/calls"
@@ -73,10 +74,11 @@ import GChatCore
         return store
     }
 
-    init(server: ServerOrigin, sessions: SessionManager, transport: SharedWebSocket) {
+    init(server: ServerOrigin, sessions: SessionManager, transport: SharedWebSocket, calls: NativeCallsCoordinator) {
         self.server = server
         self.sessions = sessions
         self.transport = transport
+        self.calls = calls
         super.init()
         ChatNotifications.shared.attach(transport)
         ChatNotifications.shared.visibleDialog = { [weak self] in
@@ -122,11 +124,11 @@ import GChatCore
         }
     }
 
-    // Debug harness records only fixed stage names and normalized codes, never payloads.
+    // Local development builds record fixed bridge stages and normalized codes, never payloads.
     private func traceHarness(_ stage: String) {
         #if DEBUG
         guard let bundle = Bundle.main.bundleIdentifier,
-              bundle == "com.gchat.bridgeharness" || bundle.hasPrefix("com.gchat.bridgeharness.dev."),
+              bundle == "com.gchat.bridgeharness" || bundle.hasPrefix("com.gchat.bridgeharness.dev.") || bundle.hasPrefix("com.gchat.app.dev."),
               let root = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
         let url = root.appendingPathComponent("gchat-bridge-diagnostics.txt")
         var lines = ((try? String(contentsOf: url, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
@@ -145,7 +147,7 @@ import GChatCore
 
     private func handleGetCapabilities(_ call: CAPPluginCall) {
         traceHarness("capabilities")
-        call.resolve(["bridgeVersion": 1, "platform": "ios", "httpVersion": 1, "navigationVersion": 1, "mediaVersion": 1, "nativeAuth": true, "nativeCalls": false, "nativeWebSocket": true, "dialogStorageVersion": 1, "dialogNotificationsVersion": 1])
+        call.resolve(["bridgeVersion": 1, "platform": "ios", "httpVersion": 1, "navigationVersion": 1, "mediaVersion": 1, "nativeAuth": true, "nativeCalls": true, "nativeWebSocket": true, "dialogStorageVersion": 1, "dialogNotificationsVersion": 1])
     }
 
     @objc nonisolated func webReady(_ call: CAPPluginCall) {
@@ -238,6 +240,7 @@ import GChatCore
         let revision = authRevision
         Task { @MainActor in
             do {
+                try? await calls.prepareLogout()
                 try await sessions.logout()
                 if self.cycle == cycle, authRevision == revision {
                     sendLoggedOut(cycle)
@@ -427,8 +430,18 @@ import GChatCore
     }
 
     private func handlePlaceCall(_ call: CAPPluginCall) {
-        // No call.create or fake successful acknowledgement until Gate 1 provides an engine.
-        call.reject("Native calls are not installed", "BRIDGE_UNAVAILABLE")
+        guard let cycle, httpAuthenticated, let peer = call.getString("peerId"),
+              let id = UUID(uuidString: peer), let options = call.options as? [String: Any],
+              Set(options.keys) == ["peerId"] else { reject(call, NativeError.validation); return }
+        let revision = authRevision
+        Task { @MainActor in
+            do {
+                try await calls.place(id, stillAuthorized: { [weak self] in
+                    self?.cycle == cycle && self?.authRevision == revision && self?.httpAuthenticated == true
+                })
+                call.resolve()
+            } catch { reject(call, error) }
+        }
     }
 
     @objc nonisolated func sendWsMessage(_ call: CAPPluginCall) {
@@ -523,6 +536,7 @@ import GChatCore
     }
 
     private func sendLoggedOut(_ cycle: String) {
+        calls.bind(nil)
         navigation.cancelPending()
         httpAuthenticated = false
         notificationIntent = nil
@@ -537,6 +551,7 @@ import GChatCore
     }
 
     private func sendState(_ session: NativeSession?, cycle: String) {
+        calls.bind(session)
         httpAuthenticated = session != nil
         if let session, let account = session.accountID {
             if let expected = notificationAccount, expected != account { notificationIntent = nil }
@@ -554,9 +569,16 @@ import GChatCore
         if navigation.isReady { enqueueNavigation(target, cycle: cycle) }
         else { pendingNavigationRoute = target }
         notifyListeners("callSnapshot", data: [
-            "cycleId": cycle, "call": NSNull(), "runtime": ["status": "offline", "muted": false]
+            "cycleId": cycle, "call": calls.callObject, "runtime": calls.runtime
         ])
         notifyListeners("wsState", data: ["cycleId": cycle, "status": transport.status])
+    }
+
+    func publishCalls() {
+        media.selectCall(calls.selectedCallID, audioActive: calls.connected)
+        guard let cycle else { return }
+        notifyListeners("callStateChanged", data: ["cycleId": cycle, "call": calls.callObject])
+        notifyListeners("callRuntimeChanged", data: ["cycleId": cycle, "status": calls.runtime])
     }
 
     private func enqueueNavigation(_ target: String, cycle: String) {

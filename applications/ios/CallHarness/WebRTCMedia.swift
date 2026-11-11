@@ -215,6 +215,7 @@ import WebRTC
     }
 
     func audioActivated(_ active: Bool, session: AVAudioSession) {
+        guard audioActive != active else { return }
         recordAudioEvent("CallKit active=\(active) " + Self.sessionDescription())
         let audio = RTCAudioSession.sharedInstance()
         if active { audio.audioSessionDidActivate(session) }

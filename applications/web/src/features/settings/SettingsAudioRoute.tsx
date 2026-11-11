@@ -1,6 +1,7 @@
 import { Headphones } from 'lucide-react';
 import type { JSX } from 'react';
 
+import { useDevicePresentation } from '../../shared/device/react';
 import { AudioTestStatus } from './AudioTestStatus';
 import { descriptions, titles } from './labels';
 import { Group, Row, SettingsAction, SettingsScreen } from './ui';
@@ -8,6 +9,7 @@ import { useSettingsDevice } from './useSettingsDevice';
 
 export function SettingsAudioRoute(): JSX.Element {
   const device = useSettingsDevice();
+  const { audioOutput: support } = useDevicePresentation();
   const { audio, run, setSoundAnswer } = device;
   const action = (label: string, onClick: () => void): JSX.Element => (
     <SettingsAction device={device} onClick={onClick}>
@@ -25,14 +27,18 @@ export function SettingsAudioRoute(): JSX.Element {
           title="Аудиовыход"
           value={audio.output?.name ?? 'Системный выход'}
         />
-        {action('Выбрать аудиовыход', (): void => {
-          void run((): ReturnType<typeof device.api.audio.outputs.pick> =>
-            device.api.audio.outputs.pick(),
-          );
-        })}
+        {support.pick &&
+          action('Выбрать аудиовыход', (): void => {
+            void run((): ReturnType<typeof device.api.audio.outputs.pick> =>
+              device.api.audio.outputs.pick(),
+            );
+          })}
       </Group>
       <p className="settings-note">
-        Если выбор недоступен, используется системный выход. Громкость меняется кнопками устройства.
+        {support.pick
+          ? 'Аудиовыход также можно выбрать средствами ОС. '
+          : 'Системный выбор аудиовыхода из GChat в этом браузере недоступен. Проверьте системную панель звука и подключение гарнитуры. '}
+        Громкость меняется кнопками устройства.
       </p>
       <Group>
         {action('Проверить звук', (): void => {

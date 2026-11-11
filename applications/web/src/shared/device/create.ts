@@ -263,6 +263,7 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
     callControls: embedded ? 'host' : 'application',
     incomingSurface: embedded ? 'host' : 'application',
     callingAvailable: !embedded,
+    audioOutput: audio.getOutputSupport(),
     supportedEnvironment:
       embedded || !!(navigator.locks && navigator.mediaDevices && globalThis.BroadcastChannel),
   });

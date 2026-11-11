@@ -8,12 +8,15 @@ test.use({
   viewport: { width: 390, height: 844 },
 });
 
-async function setup(page: Page): Promise<(state: string) => void> {
+async function setup(
+  page: Page,
+  outputSupport: 'all' | 'select' | 'none' | 'mediaOnly' = 'select',
+): Promise<(state: string) => void> {
   let current: Record<string, unknown> | null = null;
   let update = (_state: string): void => {};
 
   await page.addInitScript(
-    ({ caller }) => {
+    ({ caller, outputSupport }) => {
       const now = Math.floor(Date.now() / 1000);
       const claims = {
         sub: caller,
@@ -86,8 +89,36 @@ async function setup(page: Page): Promise<(state: string) => void> {
           selected.push(id);
         },
       });
+
+      if (outputSupport === 'all') {
+        Object.assign(navigator.mediaDevices, {
+          selectAudioOutput: async (): Promise<never> => {
+            throw new DOMException('Cancelled', 'NotAllowedError');
+          },
+        });
+      }
+
+      if (outputSupport === 'none') {
+        Object.defineProperty(HTMLMediaElement.prototype, 'setSinkId', {
+          configurable: true,
+          value: undefined,
+        });
+      }
+
+      if (outputSupport === 'none' || outputSupport === 'mediaOnly') {
+        Object.defineProperty(AudioContext.prototype, 'setSinkId', {
+          configurable: true,
+          value: undefined,
+        });
+        // A picker without renderer support cannot apply the chosen output.
+        Object.assign(navigator.mediaDevices, {
+          selectAudioOutput: async (): Promise<never> => {
+            throw new Error('Unsupported picker must not be called');
+          },
+        });
+      }
     },
-    { caller },
+    { caller, outputSupport },
   );
   await page.route(/^https?:\/\/[^/]+\/api\//, async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -234,7 +265,7 @@ test('screen protection intercepts taps and Escape and unlocks only with a full 
   expect(await page.evaluate(() => Reflect.get(window, 'wakeReleases'))).toBe(1);
 });
 
-test('audio output switches the call renderer, reports errors, and handles unsupported pickers', async ({
+test('audio output switches the call renderer, reports errors, and hides unsupported pickers', async ({
   page,
 }, testInfo) => {
   const update = await setup(page);
@@ -255,8 +286,8 @@ test('audio output switches the call renderer, reports errors, and handles unsup
   await dialog.getByRole('button', { name: 'Гарнитура', exact: true }).click();
   await expect(dialog.getByRole('alert')).toBeVisible();
   await expect(dialog).toContainText('Сейчас: Динамики');
-  await dialog.getByRole('button', { name: 'Системный выбор', exact: true }).click();
-  await expect(dialog.getByRole('alert')).toContainText('системные настройки');
+  await expect(dialog.getByRole('button', { name: 'Системный выбор', exact: true })).toHaveCount(0);
+  await expect(dialog).toContainText('Системный выбор в этом браузере недоступен');
   await page.screenshot({ path: testInfo.outputPath('audio-output.png') });
   update('ended');
   await expect(dialog).toHaveCount(0);
@@ -265,7 +296,7 @@ test('audio output switches the call renderer, reports errors, and handles unsup
 test('picker cancellation is quiet and a late picker cannot change output after closing', async ({
   page,
 }) => {
-  await setup(page);
+  await setup(page, 'all');
   await page.getByRole('button', { name: 'Аудиовыход', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Аудиовыход', exact: true });
 
@@ -296,7 +327,51 @@ test('picker cancellation is quiet and a late picker cannot change output after 
   await page.getByRole('button', { name: 'Аудиовыход', exact: true }).click();
   await expect(dialog).toContainText('Сейчас: Системный выход');
   expect(await page.evaluate(() => Reflect.get(window, 'selectedOutputs'))).toEqual([]);
+  await page.evaluate(() => {
+    Object.assign(navigator.mediaDevices, {
+      selectAudioOutput: async (): Promise<object> => ({
+        deviceId: 'output-1',
+        label: 'Гарнитура',
+      }),
+    });
+  });
+  await dialog.getByRole('button', { name: 'Системный выбор', exact: true }).click();
+  await expect(dialog).toContainText('Сейчас: Гарнитура');
+  expect(await page.evaluate(() => Reflect.get(window, 'selectedOutputs'))).toContain('output-1');
 });
+
+for (const support of ['none', 'mediaOnly'] as const) {
+  test(`unsupported output routing (${support}) shows system guidance without failed actions`, async ({
+    page,
+  }) => {
+    const update = await setup(page, support);
+
+    await page.getByRole('button', { name: 'Аудиовыход', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Аудиовыход', exact: true });
+
+    await expect(dialog).toContainText('Этот браузер не поддерживает смену аудиовыхода из GChat');
+    await expect(dialog.getByRole('button', { name: 'Системный выбор', exact: true })).toHaveCount(
+      0,
+    );
+    await expect(dialog.getByRole('button', { name: 'Гарнитура', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('alert')).toHaveCount(0);
+    expect(await page.evaluate(() => Reflect.get(window, 'selectedOutputs'))).toEqual([]);
+    await dialog.getByRole('button', { name: 'Закрыть', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Микрофон', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Включить звук', exact: true })).toHaveCount(0);
+    update('active');
+    await expect(page.getByRole('button', { name: 'Завершить', exact: true })).toBeEnabled();
+    await page.goto('/settings/general/audio');
+    await expect(page.getByRole('button', { name: 'Выбрать аудиовыход', exact: true })).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByText('Системный выбор аудиовыхода из GChat в этом браузере недоступен.', {
+        exact: false,
+      }),
+    ).toBeVisible();
+  });
+}
 
 test('disconnecting the selected output returns the call to the system route', async ({ page }) => {
   await setup(page);

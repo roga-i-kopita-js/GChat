@@ -14,6 +14,7 @@ export interface PresentationState {
   callControls: 'application' | 'host';
   incomingSurface: 'application' | 'host';
   callingAvailable: boolean;
+  audioOutput: { pick: boolean; select: boolean };
   supportedEnvironment: boolean;
 }
 

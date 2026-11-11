@@ -94,6 +94,25 @@ final class DirectCallStateTests: XCTestCase {
         XCTAssertEqual(try restored.next(audioConnected: true, recoveryID: nil)["sequence"] as? Int64, 3)
     }
 
+    func testBridgeDTOContainsOnlyFullSafeServerFieldsAndExplicitNulls() throws {
+        let expected: Set<String> = ["call_id", "state", "caller_id", "recipient_id", "created_at", "started_at",
+            "ended_at", "end_reason", "recovery_id", "recovery_deadline", "ringing_deadline", "connecting_deadline", "version"]
+        for phase in ["ringing", "active", "ended"] {
+            let call = try record(phase, version: 3)
+            let value = call.bridgeObject
+            XCTAssertEqual(Set(value.keys), expected)
+            XCTAssertTrue(value["recovery_id"] is NSNull)
+            XCTAssertTrue(value["recovery_deadline"] is NSNull)
+            XCTAssertEqual(value["call_id"] as? String, call.call_id.uuidString.lowercased())
+            let roundTrip = try JSONDecoder().decode(DirectCallRecord.self,
+                from: JSONSerialization.data(withJSONObject: value))
+            XCTAssertEqual(roundTrip, call)
+        }
+        let recovery = try record("active", version: 4, recovery: UUID())
+        XCTAssertEqual(try JSONDecoder().decode(DirectCallRecord.self,
+            from: JSONSerialization.data(withJSONObject: recovery.bridgeObject)), recovery)
+    }
+
     func testMalformedServerDataAndInvalidSequenceAreRejected() throws {
         XCTAssertThrowsError(try record(version: -1))
         XCTAssertThrowsError(try record("unknown"))

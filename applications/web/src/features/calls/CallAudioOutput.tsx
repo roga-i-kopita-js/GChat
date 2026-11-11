@@ -6,17 +6,27 @@ import { useEffect, useRef, useState } from 'react';
 
 import { AudioEvent } from '../../shared/device/api';
 import { deviceErrorMessage } from '../../shared/device/messages';
-import { useDevice, useDeviceState } from '../../shared/device/react';
+import { useDevice, useDevicePresentation, useDeviceState } from '../../shared/device/react';
 import { Button, Modal } from '../../shared/ui';
 import { LazyPanel } from '../../shared/ui/LazyPanel';
 
 function OutputChoices({ disabled }: { disabled: boolean }): JSX.Element {
   const device = useDevice();
+  const { audioOutput: support } = useDevicePresentation();
   const audio = useDeviceState(device.audio, AudioEvent.StateChanged);
   const lifetime = useRef(new AbortController());
   const running = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  let outputHint = 'Аудиовыход также можно выбрать средствами ОС. ';
+
+  if (!support.select && !support.pick) {
+    outputHint =
+      'Этот браузер не поддерживает смену аудиовыхода из GChat. Выходом управляет ОС: проверьте системную панель звука и подключение гарнитуры. ';
+  } else if (!support.pick) {
+    outputHint =
+      'Системный выбор в этом браузере недоступен. Выберите устройство из списка или проверьте системную панель звука. ';
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -62,25 +72,28 @@ function OutputChoices({ disabled }: { disabled: boolean }): JSX.Element {
         Сейчас:{' '}
         {audio.output ? audio.output.name || 'Выбранное аудиоустройство' : 'Системный выход'}
       </p>
-      {audio.outputs?.map((output, index) => (
-        <Button
-          key={output.id}
-          variant="secondary"
-          disabled={disabled || busy || !output.id}
-          aria-pressed={audio.output?.id === output.id}
-          onClick={() => void choose(output.id)}
-        >
-          <Headphones aria-hidden="true" />
-          <span>{output.name || `Аудиоустройство ${index + 1}`}</span>
-          {audio.output?.id === output.id && <Check aria-hidden="true" />}
+      {support.select &&
+        audio.outputs?.map((output, index) => (
+          <Button
+            key={output.id}
+            variant="secondary"
+            disabled={disabled || busy || !output.id}
+            aria-pressed={audio.output?.id === output.id}
+            onClick={() => void choose(output.id)}
+          >
+            <Headphones aria-hidden="true" />
+            <span>{output.name || `Аудиоустройство ${index + 1}`}</span>
+            {audio.output?.id === output.id && <Check aria-hidden="true" />}
+          </Button>
+        ))}
+      {support.pick && (
+        <Button variant="secondary" disabled={disabled || busy} onClick={() => void choose()}>
+          Системный выбор
         </Button>
-      ))}
-      <Button variant="secondary" disabled={disabled || busy} onClick={() => void choose()}>
-        Системный выбор
-      </Button>
+      )}
       <p className="settings-note">
-        Если переключение недоступно, выберите аудиовыход средствами ОС. Громкость меняется кнопками
-        устройства.
+        {outputHint}
+        Громкость меняется кнопками устройства.
       </p>
       {busy && <p role="status">Выбираем аудиовыход…</p>}
       {error && <p role="alert">{error}</p>}
