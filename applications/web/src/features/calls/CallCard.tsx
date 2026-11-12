@@ -9,6 +9,7 @@ import {
   Volume2,
 } from 'lucide-react';
 import type { JSX } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 
 import { useDevice, useDevicePresentation } from '../../shared/device/react';
 import { Avatar, Button } from '../../shared/ui';
@@ -17,6 +18,8 @@ import { useCalls } from './CallsProvider';
 
 export function CallCard(): JSX.Element | null {
   const device = useDevice();
+  const navigate = useNavigate();
+  const location = useLocation();
   const presentation = useDevicePresentation();
   const {
     state,
@@ -44,6 +47,9 @@ export function CallCard(): JSX.Element | null {
         onClick={(): void => {
           setPerson(null);
           setMobile(false);
+          const filter = new URLSearchParams(location.search).get('filter');
+
+          void navigate('/calls' + (filter === 'missed' ? '?filter=missed' : ''));
           void (async () => {
             try {
               return await device.calls.dismissEnded();
@@ -51,7 +57,7 @@ export function CallCard(): JSX.Element | null {
           })();
         }}
       >
-        Вернуться к контактам
+        Вернуться к истории
         <ArrowRight size={17} />
       </button>
     );

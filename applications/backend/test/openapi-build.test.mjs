@@ -56,6 +56,31 @@ test('standalone OpenAPI equals the HTTP application document from the same Nest
     assert.equal(document.paths['/auth/logout'].post.responses['204'].content, undefined);
     assert.deepEqual(document.paths['/groups'].get.security, [{ bearer: [] }]);
     assert.equal(document.paths['/health'].get.security, undefined);
+    assert.equal(document.paths['/calls/history'].get.operationId, 'callsHistoryList');
+    assert.equal(document.paths['/calls/history/{call_id}'].get.operationId, 'callsHistoryGet');
+    assert.deepEqual(document.paths['/calls/history'].get.security, [{ bearer: [] }]);
+    assert.deepEqual(document.paths['/calls/history/{call_id}'].get.security, [{ bearer: [] }]);
+    const history = document.components.schemas.CallHistoryItemDto;
+
+    assert.equal(history.properties.started_at.nullable, true);
+    assert.equal(history.properties.duration_seconds.nullable, true);
+    assert.equal(history.properties.duration_seconds.type, 'integer');
+    assert.equal(history.properties.duration_seconds.minimum, 0);
+    assert.equal(history.properties.peer_display_name.type, 'string');
+    assert.deepEqual(history.properties.direction.enum, ['incoming', 'outgoing']);
+    assert.equal(history.properties.outcome.enum.includes('missed'), true);
+    assert.equal(history.properties.end_reason.enum.length, 8);
+    assert.equal(
+      document.components.schemas.CallHistoryListResponseDto.properties.next_cursor.nullable,
+      true,
+    );
+    assert.deepEqual(document.components.schemas.CallHistoryResponseDto.required, ['item']);
+
+    for (const code of ['400', '401', '403', '429', '500', '503']) {
+      assert.ok(document.paths['/calls/history'].get.responses[code]);
+    }
+
+    assert.ok(document.paths['/calls/history/{call_id}'].get.responses['404']);
   } finally {
     await app.close();
   }

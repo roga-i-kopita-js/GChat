@@ -281,6 +281,40 @@ export class BackendApi {
     );
   }
 
+  callsHistoryList(
+    args: Pick<Types.CallsHistoryListData, 'query'> & { signal?: AbortSignal } = {},
+  ): Promise<ApiResult<NormalizeVoid<Types.CallsHistoryListResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.CallsHistoryListResponse>>(
+      {
+        path: '/calls/history',
+        method: 'get',
+        protected: true,
+        emptyResponses: [],
+        parameters: [
+          { name: 'filter', in: 'query' },
+          { name: 'limit', in: 'query' },
+          { name: 'cursor', in: 'query' },
+        ],
+      },
+      args,
+    );
+  }
+
+  callsHistoryGet(
+    args: Pick<Types.CallsHistoryGetData, 'path'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.CallsHistoryGetResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.CallsHistoryGetResponse>>(
+      {
+        path: '/calls/history/{call_id}',
+        method: 'get',
+        protected: true,
+        emptyResponses: [],
+        parameters: [{ name: 'call_id', in: 'path' }],
+      },
+      args,
+    );
+  }
+
   groupsList(
     args: Pick<Types.GroupsListData, never> & { signal?: AbortSignal } = {},
   ): Promise<ApiResult<NormalizeVoid<Types.GroupsListResponse>>> {

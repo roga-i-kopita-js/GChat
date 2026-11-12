@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  testMatch: ['**/device/*.e2e.ts', '**/web/backoffice.e2e.ts'],
+  testMatch: ['**/device/*.e2e.ts', '**/web/backoffice.e2e.ts', '**/web/responsive.e2e.ts'],
   workers: 1,
   timeout: 30000,
   use: { baseURL: 'http://127.0.0.1:5175', trace: 'off' },

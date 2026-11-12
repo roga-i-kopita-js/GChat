@@ -57,26 +57,71 @@ export function createApplicationRoutes(): RouteObject[] {
                   element: <Navigate to="/calls" replace />,
                 },
                 {
-                  id: 'contacts',
+                  id: 'calls-history',
                   path: 'calls',
-                  handle: layoutRoute('calls'),
+                  handle: layoutRoute('calls', 'contained'),
+                  ErrorBoundary: RouteErrorBoundary,
+                  lazy: {
+                    loader: async (): Promise<
+                      typeof import('../features/calls/history-loaders').callHistoryLoader
+                    > => {
+                      const { callHistoryLoader } =
+                        await import('../features/calls/history-loaders');
+
+                      return callHistoryLoader;
+                    },
+                    Component: async (): Promise<
+                      typeof import('../features/calls/CallsPage').CallsPage
+                    > => {
+                      const { CallsPage } = await import('../features/calls/CallsPage');
+
+                      return CallsPage;
+                    },
+                  },
+                  children: [
+                    { index: true, element: null },
+                    {
+                      path: ':callId',
+                      lazy: {
+                        loader: async (): Promise<
+                          typeof import('../features/calls/history-loaders').callHistoryDetailLoader
+                        > => {
+                          const { callHistoryDetailLoader } =
+                            await import('../features/calls/history-loaders');
+
+                          return callHistoryDetailLoader;
+                        },
+                        Component: async (): Promise<
+                          typeof import('../features/calls/CallHistoryDetails').CallHistoryDetails
+                        > => {
+                          const { CallHistoryDetails } =
+                            await import('../features/calls/CallHistoryDetails');
+
+                          return CallHistoryDetails;
+                        },
+                      },
+                    },
+                  ],
+                },
+                {
+                  id: 'contacts',
+                  path: 'dialogs/contacts',
+                  handle: layoutRoute('dialogs'),
                   ErrorBoundary: RouteErrorBoundary,
                   lazy: {
                     loader: async (): Promise<
                       typeof import('../features/calls/contacts').contactsLoader
                     > => {
-                      const { contactsLoader: resultContactsLoader } =
-                        await import('../features/calls/contacts');
+                      const { contactsLoader } = await import('../features/calls/contacts');
 
-                      return resultContactsLoader;
+                      return contactsLoader;
                     },
                     Component: async (): Promise<
-                      typeof import('../features/calls/CallsPage').CallsPage
+                      typeof import('../features/calls/ContactsPage').ContactsPage
                     > => {
-                      const { CallsPage: resultCallsPage } =
-                        await import('../features/calls/CallsPage');
+                      const { ContactsPage } = await import('../features/calls/ContactsPage');
 
-                      return resultCallsPage;
+                      return ContactsPage;
                     },
                   },
                 },

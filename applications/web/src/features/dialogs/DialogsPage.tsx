@@ -1,6 +1,6 @@
 import './dialogs.css';
 
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, Users } from 'lucide-react';
 import type { JSX } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { Link, Outlet, useParams, useRevalidator, useRouteLoaderData } from 'react-router';
@@ -59,7 +59,7 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
         <MessageCircle size={34} />
         <h3>Пока нет диалогов</h3>
         <p>Начните переписку из контактов</p>
-        <Link to="/calls">К контактам</Link>
+        <Link to="/dialogs/contacts">К контактам</Link>
       </div>
     );
   } else {
@@ -101,6 +101,11 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
   return (
     <div className={'dialogs-layout' + (dialogId ? ' dialog-selected' : '')}>
       <section className="dialogs-sidebar" aria-label="Диалоги">
+        <div className="dialog-contacts-access">
+          <Link to="/dialogs/contacts">
+            <Users size={18} aria-hidden="true" /> Контакты
+          </Link>
+        </div>
         {state.storageWarning && (
           <p className="dialog-notice" role="status">
             {state.storageWarning}
@@ -166,6 +171,7 @@ export function DialogsPage(): JSX.Element {
     <Dialogs runtime={runtime} />
   ) : (
     <section className="dialog-empty">
+      <Link to="/dialogs/contacts">Контакты</Link>
       <p role={error ? 'alert' : 'status'}>{error ?? 'Подготавливаем переписку…'}</p>
       <Outlet />
       {error && (

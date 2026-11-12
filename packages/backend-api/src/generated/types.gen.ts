@@ -177,6 +177,37 @@ export type ReadResponseDto = {
   last_read_sequence: number;
 };
 
+export type CallHistoryItemDto = {
+  call_id: string;
+  version: number;
+  peer_id: string;
+  direction: 'incoming' | 'outgoing';
+  outcome: 'completed' | 'missed' | 'unanswered' | 'cancelled' | 'rejected' | 'failed';
+  created_at: string;
+  started_at: string | null;
+  ended_at: string;
+  end_reason:
+    | 'cancelled'
+    | 'rejected'
+    | 'no_answer'
+    | 'connection_timeout'
+    | 'hangup'
+    | 'connection_lost'
+    | 'session_revoked'
+    | 'account_disabled';
+  duration_seconds: number | null;
+  peer_display_name: string;
+};
+
+export type CallHistoryListResponseDto = {
+  next_cursor: string | null;
+  items: Array<CallHistoryItemDto>;
+};
+
+export type CallHistoryResponseDto = {
+  item: CallHistoryItemDto;
+};
+
 export type GroupDto = {
   id: string;
   name: string;
@@ -719,6 +750,61 @@ export type DialogsReadResponses = {
 };
 
 export type DialogsReadResponse = DialogsReadResponses[keyof DialogsReadResponses];
+
+export type CallsHistoryListData = {
+  body?: never;
+  path?: never;
+  query?: {
+    filter?: 'all' | 'missed';
+    limit?: number;
+    cursor?: string;
+  };
+  url: '/calls/history';
+};
+
+export type CallsHistoryListErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  429: ErrorResponseDto;
+  500: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type CallsHistoryListError = CallsHistoryListErrors[keyof CallsHistoryListErrors];
+
+export type CallsHistoryListResponses = {
+  200: CallHistoryListResponseDto;
+};
+
+export type CallsHistoryListResponse = CallsHistoryListResponses[keyof CallsHistoryListResponses];
+
+export type CallsHistoryGetData = {
+  body?: never;
+  path: {
+    call_id: string;
+  };
+  query?: never;
+  url: '/calls/history/{call_id}';
+};
+
+export type CallsHistoryGetErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  500: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type CallsHistoryGetError = CallsHistoryGetErrors[keyof CallsHistoryGetErrors];
+
+export type CallsHistoryGetResponses = {
+  200: CallHistoryResponseDto;
+};
+
+export type CallsHistoryGetResponse = CallsHistoryGetResponses[keyof CallsHistoryGetResponses];
 
 export type GroupsListData = {
   body?: never;

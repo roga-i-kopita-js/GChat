@@ -9,7 +9,14 @@ const schema = JSON.parse(await readFile(new URL('../openapi.json', import.meta.
 test('real schema contains all operations', () => {
   const operations = validateSchema(schema);
 
-  assert.equal(operations.length, 22);
+  assert.equal(operations.length, 24);
+  assert.deepEqual(
+    operations
+      .filter(({ operation }) => operation.operationId.startsWith('callsHistory'))
+      .map(({ operation }) => operation.operationId)
+      .sort(),
+    ['callsHistoryGet', 'callsHistoryList'],
+  );
   assert.deepEqual(
     operations
       .map(({ operation }) => operation.operationId)

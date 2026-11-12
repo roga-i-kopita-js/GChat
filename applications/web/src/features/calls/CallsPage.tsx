@@ -1,312 +1,303 @@
+import './history.css';
+
+import type { CallHistoryItemDto } from '@gchat/backend-api';
 import {
   ArrowLeft,
-  Headphones,
-  MessageCircle,
   Phone,
+  PhoneIncoming,
+  PhoneMissed,
+  PhoneOutgoing,
   RefreshCw,
-  ShieldCheck,
-  Users,
-  WifiOff,
 } from 'lucide-react';
 import type { JSX } from 'react';
-import { lazy, useEffect, useRef, useState } from 'react';
-import { useLoaderData, useNavigate, useRevalidator, useSearchParams } from 'react-router';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Link, Outlet, useLoaderData, useLocation, useNavigate, useParams } from 'react-router';
 
-import type { Member } from '../../shared/calls/protocol';
 import { deviceErrorMessage } from '../../shared/device/messages';
-import { useDevice } from '../../shared/device/react';
-import { useBootstrap } from '../../shared/dialogs/context';
-import { dialogError } from '../../shared/dialogs/runtime';
-import { Button, Select, Skeleton } from '../../shared/ui';
-import { LazyPanel } from '../../shared/ui/LazyPanel';
+import { Button, Modal, Skeleton } from '../../shared/ui';
 import { useAuth } from '../auth/AuthProvider';
 import { UserCard } from '../users/UserCard';
 import { CallCardSlot } from './CallCardSlot';
 import { useCalls } from './CallsProvider';
-import type { ContactsData } from './contacts';
-
-const ContactDetails = lazy(
-  async (): Promise<{ default: typeof import('./ContactDetails').ContactDetails }> => {
-    const { ContactDetails: resultContactDetails } = await import('./ContactDetails');
-
-    return {
-      default: resultContactDetails,
-    };
-  },
-);
+import { historyDay, historyDuration, historyLabel, historyTime } from './history-format';
+import type { CallHistoryData } from './history-loaders';
+import type { CallHistoryModel } from './history-model';
 
 export function CallsPage(): JSX.Element {
-  const device = useDevice();
+  const { model, filter, sid } = useLoaderData<CallHistoryData>();
+  const snapshot = useSyncExternalStore(model.on, model.getSnapshot);
   const { user } = useAuth();
-  const { runtime: dialogs } = useBootstrap();
+  const { call, incoming, ongoing, enabled, mobile, setMobile, setPerson } = useCalls();
+  const { callId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
-  const { mobile, setMobile, person, setPerson, ongoing, enabled, peerId, call, incoming } =
-    useCalls();
-  const contacts = useLoaderData<ContactsData>();
-  const revalidator = useRevalidator();
-  const [, setParams] = useSearchParams();
-  const groupId = contacts.groupId;
-  const groups = contacts.sid === user?.sid ? contacts.groups : [];
-  const currentMembers =
-    contacts.sid === user?.sid
-      ? contacts.members.filter((member): boolean => member.id !== user?.sub)
-      : [];
-  const setGroupId = (id: string | null): void => {
-    setParams(id ? { group: id } : {});
-  };
-  const [prepareError, setPrepareError] = useState('');
+  const view = snapshot.views[filter];
+  const scroll = useRef<HTMLDivElement>(null);
+  const [confirmation, setConfirmation] = useState<{
+    item: CallHistoryItemDto;
+    owner: CallHistoryModel;
+  } | null>(null);
+  const confirm = confirmation?.owner === model ? confirmation.item : null;
+  const [error, setError] = useState('');
   const [preparing, setPreparing] = useState(false);
+  const acting = useRef(false);
   const attempt = useRef(0);
-  const preparingRef = useRef(false);
+  const showingCall = !!call && !incoming && mobile;
+  const valid = sid === user?.sid && !snapshot.stopped;
+  const back = '/calls' + (filter === 'missed' ? '?filter=missed' : '');
 
-  useEffect((): void => {
+  useEffect((): (() => void) => model.visible(filter), [model, filter]);
+  useEffect((): (() => void) => {
     attempt.current++;
-  }, []);
+    setConfirmation(null);
+    setError('');
 
-  async function dial(peer: string): Promise<void> {
-    if (preparingRef.current) {
+    return (): void => {
+      attempt.current++;
+    };
+  }, [sid, model, location.pathname, filter]);
+  useEffect((): void => {
+    if (incoming || ongoing) {
+      setConfirmation(null);
+    }
+  }, [incoming, ongoing]);
+  useLayoutEffect((): void => {
+    if (scroll.current && scroll.current.clientHeight > 0) {
+      scroll.current.scrollTop = model.scroll[filter];
+    }
+  }, [model, filter, callId, showingCall, view.ids]);
+
+  function redial(item: CallHistoryItemDto): void {
+    setError('');
+    setConfirmation({ item, owner: model });
+  }
+
+  async function dial(item: CallHistoryItemDto): Promise<void> {
+    if (acting.current || !enabled || ongoing || !valid) {
       return;
     }
 
-    preparingRef.current = true;
+    acting.current = true;
+    setPreparing(true);
     const id = ++attempt.current;
 
-    setPreparing(true);
-    setPrepareError('');
+    setConfirmation(null);
+    setError('');
+    setPerson({ id: item.peer_id, display_name: item.peer_display_name });
 
     try {
-      if (id === attempt.current) {
-        await device.calls.dial(peer);
+      await model.device.calls.dial(item.peer_id);
+
+      if (id === attempt.current && !model.getSnapshot().stopped) {
+        setMobile(true);
+
+        if (callId) {
+          void navigate(back);
+        }
       }
-    } catch (error) {
+    } catch (cause) {
       if (id === attempt.current) {
-        setPrepareError(deviceErrorMessage(error));
+        setError(deviceErrorMessage(cause));
       }
     } finally {
-      preparingRef.current = false;
-
-      if (id === attempt.current) {
-        setPreparing(false);
-      }
+      acting.current = false;
+      setPreparing(false);
     }
   }
 
-  function write(peer: string): void {
-    if (!dialogs) {
-      return;
-    }
+  let day = '';
+  const rows = valid
+    ? view.ids.map((id): JSX.Element | null => {
+        const item = snapshot.records[id];
 
-    setPrepareError('');
-    void (async () => {
-      try {
-        const id = await dialogs.openPeer(peer);
+        if (!item) {
+          return null;
+        }
 
-        void navigate('/dialogs/' + id);
-      } catch (cause) {
-        return setPrepareError(dialogError(cause));
-      }
-    })();
-  }
+        const label = historyDay(item.created_at);
+        const heading = day !== label;
 
-  function select(member: Member): void {
-    if (ongoing) {
-      return;
-    }
+        day = label;
+        let Icon = item.direction === 'incoming' ? PhoneIncoming : PhoneOutgoing;
 
-    setPerson(member);
-    setMobile(true);
-  }
+        if (item.outcome === 'missed') {
+          Icon = PhoneMissed;
+        }
 
-  if (!user) {
-    return <></>;
-  }
-
-  let contactsContent;
-
-  if (contacts.error) {
-    contactsContent = (
-      <div className="list-empty">
-        <WifiOff size={30} />
-        <h3>Не удалось загрузить контакты</h3>
-        <p>Проверьте соединение и попробуйте ещё раз.</p>
-        <Button
-          variant="secondary"
-          onClick={(): void => {
-            void revalidator.revalidate();
-          }}
-        >
-          <RefreshCw size={16} /> Повторить
-        </Button>
-      </div>
-    );
-  } else if (
-    contacts.sid !== user.sid ||
-    (revalidator.state === 'loading' && !currentMembers.length)
-  ) {
-    contactsContent = (
-      <div className="skeleton-list" role="status" aria-label="Загрузка контактов">
-        {[0, 1, 2, 3].map((id): JSX.Element => (
-          <div className="skeleton-row" key={id}>
-            <Skeleton variant="circular" width="var(--ui-control-height)" />
-            <div className="skeleton-copy">
-              <Skeleton width="65%" />
-              <Skeleton width="40%" height="var(--ui-font-caption)" />
+        return (
+          <div key={id}>
+            {heading && <h3 className="history-day">{label}</h3>}
+            <div
+              className={
+                'history-row' +
+                (item.outcome === 'missed' ? ' history-missed' : '') +
+                (callId === id ? ' history-selected' : '')
+              }
+            >
+              <Link
+                className="history-person"
+                to={'/calls/' + id + (filter === 'missed' ? '?filter=missed' : '')}
+                aria-label={`Сведения о звонке: ${item.peer_display_name}, ${historyLabel(item)}, ${historyTime(item.created_at)}`}
+              >
+                <UserCard userId={item.peer_id} displayName={item.peer_display_name} />
+                <span className="history-subtitle">
+                  <Icon size={13} aria-hidden="true" />
+                  {historyLabel(item)}
+                  {item.duration_seconds !== null && ' · ' + historyDuration(item.duration_seconds)}
+                </span>
+                <time className="history-time" dateTime={item.created_at}>
+                  {historyTime(item.created_at)}
+                </time>
+              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="history-redial"
+                aria-label={'Позвонить: ' + item.peer_display_name}
+                disabled={!enabled || ongoing || preparing}
+                onClick={(): void => redial(item)}
+              >
+                <Phone size={18} aria-hidden="true" />
+              </Button>
             </div>
           </div>
-        ))}
-      </div>
-    );
-  } else if (!currentMembers.length) {
-    contactsContent = (
-      <div className="list-empty">
-        <Users size={32} />
-        <h3>
-          {user.role === 'admin' || groups.length
-            ? 'Здесь пока нет собеседников'
-            : 'У вас пока нет групп'}
-        </h3>
-        <p>
-          {user.role === 'admin'
-            ? 'Активные пользователи появятся здесь после создания аккаунтов.'
-            : 'Администратор добавит вас в группу, и её участники появятся здесь.'}
-        </p>
-      </div>
-    );
-  } else {
-    contactsContent = (
-      <div className="contact-list">
-        {currentMembers.map((member): JSX.Element => (
-          <div
-            key={member.id}
-            className={
-              'contact-row' + (person?.id === member.id || peerId === member.id ? ' chosen' : '')
-            }
-          >
-            <button
-              className="contact-person"
-              onClick={(): void => select(member)}
-              disabled={ongoing && peerId !== member.id}
-            >
-              <UserCard
-                userId={member.id}
-                displayName={member.display_name}
-                subtitle="Голосовой звонок"
-              />
-            </button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="contact-call"
-              aria-label={`Написать: ${member.display_name}`}
-              disabled={!dialogs}
-              onClick={(): void => write(member.id)}
-            >
-              <MessageCircle size={18} />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="contact-call"
-              aria-label={`Позвонить: ${member.display_name}`}
-              disabled={!enabled || ongoing || preparing}
-              onClick={(): void => {
-                setPerson(member);
-                void dial(member.id);
-              }}
-            >
-              <Phone size={18} />
-            </Button>
-          </div>
-        ))}
-      </div>
-    );
-  }
+        );
+      })
+    : [];
 
-  let detailPanel;
+  let detailPanel: JSX.Element;
 
-  if (call) {
-    detailPanel = !incoming && <CallCardSlot />;
-  } else if (person) {
+  if (showingCall) {
     detailPanel = (
-      <LazyPanel
-        key={person.id}
-        pending={<p role="status">Загружаем карточку…</p>}
-        failed={
-          <p role="alert">
-            Не удалось загрузить карточку собеседника. Быстрый звонок доступен в списке контактов.
-          </p>
-        }
-      >
-        <ContactDetails dial={dial} write={write} canWrite={!!dialogs} />
-      </LazyPanel>
+      <>
+        <Button className="history-collapse" variant="ghost" onClick={(): void => setMobile(false)}>
+          <ArrowLeft size={18} /> История звонков
+        </Button>
+        <CallCardSlot />
+      </>
     );
+  } else if (callId) {
+    detailPanel = <Outlet context={{ redial }} />;
   } else {
     detailPanel = (
-      <div className="welcome-panel">
-        <div className="welcome-orbit">
-          <span>
-            <Phone size={38} />
-          </span>
-        </div>
-        <h2>Есть о чём поговорить</h2>
-        <p>
-          Выберите человека из своей группы,
-          <br />
-          чтобы начать голосовой звонок.
-        </p>
-        <div className="welcome-features">
-          <span>
-            <Headphones size={17} /> Только голос
-          </span>
-          <span>
-            <ShieldCheck size={17} /> Только ваши люди
-          </span>
-        </div>
+      <div className="history-placeholder">
+        <Phone size={30} />
+        <p>Выберите звонок, чтобы посмотреть сведения</p>
       </div>
     );
   }
 
   return (
-    <>
-      {prepareError && (
-        <p role="alert" className="error-banner">
-          {prepareError}
+    <div className={'history-layout' + (callId || showingCall ? ' history-detail-open' : '')}>
+      {error && (
+        <p className="history-command-error" role="alert">
+          {error}
         </p>
       )}
-      <div className="content-grid">
-        <section className={'contact-panel' + (mobile ? ' mobile-hidden' : '')}>
-          {(groups.length > 1 || user.role === 'admin') && (
-            <div className="contact-controls">
-              <Select
-                aria-label="Группа контактов"
-                className="contacts-group-select"
-                value={groupId ?? ''}
-                onChange={(value): void => {
-                  setGroupId(value || null);
-                  setPerson(null);
-                  setMobile(false);
-                }}
-              >
-                {user.role === 'admin' && <option value="">Все пользователи</option>}
-                {groups.map((group): JSX.Element => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </Select>
+      <section className="history-panel" aria-label="История звонков">
+        <div className="history-filter" role="group" aria-label="Фильтр истории звонков">
+          <Link
+            to="/calls"
+            aria-current={filter === 'all' ? 'page' : undefined}
+            className={'history-filter-button' + (filter === 'all' ? ' selected' : '')}
+          >
+            Все
+          </Link>
+          <Link
+            to="/calls?filter=missed"
+            aria-current={filter === 'missed' ? 'page' : undefined}
+            className={'history-filter-button' + (filter === 'missed' ? ' selected' : '')}
+          >
+            Пропущенные
+          </Link>
+        </div>
+        {ongoing && (
+          <Button
+            className="history-return"
+            variant="secondary"
+            onClick={(): void => setMobile(true)}
+          >
+            <Phone size={18} /> Вернуться к звонку
+          </Button>
+        )}
+        <div
+          className="history-list"
+          ref={scroll}
+          onScroll={(event): void => {
+            if (event.currentTarget.clientHeight > 0) {
+              model.scroll[filter] = event.currentTarget.scrollTop;
+            }
+          }}
+        >
+          {(!valid || (!view.loaded && view.loading)) && (
+            <div role="status" aria-label="Загрузка истории звонков">
+              {[0, 1, 2, 3].map((id): JSX.Element => (
+                <div className="skeleton-row" key={id}>
+                  <Skeleton variant="circular" width="var(--ui-control-height)" />
+                  <div className="skeleton-copy">
+                    <Skeleton width="60%" />
+                    <Skeleton width="40%" />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-          {contactsContent}
-        </section>
-        <section className={'detail-panel' + (!mobile ? ' mobile-hidden' : '')}>
-          {mobile && (
-            <button className="mobile-back" onClick={(): void => setMobile(false)}>
-              <ArrowLeft size={18} /> Контакты
-            </button>
+          {valid && view.error && (
+            <div className="history-error" role="alert">
+              <p>{view.error}</p>
+              <Button
+                variant="secondary"
+                onClick={(): void => {
+                  void model.head(filter);
+                }}
+              >
+                <RefreshCw size={16} /> Повторить
+              </Button>
+            </div>
           )}
-          {detailPanel}
-        </section>
-      </div>
-    </>
+          {valid && view.loaded && !view.ids.length && (
+            <div className="list-empty">
+              <Phone size={30} />
+              <h3>{filter === 'missed' ? 'Пропущенных звонков нет' : 'Звонков пока нет'}</h3>
+            </div>
+          )}
+          {rows}
+          {valid && view.nextCursor && (
+            <div className="history-more">
+              <Button
+                variant="secondary"
+                disabled={view.loading || view.loadingMore}
+                onClick={(): void => {
+                  void model.more(filter);
+                }}
+              >
+                {view.loadingMore ? 'Загружаем…' : 'Ещё звонки'}
+              </Button>
+            </div>
+          )}
+        </div>
+      </section>
+      <div className="history-detail-panel">{detailPanel}</div>
+      {confirm && valid && !ongoing && (
+        <Modal title="Позвонить?" close={(): void => setConfirmation(null)}>
+          <div className="confirm-person">
+            <UserCard userId={confirm.peer_id} displayName={confirm.peer_display_name} />
+          </div>
+          <div className="modal-actions">
+            <Button variant="secondary" onClick={(): void => setConfirmation(null)}>
+              Отмена
+            </Button>
+            <Button
+              disabled={!enabled || preparing}
+              onClick={(): void => {
+                void dial(confirm);
+              }}
+            >
+              Позвонить
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }

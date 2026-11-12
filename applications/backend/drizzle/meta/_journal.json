@@ -57,6 +57,13 @@
       "when": 1794058512357,
       "tag": "0007_dialogs",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794433477529,
+      "tag": "0008_call_history",
+      "breakpoints": true
     }
   ]
 }

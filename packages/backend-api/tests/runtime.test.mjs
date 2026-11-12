@@ -22,7 +22,7 @@ for (const [format, Client] of [
     );
     assert.equal(
       Object.getOwnPropertyNames(Client.prototype).filter((name) => name !== 'constructor').length,
-      22,
+      24,
     );
   });
 
@@ -297,4 +297,47 @@ test('dialog methods preserve numeric positions, message IDs, content and Bearer
     limit: '30',
   });
   assert.equal(new Headers(calls[1][1].headers).get('Authorization'), 'Bearer dialog-token');
+});
+
+test('call history methods encode filters/cursors and preserve nullable metadata', async () => {
+  const calls = [];
+  const item = {
+    call_id: 'id',
+    started_at: null,
+    duration_seconds: null,
+    outcome: 'missed',
+    direction: 'incoming',
+    peer_display_name: 'Анна',
+  };
+  const api = new BackendApi({
+    baseUrl: '/api',
+    getAccessToken: () => 'history-token',
+    fetch: async (...args) => {
+      calls.push(args);
+
+      return json(calls.length === 1 ? { items: [item], next_cursor: null } : { item });
+    },
+  });
+  const { data: list } = await api.callsHistoryList({
+    query: { filter: 'missed', limit: 30, cursor: 'cursor+/=' },
+  });
+
+  assert.deepEqual(list, { items: [item], next_cursor: null });
+  const url = new URL(calls[0][0], 'https://example.invalid');
+
+  assert.equal(url.pathname, '/api/calls/history');
+  assert.deepEqual(Object.fromEntries(url.searchParams), {
+    filter: 'missed',
+    limit: '30',
+    cursor: 'cursor+/=',
+  });
+  const { data: detail } = await api.callsHistoryGet({ path: { call_id: 'id /?#' } });
+
+  assert.deepEqual(detail, { item });
+  assert.equal(calls[1][0], '/api/calls/history/id%20%2F%3F%23');
+
+  for (const [, options] of calls) {
+    assert.equal(options.method, 'GET');
+    assert.equal(new Headers(options.headers).get('Authorization'), 'Bearer history-token');
+  }
 });

@@ -82,7 +82,9 @@ async function setup(page: Page, role = 'admin', path = '/', withSession = true)
     const path = new URL(route.request().url()).pathname;
     let body: unknown = {};
 
-    if (path === '/api/groups') {
+    if (path === '/api/calls/history') {
+      body = { items: [], next_cursor: null };
+    } else if (path === '/api/groups') {
       body = { groups: [] };
     } else if (path === '/api/admin/users') {
       body = { users: [account(), account(adminId)], total: 2 };
@@ -737,7 +739,7 @@ test('admin calls list includes active users across pages and without groups', a
       },
     });
   });
-  await page.reload();
+  await page.goto('/dialogs/contacts');
   await expect(page.getByRole('combobox', { name: 'Группа контактов' })).toHaveValue('');
   await expect(page.getByRole('button', { name: 'Позвонить: Анна', exact: true })).toBeVisible();
   await expect(
@@ -777,7 +779,7 @@ test('contact group belongs to the URL and survives reload and browser history',
       },
     });
   });
-  await page.goto('/calls');
+  await page.goto('/dialogs/contacts');
   const groups = page.getByRole('combobox', { name: 'Группа контактов' });
 
   await groups.selectOption(first);
@@ -814,7 +816,7 @@ test('contacts reload on each route entry without a timer or focus refresh', asy
     membersRead++;
     await route.fulfill({ json: { members: [{ id: targetId, display_name: name }] } });
   });
-  await page.goto('/calls');
+  await page.goto('/dialogs/contacts');
   await expect(
     page.getByRole('button', { name: 'Первый собеседник Голосовой звонок' }),
   ).toBeVisible();
@@ -827,7 +829,7 @@ test('contacts reload on each route entry without a timer or focus refresh', asy
   await page.getByRole('link', { name: 'Настройки', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Настройки', exact: true })).toBeVisible();
   name = 'Изменённый собеседник';
-  await page.getByRole('link', { name: 'Звонки', exact: true }).click();
+  await page.goto('/dialogs/contacts');
   await expect(
     page.getByRole('button', { name: 'Изменённый собеседник Голосовой звонок' }),
   ).toBeVisible();
@@ -1242,8 +1244,8 @@ test('contacts do not import person details, call card or diagnostics before ope
     modules.add(new URL(request.url()).pathname);
   });
   await page.addInitScript((): void => localStorage.setItem('debug', '1'));
-  await setup(page);
-  await expect(page.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
+  await setup(page, 'admin', '/dialogs/contacts');
+  await expect(page.getByRole('main', { name: 'Диалоги', exact: true })).toBeVisible();
   expect(
     [...modules].some((path): boolean =>
       /\/(ContactDetails|CallCard|DiagnosticsDialog)\.tsx$/.test(path),
@@ -1255,6 +1257,7 @@ test('contacts do not import person details, call card or diagnostics before ope
   expect(
     [...modules].some((path): boolean => /\/(CallCard|DiagnosticsDialog)\.tsx$/.test(path)),
   ).toBe(false);
+  await page.getByRole('link', { name: 'Звонки', exact: true }).click();
   await page.getByRole('button', { name: 'Диагностика', exact: true }).click();
   await expect(
     page.getByRole('dialog', { name: 'Диагностика соединения', exact: true }),

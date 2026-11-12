@@ -1,5 +1,10 @@
 import { expect, type Page, test } from '@playwright/test';
 
+test.use({
+  permissions: ['microphone'],
+  launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
+});
+
 const adminId = '00000000-0000-4000-8000-000000000001';
 const annaId = '00000000-0000-4000-8000-000000000002';
 const anna = {
@@ -79,6 +84,8 @@ async function setup(
 
       if (path === '/api/auth/ws-ticket') {
         body = { ticket: 'test-ticket', expires_at: new Date(Date.now() + 60000).toISOString() };
+      } else if (path === '/api/calls/history') {
+        body = { items: [], next_cursor: null };
       } else if (path === '/api/groups') {
         body = { groups: [{ id: 'family', name: 'близкие' }] };
       } else if (path === '/api/groups/family/members') {
@@ -149,13 +156,15 @@ for (const viewport of [
     const banner = page.getByRole('link', { name: /Вернуться к звонку/ });
 
     await nav.getByRole('link', { name: 'Звонки', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Позвонить: Анна Смирнова' })).toBeEnabled();
+    await expect(
+      page.getByRole('heading', { name: 'Звонков пока нет', exact: true }),
+    ).toBeVisible();
     updateCall('active');
     await expect(page.locator('.call-card')).toBeVisible();
     await expect(banner).toHaveCount(0);
 
     for (const section of ['Настройки', 'Диалоги', 'Администрирование']) {
-      await page.getByRole('button', { name: 'Контакты', exact: true }).click();
+      await page.getByRole('button', { name: 'История звонков', exact: true }).click();
       await nav.getByRole('link', { name: section, exact: true }).click();
       await expect(banner).toBeInViewport();
       await expect(banner).toContainText('Анна Смирнова');
@@ -244,7 +253,7 @@ for (const viewport of [
       create.getByRole('button', { name: 'Создать аккаунт', exact: true }),
     ).toBeInViewport();
     await create.getByRole('button', { name: 'Отмена', exact: true }).click();
-    await nav.getByRole('link', { name: 'Звонки', exact: true }).click();
+    await page.goto('/dialogs/contacts');
     await expect(
       page.getByRole('button', { name: 'Позвонить: Анна Смирнова', exact: true }),
     ).toBeEnabled();
@@ -301,7 +310,7 @@ for (const viewport of [
     const nav = page.getByRole('navigation', { name: 'Основные разделы' });
     const scroll = page.locator('.app-viewport');
 
-    for (const path of ['/calls', '/settings/general', '/admin/users']) {
+    for (const path of ['/dialogs/contacts', '/settings/general', '/admin/users']) {
       await page.goto(path);
       await expect(page.getByRole('main')).toBeVisible();
       await expect(page.locator('body')).toHaveCSS('position', 'fixed');

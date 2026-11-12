@@ -94,6 +94,8 @@ describe('Backend HTTP', (): void => {
       '/auth/logout',
       '/auth/refresh',
       '/auth/ws-ticket',
+      '/calls/history',
+      '/calls/history/{call_id}',
       '/dialogs',
       '/dialogs/{dialog_id}',
       '/dialogs/{dialog_id}/messages',

@@ -271,7 +271,7 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
 
     for (const page of [anna, maxim]) {
       await page.getByRole('link', { name: 'Звонки', exact: true }).click();
-      await page.getByRole('button', { name: 'Вернуться к контактам' }).click();
+      await page.getByRole('button', { name: 'Вернуться к истории' }).click();
       await expect(page.getByRole('button', { name: 'Позвонить', exact: true })).not.toBeVisible();
       await expect(
         page.getByRole('button', { name: 'Елена Соколова Голосовой звонок' }),

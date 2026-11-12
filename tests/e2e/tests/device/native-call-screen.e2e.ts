@@ -124,10 +124,15 @@ async function setup(
         } else if (method === 'httpRequest') {
           const input = args.request as { url: string };
           const path = new URL(input.url).pathname;
-          const data =
-            path === '/api/groups'
-              ? { groups: [{ id: 'family', name: 'Семья' }] }
-              : { members: [{ id: peer, display_name: 'Анна' }] };
+          let data: object;
+
+          if (path === '/api/calls/history') {
+            data = { items: [], next_cursor: null };
+          } else if (path === '/api/groups') {
+            data = { groups: [{ id: 'family', name: 'Семья' }] };
+          } else {
+            data = { members: [{ id: peer, display_name: 'Анна' }] };
+          }
 
           return {
             httpVersion: 1,
@@ -245,7 +250,7 @@ async function setup(
     { me, peer, compatible, options },
   );
   await page.goto(options.initialPath ?? '/calls');
-  await expect(page.getByRole('button', { name: 'Позвонить: Анна', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Звонков пока нет', exact: true })).toBeVisible();
   await page.evaluate(() => Reflect.get(window, 'nativeTest').update('ringing'));
 }
 
@@ -291,8 +296,10 @@ for (const viewport of [
     // A system/remote end also removes Web protection.
     await page.evaluate(() => Reflect.get(window, 'nativeTest').update('ended'));
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Вернуться к контактам', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Позвонить: Анна', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Вернуться к истории', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Звонков пока нет', exact: true }),
+    ).toBeVisible();
     await page.evaluate(() => Reflect.get(window, 'nativeTest').update('ringing'));
     await page.getByRole('button', { name: 'Отклонить', exact: true }).click();
     const commands = await page.evaluate(() => Reflect.get(window, 'nativeTest').commands);
@@ -328,7 +335,7 @@ test('an older iOS shell shows update guidance and disables unsupported call act
 test('the native outgoing screen offers cancel through the same end command', async ({ page }) => {
   await setup(page);
   await page.getByRole('button', { name: 'Отклонить', exact: true }).click();
-  await page.getByRole('button', { name: 'Вернуться к контактам', exact: true }).click();
+  await page.getByRole('button', { name: 'Вернуться к истории', exact: true }).click();
   await page.evaluate(() => Reflect.get(window, 'nativeTest').update('ringing', true));
   await expect(page.getByRole('dialog', { name: 'Входящий звонок', exact: true })).toHaveCount(0);
   await expect(page.getByTestId('call-status')).toHaveText('Вызываем…');

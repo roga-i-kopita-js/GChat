@@ -162,6 +162,30 @@ afterEach((): void => {
 });
 
 describe('native bridge handshake and synchronization', (): void => {
+  it.each([
+    '/calls?filter=missed',
+    '/calls/00000000-0000-4000-8000-000000000010?filter=all',
+    '/dialogs/contacts',
+    '/dialogs/contacts?group=all',
+    '/dialogs/contacts?group=00000000-0000-4000-8000-000000000011',
+  ])('accepts the history and contacts route %s', async (path): Promise<void> => {
+    await nativeRuntime.ready();
+    emit('route', { path, accessToken: token() });
+    expect(nativeRuntime.getSnapshot().route).toMatchObject({ path, replace: true });
+  });
+
+  it.each([
+    '/calls?filter=other',
+    '/calls?filter=all&filter=missed',
+    '/calls?group=all',
+    '/calls?serverUrl=https://gchat.test',
+    '/dialogs/contacts?group=other',
+    '/dialogs/contacts?group=all&group=all',
+  ])('rejects unsupported history/contact query %s', async (path): Promise<void> => {
+    await nativeRuntime.ready();
+    emit('route', { path, accessToken: token() });
+    expect(nativeRuntime.getSnapshot().phase).toBe('error');
+  });
   it('registers listeners before webReady and waits for both route and a full null snapshot', async (): Promise<void> => {
     mock.plugin.webReady.mockImplementation(async (): Promise<void> => {
       expect(mock.listeners.size).toBe(5);

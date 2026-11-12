@@ -2,7 +2,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq, isNull, lt, ne, or } from 'drizzle-orm';
+import { and, eq, exists, isNull, lt, ne, or } from 'drizzle-orm';
 
 import { AuthService } from '../auth/auth.service.js';
 import type { DatabaseTransaction } from '../database/database.service.js';
@@ -11,6 +11,7 @@ import { AppError } from '../error/app.error.js';
 import { ErrorService } from '../error/error.service.js';
 import { GroupsService } from '../groups/groups.service.js';
 import { LoggerService } from '../logger/logger.service.js';
+import { callHistory } from './call-history.schema.js';
 import type {
   CallActor,
   CallDto,
@@ -851,6 +852,12 @@ export class DirectCallsService {
         and(
           eq(directCalls.state, 'ended'),
           lt(directCalls.endedAt, new Date(Date.now() - 30 * 86400000)),
+          exists(
+            this.repository.db
+              .select({ id: callHistory.callId })
+              .from(callHistory)
+              .where(eq(callHistory.callId, directCalls.id)),
+          ),
         ),
       );
     const retained = await this.repository.db

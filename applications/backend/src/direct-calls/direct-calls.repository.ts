@@ -5,6 +5,7 @@ import { isDatabaseUnavailable } from '../database/database.errors.js';
 import type { DatabaseTransaction } from '../database/database.service.js';
 import { DatabaseService } from '../database/database.service.js';
 import { ErrorService } from '../error/error.service.js';
+import { archiveCall } from './call-history.archive.js';
 import type { CallRecord } from './direct-calls.schema.js';
 import { callDeliveries, callDto, callParticipants, directCalls } from './direct-calls.schema.js';
 
@@ -59,6 +60,7 @@ export class DirectCallsRepository {
     }
 
     if (call.state === 'ended') {
+      await archiveCall(tx, call.id, this.error);
       await tx
         .update(callParticipants)
         .set({ releasedAt: call.endedAt })

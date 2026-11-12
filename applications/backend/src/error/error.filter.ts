@@ -37,6 +37,7 @@ export class ErrorFilter implements ExceptionFilter {
 
     if (
       /^\/dialogs(?:\/|$)/i.test(path) ||
+      /^\/calls\/history(?:\/|$)/i.test(path) ||
       path === '/auth' ||
       path.startsWith('/auth/') ||
       path === '/admin' ||

@@ -166,3 +166,9 @@ docker compose --env-file applications/backend/.env -f applications/backend/dock
 ## Диалоги
 
 [DialogsModule](../../docs/backend/modules/dialogs/README.md) реализует REST-диалоги 1х1, серверное шифрование истории, прочтение и best-effort уведомления. Перед запуском примените миграции и задайте DIALOGS_ENCRYPTION_KEYS / DIALOGS_ACTIVE_KEY_ID по контракту; ключи должны иметь независимую резервную копию. Мигратор их не получает. Проверка восстановленной истории после build: `pnpm --filter @gchat/backend dialogs:verify`. Интеграционные тесты и границы эксплуатационной приёмки описаны в контракте.
+
+## История звонков
+
+[Принятый контракт истории](../../docs/backend/modules/direct-calls/history-api.md) описывает REST-чтение завершённых звонков и бессрочное хранение отдельно от технических записей. Перед запуском новой версии требуется штатная миграция; порядок остановки, backfill и ограничения отката приведены в контракте. API и SDK реализованы, клиентский экран подключается отдельно.
+
+Интеграционные проверки истории входят в `test/direct-calls.integration.spec.ts` и `test/call-history-migration.integration.spec.ts`, используют тестовые переменные CALLS и создают собственные временные БД и ключи. Команды общих проверок — выше.

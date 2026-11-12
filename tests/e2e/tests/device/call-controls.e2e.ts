@@ -194,8 +194,12 @@ async function setup(
       socket.send(JSON.stringify({ type: 'response', request_id: command.request_id, payload }));
     });
   });
-  await page.goto('/');
+  await page.goto('/dialogs/contacts');
   await page.getByRole('button', { name: 'Позвонить: Анна', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Позвонить?', exact: true })
+    .getByRole('button', { name: 'Позвонить', exact: true })
+    .click();
   await expect(page.getByRole('button', { name: 'Заблокировать', exact: true })).toBeVisible();
   update('connecting');
   await expect(page.getByRole('button', { name: 'Микрофон', exact: true })).toBeVisible();

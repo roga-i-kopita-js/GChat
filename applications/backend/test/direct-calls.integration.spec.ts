@@ -3,10 +3,14 @@ import { resolve } from 'node:path';
 
 import { jest } from '@jest/globals';
 import { ConfigService } from '@nestjs/config';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { Test } from '@nestjs/testing';
 import pg from 'pg';
 import { createClient } from 'redis';
+import request from 'supertest';
 
 import { AuthCrypto } from '../src/auth/auth.crypto.js';
+import { AuthGuard } from '../src/auth/auth.guard.js';
 import { AuthLimits } from '../src/auth/auth.limits.js';
 import { AuthRepository } from '../src/auth/auth.repository.js';
 import { AuthService } from '../src/auth/auth.service.js';
@@ -15,14 +19,19 @@ import { validateEnvironment } from '../src/config/environment.js';
 import { DatabaseService } from '../src/database/database.service.js';
 import { runMigrations } from '../src/database/migrations.js';
 import { DevicesService } from '../src/devices/devices.service.js';
+import { CallHistoryController } from '../src/direct-calls/call-history.controller.js';
+import { CallHistoryLimits } from '../src/direct-calls/call-history.limits.js';
+import { CallHistoryService } from '../src/direct-calls/call-history.service.js';
 import { DirectCallsDeliveryStore } from '../src/direct-calls/direct-calls.delivery-store.js';
 import type { CallActor } from '../src/direct-calls/direct-calls.dto.js';
 import { DirectCallsPresence } from '../src/direct-calls/direct-calls.presence.js';
 import { DirectCallsRepository } from '../src/direct-calls/direct-calls.repository.js';
 import { DirectCallsService } from '../src/direct-calls/direct-calls.service.js';
+import { ErrorModule } from '../src/error/error.module.js';
 import { ErrorService } from '../src/error/error.service.js';
 import { GroupsRepository } from '../src/groups/groups.repository.js';
 import { GroupsService } from '../src/groups/groups.service.js';
+import { LoggerModule } from '../src/logger/logger.module.js';
 import { LoggerService } from '../src/logger/logger.service.js';
 import { RedisService } from '../src/redis/redis.service.js';
 
@@ -47,6 +56,8 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
   let config: ConfigService;
   let actors: CallActor[];
   let groupId: string;
+  let app: NestExpressApplication;
+  let historyLimits: CallHistoryLimits;
   const error = new ErrorService();
 
   beforeAll(async (): Promise<void> => {
@@ -96,6 +107,27 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
       new LoggerService(),
     );
     store = new DirectCallsDeliveryStore(db);
+    historyLimits = new CallHistoryLimits(new RedisService(redis, config), error);
+    const history = new CallHistoryService(
+      new DirectCallsRepository(db, error),
+      auth,
+      devices,
+      historyLimits,
+      error,
+    );
+    const module = await Test.createTestingModule({
+      imports: [LoggerModule.forRoot(), ErrorModule],
+      controllers: [CallHistoryController],
+      providers: [
+        AuthGuard,
+        { provide: AuthService, useValue: auth },
+        { provide: CallHistoryService, useValue: history },
+      ],
+    }).compile();
+    const { createNestApplication: moduleResult1 } = module;
+
+    app = moduleResult1.bind(module)<NestExpressApplication>({ logger: false });
+    await app.init();
   }, 20000);
 
   beforeEach(async (): Promise<void> => {
@@ -134,6 +166,8 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
   });
 
   afterAll(async (): Promise<void> => {
+    await app?.close();
+
     if (redis?.isOpen) {
       for await (const keys of redis.scanIterator({ MATCH: prefix + '*' })) {
         if (keys.length) {
@@ -151,6 +185,388 @@ integration('DirectCalls transactions with isolated PostgreSQL and Redis', (): v
     } finally {
       await admin?.end();
     }
+  });
+
+  async function token(index: number): Promise<string> {
+    const account = await new AuthRepository(db, error).byId(actors[index].userId);
+    const result = await new AuthCrypto(config, error).issue(account!, actors[index].sessionId);
+    const { access_token: resultResult2 } = result;
+
+    return resultResult2;
+  }
+
+  async function historySeed(
+    overrides: {
+      id?: string;
+      created?: string;
+      started?: string | null;
+      ended?: string;
+      reason?: string;
+      reverse?: boolean;
+    } = {},
+  ): Promise<string> {
+    const id = overrides.id ?? randomUUID();
+
+    await pool.query(
+      `INSERT INTO gchat_direct_call_history(call_id,caller_id,recipient_id,created_at,started_at,ended_at,end_reason,version)
+      VALUES($1,$2,$3,$4,$5,$6,$7,1)`,
+      [
+        id,
+        actors[overrides.reverse ? 1 : 0].userId,
+        actors[overrides.reverse ? 0 : 1].userId,
+        overrides.created ?? '2020-01-01T12:00:00.000000Z',
+        overrides.started ?? null,
+        overrides.ended ?? '2020-01-01T12:05:00Z',
+        overrides.reason ?? 'no_answer',
+      ],
+    );
+
+    return id;
+  }
+
+  describe('durable history API', (): void => {
+    it('archives final state once before its event and keeps it after technical cleanup', async (): Promise<void> => {
+      const call = await calls.create(actors[0], actors[1].userId);
+      const { call_id: callResult3 } = call;
+
+      const ended = await calls.cancel(actors[0], callResult3);
+      const { version: endedResult5 } = ended;
+
+      await calls.cancel(actors[0], callResult3);
+      const before = await request(app.getHttpServer())
+        .get('/calls/history/' + callResult3)
+        .auth(await token(1), { type: 'bearer' })
+        .expect(200);
+      const { body: beforeResult4 } = before;
+
+      expect(beforeResult4.item).toMatchObject({
+        call_id: callResult3,
+        version: endedResult5,
+        outcome: 'missed',
+        direction: 'incoming',
+        duration_seconds: null,
+        started_at: null,
+      });
+      const { rows } = await pool.query(
+        'SELECT snapshot FROM gchat_direct_call_deliveries WHERE call_id=$1 AND version=$2',
+        [callResult3, endedResult5],
+      );
+
+      expect(rows[0].snapshot.state).toBe('ended');
+      await pool.query(
+        "UPDATE gchat_direct_calls SET created_at=now()-interval '40 days', ended_at=now()-interval '31 days' WHERE id=$1",
+        [callResult3],
+      );
+      await calls.cleanup();
+      await expect(calls.get(actors[1], callResult3)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      const after = await request(app.getHttpServer())
+        .get('/calls/history/' + callResult3)
+        .auth(await token(1), { type: 'bearer' })
+        .expect(200);
+      const { body: afterResult6 } = after;
+
+      expect(afterResult6).toEqual(beforeResult4);
+      const count = await pool.query(
+        'SELECT count(*)::int AS count FROM gchat_direct_call_history WHERE call_id=$1',
+        [callResult3],
+      );
+      const { rows: countResult7 } = count;
+
+      expect(countResult7[0].count).toBe(1);
+    });
+
+    it('rolls back terminal state, busy release and outbox if archival conflicts', async (): Promise<void> => {
+      const call = await calls.create(actors[0], actors[1].userId);
+      const { call_id: callResult8 } = call;
+
+      await historySeed({ id: callResult8, reason: 'rejected' });
+      await expect(calls.cancel(actors[0], callResult8)).rejects.toMatchObject({
+        code: 'INTERNAL_ERROR',
+      });
+      expect(await calls.get(actors[0], callResult8)).toMatchObject({
+        state: 'ringing',
+        version: 0,
+      });
+      const { rows } = await pool.query(
+        'SELECT released_at FROM gchat_direct_call_participants WHERE call_id=$1',
+        [callResult8],
+      );
+
+      expect(rows).toEqual([{ released_at: null }, { released_at: null }]);
+      const { rows: versions } = await pool.query(
+        'SELECT version FROM gchat_direct_call_deliveries WHERE call_id=$1',
+        [callResult8],
+      );
+
+      expect(versions).toEqual([{ version: '0' }]);
+    });
+
+    it('returns current names and metadata outside groups, while protecting participation and actor binding', async (): Promise<void> => {
+      const id = await historySeed();
+      const { toUpperCase: idResult9 } = id;
+
+      await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[1].userId]);
+      await pool.query(
+        "UPDATE gchat_users SET display_name='Renamed', disabled_at=now() WHERE id=$1",
+        [actors[1].userId],
+      );
+      const access = await token(0);
+      const response = await request(app.getHttpServer())
+        .get('/calls/history/' + idResult9.bind(id)())
+        .auth(access, { type: 'bearer' })
+        .expect(200);
+      const { headers: responseResult10, body: responseResult11 } = response;
+
+      expect(responseResult10['cache-control']).toBe('no-store');
+      expect(responseResult11.item).toMatchObject({
+        peer_display_name: 'Renamed',
+        direction: 'outgoing',
+        outcome: 'unanswered',
+      });
+      await pool.query("UPDATE gchat_users SET role='admin' WHERE id=$1", [actors[2].userId]);
+      const foreign = await request(app.getHttpServer())
+        .get('/calls/history/' + id)
+        .auth(await token(2), { type: 'bearer' })
+        .expect(404);
+      const { body: foreignResult12, headers: foreignResult14 } = foreign;
+
+      const missing = await request(app.getHttpServer())
+        .get('/calls/history/' + randomUUID())
+        .auth(await token(2), { type: 'bearer' })
+        .expect(404);
+      const { body: missingResult13 } = missing;
+
+      expect(foreignResult12).toEqual(missingResult13);
+      expect(foreignResult14['cache-control']).toBe('no-store');
+      await pool.query('DELETE FROM gchat_device_sessions WHERE session_id=$1', [
+        actors[0].sessionId,
+      ]);
+      await request(app.getHttpServer())
+        .get('/calls/history')
+        .auth(access, { type: 'bearer' })
+        .expect(403);
+    });
+
+    it('paginates exact microseconds and equal timestamps without duplicates or omissions', async (): Promise<void> => {
+      const ids: string[] = [];
+
+      for (const created of [
+        '2020-01-01T12:00:00.123457Z',
+        '2020-01-01T12:00:00.123456Z',
+        '2020-01-01T12:00:00.123456Z',
+        '2020-01-01T12:00:00.123455Z',
+      ]) {
+        ids.push(await historySeed({ created }));
+      }
+
+      const access = await token(0);
+      const first = await request(app.getHttpServer())
+        .get('/calls/history?limit=1')
+        .auth(access, { type: 'bearer' })
+        .expect(200);
+      const { body: firstResult15 } = first;
+
+      const second = await request(app.getHttpServer())
+        .get('/calls/history')
+        .query({ limit: 2, cursor: firstResult15.next_cursor })
+        .auth(access, { type: 'bearer' })
+        .expect(200);
+      const { body: secondResult16 } = second;
+
+      const third = await request(app.getHttpServer())
+        .get('/calls/history')
+        .query({ limit: 100, cursor: secondResult16.next_cursor })
+        .auth(access, { type: 'bearer' })
+        .expect(200);
+      const { body: thirdResult17 } = third;
+
+      const expected = await pool.query(
+        'SELECT call_id FROM gchat_direct_call_history ORDER BY created_at DESC, call_id DESC',
+      );
+      const { rows: expectedResult18 } = expected;
+
+      expect(
+        [...firstResult15.items, ...secondResult16.items, ...thirdResult17.items].map(
+          (r: { call_id: string }): string => r.call_id,
+        ),
+      ).toEqual(expectedResult18.map((r): string => r.call_id));
+      expect(thirdResult17.next_cursor).toBeNull();
+      expect(new Set(expectedResult18.map((r): string => r.call_id)).size).toBe(ids.length);
+      await request(app.getHttpServer())
+        .get('/calls/history')
+        .query({ filter: 'missed', cursor: firstResult15.next_cursor })
+        .auth(access, { type: 'bearer' })
+        .expect(400);
+      await request(app.getHttpServer())
+        .get('/calls/history')
+        .query({ cursor: firstResult15.next_cursor })
+        .auth(await token(1), { type: 'bearer' })
+        .expect(400);
+    });
+
+    it('filters missed calls at account level and reports actual conversation duration', async (): Promise<void> => {
+      const missed = await historySeed();
+      const cancelled = await historySeed({ reason: 'cancelled' });
+
+      await historySeed({ reason: 'rejected' });
+      await historySeed({ reason: 'connection_timeout' });
+      await historySeed({ reverse: true });
+      const connected = await historySeed({
+        reason: 'connection_lost',
+        started: '2020-01-01T12:01:00.500Z',
+      });
+      const incoming = await request(app.getHttpServer())
+        .get('/calls/history?filter=missed')
+        .auth(await token(1), { type: 'bearer' })
+        .expect(200);
+      const { body: incomingResult19 } = incoming;
+
+      expect(
+        incomingResult19.items.map((r: { call_id: string }): string => r.call_id).sort(),
+      ).toEqual([missed, cancelled].sort());
+      const detail = await request(app.getHttpServer())
+        .get('/calls/history/' + connected)
+        .auth(await token(0), { type: 'bearer' })
+        .expect(200);
+      const { body: detailResult20 } = detail;
+
+      expect(detailResult20.item).toMatchObject({ outcome: 'completed', duration_seconds: 239 });
+      const { userId, sessionId } = actors[1];
+      const another = randomUUID();
+
+      await pool.query(
+        'INSERT INTO gchat_auth_sessions(id,user_id,refresh_token_hash) VALUES($1,$2,$3)',
+        [another, userId, 'unused'],
+      );
+      const account = await new AuthRepository(db, error).byId(userId);
+      const jwt = await new AuthCrypto(config, error).issue(account!, another);
+      const { access_token: jwtResult21 } = jwt;
+
+      await devices.bind(userId, another, null);
+      const otherDevice = await request(app.getHttpServer())
+        .get('/calls/history?filter=missed')
+        .auth(jwtResult21, { type: 'bearer' })
+        .expect(200);
+      const { body: otherDeviceResult22 } = otherDevice;
+
+      expect(otherDeviceResult22).toEqual(incomingResult19);
+      expect(sessionId).not.toBe(another);
+    });
+
+    it('validates query and UUID, requires authentication, and gives no-store errors', async (): Promise<void> => {
+      const access = await token(0);
+      const unauthorized = await request(app.getHttpServer()).get('/calls/history').expect(401);
+      const { headers: unauthorizedResult23 } = unauthorized;
+
+      expect(unauthorizedResult23['cache-control']).toBe('no-store');
+
+      for (const path of [
+        '/calls/history?limit=0',
+        '/calls/history?limit=101',
+        '/calls/history?limit=1.2',
+        '/calls/history?limit=1e1',
+        '/calls/history?limit=-1',
+        '/calls/history?filter=other',
+        '/calls/history?filter=all&filter=missed',
+        '/calls/history?limit=1&limit=2',
+        '/calls/history?user_id=other',
+        '/calls/history?cursor=',
+        '/calls/history?cursor=bad',
+        '/calls/history/not-a-uuid',
+      ]) {
+        const response = await request(app.getHttpServer())
+          .get(path)
+          .auth(access, { type: 'bearer' })
+          .expect(400);
+        const { body: responseResult24, headers: responseResult25 } = response;
+
+        expect(responseResult24.error.code).toBe('VALIDATION_ERROR');
+        expect(responseResult25['cache-control']).toBe('no-store');
+      }
+
+      const empty = await request(app.getHttpServer())
+        .get('/calls/history')
+        .auth(access, { type: 'bearer' })
+        .expect(200);
+      const { body: emptyResult26 } = empty;
+
+      expect(emptyResult26).toEqual({ items: [], next_cursor: null });
+    });
+
+    it('shares Redis read limit between list/get, without blocking call control', async (): Promise<void> => {
+      const id = await historySeed();
+      const access = await token(0);
+
+      await redis.hSet(prefix + 'direct-calls:history:rate:' + actors[0].userId, {
+        credit_ms: '0',
+        updated_at_ms: String(Date.now() + 10000),
+      });
+
+      for (const path of ['/calls/history', '/calls/history/' + id]) {
+        const response = await request(app.getHttpServer())
+          .get(path)
+          .auth(access, { type: 'bearer' })
+          .expect(429);
+        const { headers: responseResult27 } = response;
+
+        expect(Number(responseResult27['retry-after'])).toBeGreaterThanOrEqual(1);
+      }
+
+      const call = await calls.create(actors[0], actors[1].userId);
+      const { call_id: callResult28 } = call;
+
+      await expect(calls.cancel(actors[0], callResult28)).resolves.toMatchObject({
+        state: 'ended',
+      });
+    });
+
+    it('keeps unfinished calls out of history and rejects disabled or revoked actors', async (): Promise<void> => {
+      const { call_id: ongoing } = await calls.create(actors[0], actors[1].userId);
+      const access = await token(0);
+
+      await request(app.getHttpServer())
+        .get('/calls/history/' + ongoing)
+        .auth(access, { type: 'bearer' })
+        .expect(404);
+      const { body } = await request(app.getHttpServer())
+        .get('/calls/history')
+        .auth(access, { type: 'bearer' })
+        .expect(200);
+
+      expect(body).toEqual({ items: [], next_cursor: null });
+      await calls.cancel(actors[0], ongoing);
+      await pool.query('UPDATE gchat_users SET disabled_at=now() WHERE id=$1', [actors[0].userId]);
+      const { body: disabled, headers } = await request(app.getHttpServer())
+        .get('/calls/history')
+        .auth(access, { type: 'bearer' })
+        .expect(401);
+
+      expect(disabled.error.code).toBe('SESSION_INVALID');
+      expect(headers['cache-control']).toBe('no-store');
+      const other = await token(2);
+
+      await pool.query('DELETE FROM gchat_auth_sessions WHERE id=$1', [actors[2].sessionId]);
+      const { body: revoked } = await request(app.getHttpServer())
+        .get('/calls/history')
+        .auth(other, { type: 'bearer' })
+        .expect(401);
+
+      expect(revoked.error.code).toBe('SESSION_INVALID');
+    });
+
+    it('floors conversation duration in PostgreSQL without losing sub-millisecond precision', async (): Promise<void> => {
+      const id = await historySeed({
+        reason: 'hangup',
+        started: '2020-01-01T12:00:00.000999Z',
+        ended: '2020-01-01T12:00:01.000000Z',
+      });
+      const { body } = await request(app.getHttpServer())
+        .get('/calls/history/' + id)
+        .auth(await token(0), { type: 'bearer' })
+        .expect(200);
+
+      expect(body.item).toMatchObject({ outcome: 'completed', duration_seconds: 0 });
+    });
   });
 
   async function offer(id: string, negotiationId = randomUUID()): Promise<string> {

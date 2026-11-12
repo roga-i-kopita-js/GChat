@@ -354,3 +354,18 @@
     padding: var(--ui-space-1) var(--ui-space-5);
   }
 }
+
+.dialog-contacts-access {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--ui-space-2) var(--ui-space-3);
+}
+.dialog-contacts-access > a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-space-1-5);
+  min-height: var(--ui-control-height);
+  color: var(--ui-accent);
+  font-size: var(--ui-font-body);
+  font-weight: var(--ui-weight-semibold);
+}

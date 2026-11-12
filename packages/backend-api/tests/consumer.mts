@@ -7,6 +7,13 @@ const api = new BackendApi({
 
 api.adminListUsers();
 api.adminListUsers({ query: { q: 'ivan' } });
+api.callsHistoryList();
+api.callsHistoryList({ query: { filter: 'missed', limit: 30, cursor: 'opaque' } });
+api.callsHistoryGet({ path: { call_id: 'id' } });
+// @ts-expect-error history filter is an enum
+api.callsHistoryList({ query: { filter: 'incoming' } });
+// @ts-expect-error history call_id is required
+api.callsHistoryGet({});
 api.healthcheckHealth({ signal: new AbortController().signal });
 const logout: Promise<ApiResult<undefined>> = api.authLogout({ body: { refresh_token: 'token' } });
 

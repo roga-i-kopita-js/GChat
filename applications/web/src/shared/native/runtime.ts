@@ -304,7 +304,7 @@ export class NativeRuntime {
         const path = decodeURIComponent(route.path);
 
         if (
-          !/^\/(?:login|calls|dialogs(?:\/[0-9a-f-]+)?|settings(?:\/general(?:\/(?:microphone|audio|push|camera|geolocation|files))?)?|admin(?:\/users(?:\/[0-9a-f-]+)?)?)?(?:\?[^#]*)?$/.test(
+          !/^\/(?:login|calls(?:\/[0-9a-f-]+)?|dialogs(?:\/(?:contacts|[0-9a-f-]+))?|settings(?:\/general(?:\/(?:microphone|audio|push|camera|geolocation|files))?)?|admin(?:\/users(?:\/[0-9a-f-]+)?)?)?(?:\?[^#]*)?$/.test(
             path,
           ) ||
           /[\\\s\u0000-\u001f]/.test(path)
@@ -319,10 +319,24 @@ export class NativeRuntime {
           serverUrl(selectedServer);
         }
 
-        if (
-          [...url.searchParams.keys()].some((key): boolean => key !== 'serverUrl') ||
-          (url.search && url.pathname !== '/login')
-        ) {
+        const keys = [...url.searchParams.keys()];
+        const historyRoute = /^\/calls(?:\/[0-9a-f-]+)?$/.test(url.pathname);
+        const historyQuery =
+          historyRoute &&
+          keys.length === 1 &&
+          keys[0] === 'filter' &&
+          ['all', 'missed'].includes(url.searchParams.get('filter') ?? '');
+        const contactsQuery =
+          url.pathname === '/dialogs/contacts' &&
+          keys.length === 1 &&
+          keys[0] === 'group' &&
+          /^(?:all|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(
+            url.searchParams.get('group') ?? '',
+          );
+        const loginQuery =
+          url.pathname === '/login' && keys.length === 1 && keys[0] === 'serverUrl';
+
+        if (url.search && !historyQuery && !contactsQuery && !loginQuery) {
           throw bridgeError({ code: 'VALIDATION_ERROR' });
         }
 
