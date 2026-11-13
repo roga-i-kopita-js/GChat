@@ -1,0 +1,592 @@
+<div
+  id="gchat-calls-refresh"
+  class="viz-carousel viz-dotted-background"
+  aria-label="Варианты истории звонков GChat"
+  data-previous-label="Назад"
+  data-next-label="Далее"
+>
+  <section data-variant="Чистый список" aria-label="Чистый список GChat">
+    <div class="gc-stage">
+      <div class="gc-app" data-recent="false" aria-label="Чистый список звонков"></div>
+    </div>
+  </section>
+  <section data-variant="Недавние собеседники" aria-label="GChat с недавними собеседниками" hidden>
+    <div class="gc-stage">
+      <div class="gc-app" data-recent="true" aria-label="Звонки с недавними собеседниками"></div>
+    </div>
+  </section>
+</div>
+<style>
+  #gchat-calls-refresh {
+    color-scheme: light dark;
+  }
+  #gchat-calls-refresh .gc-stage {
+    min-height: 732px;
+    padding: 16px 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  #gchat-calls-refresh .gc-app {
+    --gc-bg: light-dark(#fff, #17212c);
+    --gc-text: light-dark(#192738, #e8eef6);
+    --gc-muted: light-dark(#65656b, #a8b6c5);
+    --gc-border: light-dark(#e4eaf2, #344252);
+    --gc-blue: light-dark(#087cf0, #79b9ff);
+    --gc-selected: light-dark(#edf5ff, #243c56);
+    --gc-red: light-dark(#ce4037, #ff9289);
+    --gc-avatar: light-dark(#dceaff, #294664);
+    --gc-avatar-text: light-dark(#234e84, #cce2ff);
+    --gc-overlay: #0006;
+    width: 390px;
+    max-width: 100%;
+    min-height: 700px;
+    background: var(--gc-bg);
+    color: var(--gc-text);
+    font:
+      14px/1.4 -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    isolation: isolate;
+  }
+  #gchat-calls-refresh .gc-app * {
+    box-sizing: border-box;
+  }
+  #gchat-calls-refresh .gc-app button {
+    font: inherit;
+  }
+  #gchat-calls-refresh .gc-app button:focus-visible {
+    outline: 2px solid var(--gc-blue);
+    outline-offset: 2px;
+  }
+  #gchat-calls-refresh .gc-app [hidden] {
+    display: none !important;
+  }
+  #gchat-calls-refresh .gc-app h3,
+  #gchat-calls-refresh .gc-app p {
+    margin: 0;
+  }
+  #gchat-calls-refresh .gc-filter {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  #gchat-calls-refresh .gc-filter button,
+  #gchat-calls-refresh .gc-action {
+    border: 1px solid var(--gc-border);
+    border-radius: 10px;
+    min-height: 44px;
+    padding: 10px 14px;
+    background: var(--gc-bg);
+    color: var(--gc-muted);
+    font-weight: 500;
+  }
+  #gchat-calls-refresh .gc-filter [aria-pressed='true'] {
+    color: var(--gc-blue);
+    background: var(--gc-selected);
+    border-color: transparent;
+  }
+  #gchat-calls-refresh .gc-day {
+    color: var(--gc-muted);
+    font-size: 12px;
+    font-weight: 400;
+    padding: 18px 16px 6px;
+  }
+  #gchat-calls-refresh .gc-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px;
+    padding: 0 12px;
+    position: relative;
+  }
+  #gchat-calls-refresh .gc-row::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 72px;
+    right: 16px;
+    border-bottom: 1px solid var(--gc-border);
+    pointer-events: none;
+  }
+  #gchat-calls-refresh .gc-person {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    background: transparent;
+    border: 0;
+    text-align: left;
+    padding: 12px 0;
+    color: inherit;
+    min-width: 0;
+  }
+  #gchat-calls-refresh .gc-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--gc-avatar);
+    color: var(--gc-avatar-text);
+    display: grid;
+    place-items: center;
+    flex: none;
+    font-weight: 500;
+  }
+  #gchat-calls-refresh .gc-copy {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+  }
+  #gchat-calls-refresh .gc-name {
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+  #gchat-calls-refresh .gc-subtitle {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    color: var(--gc-muted);
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  #gchat-calls-refresh .gc-subtitle svg {
+    width: 13px;
+    height: 13px;
+    flex: none;
+  }
+  #gchat-calls-refresh .gc-time {
+    color: var(--gc-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    align-self: start;
+    padding-top: 2px;
+  }
+  #gchat-calls-refresh .gc-missed .gc-name,
+  #gchat-calls-refresh .gc-missed .gc-subtitle {
+    color: var(--gc-red);
+  }
+  #gchat-calls-refresh .gc-phone {
+    color: var(--gc-blue);
+    background: transparent;
+    border: 0;
+    min-height: 44px;
+    min-width: 44px;
+    align-self: center;
+    display: grid;
+    place-items: center;
+  }
+  #gchat-calls-refresh .gc-phone svg {
+    width: 18px;
+    height: 18px;
+  }
+  #gchat-calls-refresh .gc-list {
+    flex: 1;
+    padding-bottom: 20px;
+  }
+  #gchat-calls-refresh .gc-recent {
+    padding: 8px 16px 0;
+  }
+  #gchat-calls-refresh .gc-recent h3 {
+    color: var(--gc-muted);
+    font-size: 12px;
+    font-weight: 400;
+    margin-bottom: 12px;
+  }
+  #gchat-calls-refresh .gc-people {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  #gchat-calls-refresh .gc-quick {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    font-size: 12px !important;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  #gchat-calls-refresh .gc-nav {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-around;
+    padding: 10px 0 14px;
+    border-top: 1px solid var(--gc-border);
+    color: var(--gc-muted);
+  }
+  #gchat-calls-refresh .gc-tab {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    font-size: 11px;
+    min-width: 72px;
+  }
+  #gchat-calls-refresh .gc-tab svg {
+    width: 24px;
+    height: 24px;
+  }
+  #gchat-calls-refresh .gc-tab:first-child {
+    color: var(--gc-blue);
+  }
+  #gchat-calls-refresh .gc-details {
+    padding: 8px 16px 24px;
+    flex: 1;
+  }
+  #gchat-calls-refresh .gc-back {
+    border: 0;
+    background: transparent;
+    color: var(--gc-blue);
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0;
+  }
+  #gchat-calls-refresh .gc-profile {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 12px;
+    padding: 24px 0;
+    text-align: center;
+  }
+  #gchat-calls-refresh .gc-profile .gc-avatar {
+    width: 64px;
+    height: 64px;
+    font-size: 22px;
+  }
+  #gchat-calls-refresh .gc-profile h3 {
+    font-size: 18px;
+    font-weight: 500;
+  }
+  #gchat-calls-refresh .gc-facts {
+    margin: 0 0 24px;
+  }
+  #gchat-calls-refresh .gc-facts div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--gc-border);
+  }
+  #gchat-calls-refresh .gc-facts dt {
+    color: var(--gc-muted);
+  }
+  #gchat-calls-refresh .gc-facts dd {
+    margin: 0;
+    text-align: right;
+  }
+  #gchat-calls-refresh .gc-primary {
+    color: #fff;
+    background: #087cf0;
+    border-color: #087cf0;
+  }
+  #gchat-calls-refresh .gc-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: var(--gc-overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  #gchat-calls-refresh .gc-dialog {
+    width: 100%;
+    max-width: 340px;
+    border-radius: 16px;
+    padding: 20px;
+    background: var(--gc-bg);
+    color: var(--gc-text);
+  }
+  #gchat-calls-refresh .gc-dialog h3 {
+    font-size: 18px;
+    font-weight: 500;
+    margin-bottom: 16px;
+  }
+  #gchat-calls-refresh .gc-dialog-name {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    overflow-wrap: anywhere;
+  }
+  #gchat-calls-refresh .gc-dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  #gchat-calls-refresh .gc-announcement {
+    font-size: 12px;
+    color: var(--gc-muted);
+    padding: 0 16px 8px;
+  }
+  @media (max-width: 380px) {
+    #gchat-calls-refresh .gc-person {
+      gap: 8px;
+    }
+    #gchat-calls-refresh .gc-stage {
+      min-height: 732px;
+    }
+  }
+</style>
+<script>
+  (() => {
+    const root = document.getElementById('gchat-calls-refresh');
+    const items = [
+      {
+        id: 'anna-missed',
+        peer: 'anna',
+        name: 'Анна Смирнова',
+        short: 'Анна',
+        initials: 'АС',
+        label: 'Пропущенный',
+        time: '14:32',
+        day: 'Сегодня',
+        missed: true,
+        icon: 'phone-missed',
+        duration: '—',
+      },
+      {
+        id: 'mikhail',
+        peer: 'mikhail',
+        name: 'Михаил Орлов',
+        short: 'Михаил',
+        initials: 'МО',
+        label: 'Исходящий',
+        time: '12:18',
+        day: 'Сегодня',
+        missed: false,
+        icon: 'phone-outgoing',
+        duration: '4 мин 12 с',
+      },
+      {
+        id: 'anna-incoming',
+        peer: 'anna',
+        name: 'Анна Смирнова',
+        short: 'Анна',
+        initials: 'АС',
+        label: 'Входящий',
+        time: '10:45',
+        day: 'Сегодня',
+        missed: false,
+        icon: 'phone-incoming',
+        duration: '1 мин 38 с',
+      },
+      {
+        id: 'elena',
+        peer: 'elena',
+        name: 'Елена Волкова',
+        short: 'Елена',
+        initials: 'ЕВ',
+        label: 'Входящий',
+        time: '18:06',
+        day: 'Вчера',
+        missed: false,
+        icon: 'phone-incoming',
+        duration: '8 мин 20 с',
+      },
+      {
+        id: 'alexey',
+        peer: 'alexey',
+        name: 'Алексей Петров',
+        short: 'Алексей',
+        initials: 'АП',
+        label: 'Пропущенный',
+        time: '16:54',
+        day: 'Вчера',
+        missed: true,
+        icon: 'phone-missed',
+        duration: '—',
+      },
+    ];
+    const icon = (name) => `<i data-lucide="${name}" aria-hidden="true"></i>`;
+    const avatar = (item) => `<span class="gc-avatar" aria-hidden="true">${item.initials}</span>`;
+    root.querySelectorAll('.gc-app').forEach((app, index) => {
+      let selected = null;
+      let opener = null;
+      const settings = { rowHeight: 68, separators: true };
+      const saved = window.openai?.widgetState?.modelContent?.filters;
+      let filter = saved?.[index] === 'missed' ? 'missed' : 'all';
+      app.innerHTML = `
+      <div class="gc-filter" role="group" aria-label="Фильтр звонков">
+        <button class="cursor-interaction" type="button" data-filter="all">Все</button>
+        <button class="cursor-interaction" type="button" data-filter="missed">Пропущенные</button>
+      </div>
+      <div class="gc-recent" hidden><h3>Недавние собеседники</h3><div class="gc-people"></div></div>
+      <div class="gc-list"></div>
+      <div class="gc-details" hidden></div>
+      <p class="gc-announcement" role="status" hidden></p>
+      <nav class="gc-nav" aria-label="Разделы GChat — эскиз">
+        <span class="gc-tab" aria-current="page">${icon('phone')}Звонки</span>
+        <span class="gc-tab">${icon('message-circle')}Диалоги</span>
+        <span class="gc-tab">${icon('settings')}Настройки</span>
+      </nav>
+      <div class="gc-overlay" hidden><div class="gc-dialog" role="dialog" aria-modal="true" aria-labelledby="gc-confirm-${index}">
+        <h3 id="gc-confirm-${index}">Позвонить?</h3><div class="gc-dialog-name"></div>
+        <div class="gc-dialog-actions"><button type="button" class="gc-action cursor-interaction" data-cancel>Отмена</button><button type="button" class="gc-action gc-primary cursor-interaction" data-confirm>Позвонить</button></div>
+      </div></div>`;
+      const list = app.querySelector('.gc-list');
+      const details = app.querySelector('.gc-details');
+      const recent = app.querySelector('.gc-recent');
+      const overlay = app.querySelector('.gc-overlay');
+      const announcement = app.querySelector('.gc-announcement');
+      const refreshIcons = () =>
+        globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+      function applyDesign() {
+        list.querySelectorAll('.gc-person').forEach((row) => {
+          row.style.minHeight = settings.rowHeight + 'px';
+        });
+        list
+          .querySelectorAll('.gc-row')
+          .forEach((row) => row.classList.toggle('gc-no-divider', !settings.separators));
+      }
+      function render() {
+        app
+          .querySelectorAll('[data-filter]')
+          .forEach((button) =>
+            button.setAttribute('aria-pressed', String(button.dataset.filter === filter)),
+          );
+        let day = '';
+        list.innerHTML = items
+          .filter((item) => filter !== 'missed' || item.missed)
+          .map((item) => {
+            const heading = item.day !== day ? `<h3 class="gc-day">${item.day}</h3>` : '';
+            day = item.day;
+            return `${heading}<div class="gc-row ${item.missed ? 'gc-missed' : ''}">
+          <button type="button" class="gc-person cursor-interaction" data-details="${item.id}" aria-label="Сведения: ${item.name}, ${item.label}, ${item.time}">
+            ${avatar(item)}<span class="gc-copy"><span class="gc-name">${item.name}</span><span class="gc-subtitle">${icon(item.icon)}${item.label}${item.duration === '—' ? '' : ' · ' + item.duration}</span></span><time class="gc-time">${item.time}</time>
+          </button><button type="button" class="gc-phone cursor-interaction" data-dial="${item.id}" aria-label="Позвонить: ${item.name}">${icon('phone')}</button>
+        </div>`;
+          })
+          .join('');
+        const peers = items
+          .filter(
+            (item, position) => items.findIndex((peer) => peer.peer === item.peer) === position,
+          )
+          .slice(0, 4);
+        recent.hidden = app.dataset.recent !== 'true' || filter === 'missed' || list.hidden;
+        recent.querySelector('.gc-people').innerHTML = peers
+          .map(
+            (item) =>
+              `<button type="button" class="gc-quick cursor-interaction" data-dial="${item.id}" aria-label="Позвонить: ${item.name}">${avatar(item)}<span>${item.short}</span></button>`,
+          )
+          .join('');
+        applyDesign();
+        refreshIcons();
+      }
+      function closeDialog() {
+        overlay.hidden = true;
+        app
+          .querySelectorAll('.gc-filter, .gc-recent, .gc-list, .gc-details, .gc-nav')
+          .forEach((element) => {
+            element.inert = false;
+          });
+        opener?.focus();
+      }
+      function saveFilter() {
+        const filters = Array.from(root.querySelectorAll('.gc-app')).map((surface) =>
+          surface.querySelector('[data-filter="missed"]').getAttribute('aria-pressed') === 'true'
+            ? 'missed'
+            : 'all',
+        );
+        window.openai
+          ?.setWidgetState?.({ modelContent: { filters }, privateContent: null })
+          ?.catch(() => {});
+      }
+      app.addEventListener('click', (event) => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        if (button.dataset.filter) {
+          filter = button.dataset.filter;
+          announcement.hidden = true;
+          render();
+          saveFilter();
+        }
+        if (button.dataset.details) {
+          selected = items.find((item) => item.id === button.dataset.details);
+          list.hidden = true;
+          recent.hidden = true;
+          app.querySelector('.gc-filter').hidden = true;
+          details.hidden = false;
+          details.innerHTML = `<button type="button" class="gc-back cursor-interaction" data-back>${icon('arrow-left')}История звонков</button>
+          <div class="gc-profile">${avatar(selected)}<h3>${selected.name}</h3></div>
+          <dl class="gc-facts"><div><dt>Результат</dt><dd>${selected.label}</dd></div><div><dt>Дата</dt><dd>${selected.day === 'Сегодня' ? '13 ноября 2026' : '12 ноября 2026'}</dd></div><div><dt>Время</dt><dd>${selected.time}</dd></div><div><dt>Длительность</dt><dd>${selected.duration}</dd></div></dl>
+          <button type="button" class="gc-action gc-primary cursor-interaction" data-dial="${selected.id}">Позвонить</button>`;
+          refreshIcons();
+          details.querySelector('[data-back]').focus();
+        }
+        if (button.hasAttribute('data-back')) {
+          list.hidden = false;
+          details.hidden = true;
+          app.querySelector('.gc-filter').hidden = false;
+          render();
+          list.querySelector(`[data-details="${selected.id}"]`)?.focus();
+        }
+        if (button.dataset.dial) {
+          selected = items.find((item) => item.id === button.dataset.dial);
+          opener = button;
+          app.querySelector('.gc-dialog-name').innerHTML =
+            `${avatar(selected)}<span>${selected.name}</span>`;
+          app
+            .querySelectorAll('.gc-filter, .gc-recent, .gc-list, .gc-details, .gc-nav')
+            .forEach((element) => {
+              element.inert = true;
+            });
+          overlay.hidden = false;
+          app.querySelector('[data-cancel]').focus();
+        }
+        if (button.hasAttribute('data-cancel')) closeDialog();
+        if (button.hasAttribute('data-confirm')) {
+          closeDialog();
+          announcement.hidden = false;
+          announcement.textContent = 'Эскиз: реальный звонок не выполняется.';
+        }
+      });
+      overlay.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeDialog();
+        }
+        if (event.key === 'Tab') {
+          event.preventDefault();
+          const cancel = app.querySelector('[data-cancel]');
+          const confirm = app.querySelector('[data-confirm]');
+          (document.activeElement === cancel ? confirm : cancel).focus();
+        }
+      });
+      render();
+      window.addEventListener('openai:set_globals', (event) => {
+        const incoming = event.detail?.globals?.widgetState?.modelContent?.filters?.[index];
+        if (incoming === 'all' || incoming === 'missed') {
+          filter = incoming;
+          render();
+        }
+      });
+      if (globalThis.Tweak) {
+        const tweak = new Tweak({ container: app, onChange: applyDesign });
+        tweak.addSlider(settings, 'rowHeight', {
+          label: 'Высота строки',
+          min: 60,
+          max: 80,
+          step: 4,
+          unit: 'px',
+        });
+        tweak.addToggle(settings, 'separators', { label: 'Разделители' });
+      }
+    });
+  })();
+</script>
+<style>
+  #gchat-calls-refresh .gc-no-divider::after {
+    display: none;
+  }
+</style>

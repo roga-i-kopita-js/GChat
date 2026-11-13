@@ -1,6 +1,6 @@
 import './UserCard.css';
 
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 
 import { Avatar } from '../../shared/ui';
 
@@ -8,13 +8,15 @@ export function UserCard({
   userId,
   displayName,
   subtitle,
+  multiline = false,
 }: {
   userId: string;
   displayName: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
+  multiline?: boolean;
 }): JSX.Element {
   return (
-    <span className="user-card">
+    <span className={'user-card' + (multiline ? ' user-card-multiline' : '')}>
       <Avatar name={displayName} seed={userId} />
       <span className="user-card-copy">
         <strong className="user-card-name">{displayName}</strong>

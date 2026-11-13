@@ -3,13 +3,21 @@
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: var(--ui-column-width);
+  margin-inline: auto;
   position: relative;
 }
 .history-panel {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   flex: 1;
+}
+.history-header {
+  justify-content: center;
 }
 .history-filter {
   display: flex;
@@ -42,78 +50,74 @@
 }
 .history-day {
   margin: 0;
-  padding: var(--ui-space-3) var(--ui-space-3) var(--ui-space-1);
+  padding: var(--ui-space-4) var(--ui-space-3) var(--ui-space-1);
   font-size: var(--ui-font-size-12);
   color: var(--ui-muted);
   font-weight: var(--ui-weight-regular);
 }
 .history-row {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--ui-control-height);
   align-items: center;
-  padding: var(--ui-space-2) var(--ui-space-2) var(--ui-space-2) var(--ui-space-3);
+  padding-inline: var(--ui-space-3);
   gap: var(--ui-space-1);
-  border-left: var(--ui-border-width) solid transparent;
+}
+.history-row::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: calc(var(--ui-space-3) + var(--ui-control-height) + var(--ui-space-3));
+  inset-inline-end: var(--ui-space-3);
+  bottom: 0;
+  border-bottom: var(--ui-border-width) solid var(--ui-border);
+  pointer-events: none;
 }
 .history-row:hover {
   background: var(--ui-accent-surface);
 }
 .history-selected {
   background: var(--ui-accent-surface);
-  border-left-color: var(--ui-accent);
+  box-shadow: inset var(--ui-border-width) 0 0 var(--ui-accent);
 }
 .history-person {
-  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: auto auto;
-  flex: 1;
+  align-items: center;
   min-width: 0;
-  min-height: var(--ui-control-height);
+  min-height: calc(var(--ui-control-height) + var(--ui-space-6));
+  padding-block: var(--ui-space-3);
   color: var(--ui-text);
   column-gap: var(--ui-space-2);
 }
-.history-person .user-card {
-  grid-column: 1;
-  grid-row: 1 / 3;
-  align-items: center;
-}
-.history-person .user-card-copy {
-  align-self: flex-start;
-  padding-top: var(--ui-space-0-5);
-}
 .history-subtitle {
-  position: absolute;
-  left: calc(var(--ui-control-height) + var(--ui-space-3));
-  right: 0;
-  bottom: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--ui-space-1);
   font-size: var(--ui-font-size-12);
   color: var(--ui-muted);
-  white-space: nowrap;
+  line-height: var(--ui-leading-body);
 }
 .history-subtitle > svg {
   flex: none;
 }
 .history-time {
-  grid-column: 2;
-  grid-row: 1;
+  align-self: start;
   font-size: var(--ui-font-size-12);
   color: var(--ui-muted);
   font-variant-numeric: tabular-nums;
   padding-top: var(--ui-space-0-5);
+  white-space: nowrap;
 }
 .history-missed .user-card-name,
 .history-missed .history-subtitle {
   color: var(--ui-danger);
 }
 .history-redial.ui-button {
-  color: var(--ui-muted);
-  flex: none;
+  color: var(--ui-accent);
 }
 .history-redial.ui-button:hover {
-  color: var(--ui-accent);
+  color: var(--ui-accent-hover);
 }
 .history-more,
 .history-error {
@@ -135,6 +139,7 @@
   display: none;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   flex: 1;
 }
 .history-detail-open > .history-panel {
@@ -189,32 +194,17 @@
 .history-collapse.ui-button {
   align-self: flex-start;
 }
-.history-placeholder {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: var(--ui-space-3);
-  padding: var(--ui-space-6);
-  text-align: center;
-  color: var(--ui-muted);
-}
 @media (min-width: 801px) {
-  .history-layout {
+  .history-detail-open {
     flex-direction: row;
+    max-width: none;
   }
-  .history-panel,
   .history-detail-open > .history-panel {
     display: flex;
     flex: 1;
     border-right: var(--ui-border-width) solid var(--ui-border);
   }
-  .history-detail-panel {
-    display: flex;
-    flex: 1;
-  }
-  .history-command-error {
+  .history-detail-open > .history-command-error {
     position: absolute;
     top: 0;
     right: 0;

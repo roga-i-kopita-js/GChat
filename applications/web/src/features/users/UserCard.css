@@ -33,3 +33,10 @@
   font-size: var(--ui-font-caption);
   color: var(--ui-muted);
 }
+.user-card-multiline .user-card-name,
+.user-card-multiline .user-card-subtitle {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

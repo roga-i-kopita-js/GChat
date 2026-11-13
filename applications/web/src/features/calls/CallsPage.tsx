@@ -14,7 +14,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } fr
 import { Link, Outlet, useLoaderData, useLocation, useNavigate, useParams } from 'react-router';
 
 import { deviceErrorMessage } from '../../shared/device/messages';
-import { Button, Modal, Skeleton } from '../../shared/ui';
+import { Button, Modal, PageHeader, Skeleton } from '../../shared/ui';
 import { useAuth } from '../auth/AuthProvider';
 import { UserCard } from '../users/UserCard';
 import { CallCardSlot } from './CallCardSlot';
@@ -139,12 +139,20 @@ export function CallsPage(): JSX.Element {
                 to={'/calls/' + id + (filter === 'missed' ? '?filter=missed' : '')}
                 aria-label={`Сведения о звонке: ${item.peer_display_name}, ${historyLabel(item)}, ${historyTime(item.created_at)}`}
               >
-                <UserCard userId={item.peer_id} displayName={item.peer_display_name} />
-                <span className="history-subtitle">
-                  <Icon size={13} aria-hidden="true" />
-                  {historyLabel(item)}
-                  {item.duration_seconds !== null && ' · ' + historyDuration(item.duration_seconds)}
-                </span>
+                <UserCard
+                  userId={item.peer_id}
+                  displayName={item.peer_display_name}
+                  multiline
+                  subtitle={
+                    <span className="history-subtitle">
+                      <Icon size={13} aria-hidden="true" />
+                      <span>{historyLabel(item)}</span>
+                      {item.duration_seconds !== null && (
+                        <span>· {historyDuration(item.duration_seconds)}</span>
+                      )}
+                    </span>
+                  }
+                />
                 <time className="history-time" dateTime={item.created_at}>
                   {historyTime(item.created_at)}
                 </time>
@@ -165,7 +173,7 @@ export function CallsPage(): JSX.Element {
       })
     : [];
 
-  let detailPanel: JSX.Element;
+  let detailPanel: JSX.Element | null = null;
 
   if (showingCall) {
     detailPanel = (
@@ -178,13 +186,6 @@ export function CallsPage(): JSX.Element {
     );
   } else if (callId) {
     detailPanel = <Outlet context={{ redial }} />;
-  } else {
-    detailPanel = (
-      <div className="history-placeholder">
-        <Phone size={30} />
-        <p>Выберите звонок, чтобы посмотреть сведения</p>
-      </div>
-    );
   }
 
   return (
@@ -195,6 +196,9 @@ export function CallsPage(): JSX.Element {
         </p>
       )}
       <section className="history-panel" aria-label="История звонков">
+        <PageHeader className="history-header">
+          <h1>Звонки</h1>
+        </PageHeader>
         <div className="history-filter" role="group" aria-label="Фильтр истории звонков">
           <Link
             to="/calls"
@@ -277,7 +281,7 @@ export function CallsPage(): JSX.Element {
           )}
         </div>
       </section>
-      <div className="history-detail-panel">{detailPanel}</div>
+      {detailPanel && <div className="history-detail-panel">{detailPanel}</div>}
       {confirm && valid && !ongoing && (
         <Modal title="Позвонить?" close={(): void => setConfirmation(null)}>
           <div className="confirm-person">

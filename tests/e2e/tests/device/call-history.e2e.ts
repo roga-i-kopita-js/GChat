@@ -13,7 +13,7 @@ test.use({
 
 async function setup(
   page: Page,
-  options: { fail?: boolean; empty?: boolean } = {},
+  options: { fail?: boolean; empty?: boolean; displayName?: string } = {},
 ): Promise<{ count(): number; fail(value: boolean): void; incoming(): void; finish(): void }> {
   await page.addInitScript(
     ({ me }) => {
@@ -49,7 +49,7 @@ async function setup(
     call_id: callId(index + 1),
     version: 1,
     peer_id: peer,
-    peer_display_name: 'Анна Смирнова',
+    peer_display_name: options.displayName ?? 'Анна Смирнова',
     direction: 'incoming',
     outcome: index % 3 === 0 ? 'missed' : 'completed',
     created_at: new Date(Date.now() - index * 60000 - 30000).toISOString(),
@@ -74,7 +74,7 @@ async function setup(
     } else if (path === '/api/groups') {
       json = { groups: [{ id: group, name: 'Семья' }] };
     } else if (path.endsWith('/members')) {
-      json = { members: [{ id: peer, display_name: 'Анна Смирнова' }] };
+      json = { members: [{ id: peer, display_name: options.displayName ?? 'Анна Смирнова' }] };
     } else if (path === '/api/dialogs') {
       json = { dialogs: [], has_more: false };
     } else if (path === '/api/calls/history') {
@@ -213,7 +213,19 @@ for (const viewport of [
 
     await page.goto('/calls');
     await expect(page.locator('.history-row')).toHaveCount(30);
+    await expect(page.getByRole('heading', { name: 'Звонки', exact: true })).toBeVisible();
+    await expect(page.locator('.history-detail-panel')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Новый звонок' })).toHaveCount(0);
+
+    if (viewport.width > 800) {
+      const { x, width } = (await page
+        .getByRole('region', { name: 'История звонков' })
+        .boundingBox())!;
+
+      expect(width).toBeLessThan(viewport.width);
+      expect(Math.abs(x + width / 2 - viewport.width / 2)).toBeLessThan(1);
+    }
+
     const filter = page.getByRole('group', { name: 'Фильтр истории звонков' });
     const style = await filter.evaluate((element): { centered: string; border: string } => ({
       centered: getComputedStyle(element).justifyContent,
@@ -228,6 +240,20 @@ for (const viewport of [
 
     await links.first().click();
     await expect(page.getByRole('region', { name: 'Сведения о звонке' })).toBeVisible();
+
+    if (viewport.width > 800) {
+      const { x, width } = (await page
+        .getByRole('region', { name: 'История звонков' })
+        .boundingBox())!;
+      const { x: detailX } = (await page
+        .getByRole('region', { name: 'Сведения о звонке' })
+        .boundingBox())!;
+
+      expect(x + width).toBeLessThanOrEqual(detailX);
+    } else {
+      await expect(page.getByRole('region', { name: 'История звонков' })).toBeHidden();
+    }
+
     expect(controlResult1.bind(control)()).toBe(0);
     await page.screenshot({ path: info.outputPath('history-details.png') });
     await page
@@ -235,6 +261,7 @@ for (const viewport of [
       .filter({ has: page.locator('svg.lucide-chevron-left, svg.lucide-arrow-left') })
       .click();
     await expect(page).toHaveURL(/\/calls$/);
+    await expect(page.locator('.history-detail-panel')).toHaveCount(0);
     await filter.getByRole('link', { name: 'Пропущенные', exact: true }).click();
     await expect(page.locator('.history-row')).toHaveCount(14);
     await expect(page.locator('.history-row:not(.history-missed)')).toHaveCount(0);
@@ -242,6 +269,81 @@ for (const viewport of [
       await page.evaluate((): boolean => document.documentElement.scrollWidth <= innerWidth),
     ).toBe(true);
     await page.screenshot({ path: info.outputPath('history-list.png') });
+  });
+
+  test(`history wraps long names with 200% text at ${viewport.width}px`, async ({ page }, info) => {
+    await page.setViewportSize(viewport);
+    const displayName = 'Анна Александровна ОченьДлиннаяНепрерывнаяФамилияДляПроверкиПереноса';
+
+    await setup(page, { displayName });
+    await page.goto('/calls');
+    await expect(page.locator('.history-row')).toHaveCount(30);
+    await page.evaluate((): void => {
+      document.documentElement.style.fontSize = '200%';
+    });
+    const row = page.locator('.history-row').first();
+    const name = row.locator('.user-card-name');
+
+    await expect(name).toHaveText(displayName);
+    const {
+      nameHeight,
+      nameLine,
+      nameBottom,
+      nameRight,
+      subtitleTop,
+      subtitleBottom,
+      rowBottom,
+      timeLeft,
+      timeRight,
+      redialLeft,
+      redialWidth,
+      redialHeight,
+      avatarWidth,
+      avatarHeight,
+    } = await row.evaluate((element) => {
+      const name = element.querySelector('.user-card-name')!;
+      const subtitle = element.querySelector('.history-subtitle')!.getBoundingClientRect();
+      const time = element.querySelector('.history-time')!.getBoundingClientRect();
+      const redial = element.querySelector('.history-redial')!.getBoundingClientRect();
+      const avatar = element.querySelector('.avatar')!.getBoundingClientRect();
+      const nameBounds = name.getBoundingClientRect();
+
+      return {
+        nameHeight: nameBounds.height,
+        nameLine: Number.parseFloat(getComputedStyle(name).lineHeight),
+        nameBottom: nameBounds.bottom,
+        nameRight: nameBounds.right,
+        subtitleTop: subtitle.top,
+        subtitleBottom: subtitle.bottom,
+        rowBottom: element.getBoundingClientRect().bottom,
+        timeLeft: time.left,
+        timeRight: time.right,
+        redialLeft: redial.left,
+        redialWidth: redial.width,
+        redialHeight: redial.height,
+        avatarWidth: avatar.width,
+        avatarHeight: avatar.height,
+      };
+    });
+
+    expect(nameHeight).toBeGreaterThan(nameLine);
+    expect(subtitleTop).toBeGreaterThanOrEqual(nameBottom);
+    expect(subtitleBottom).toBeLessThanOrEqual(rowBottom);
+    expect(nameRight).toBeLessThanOrEqual(timeLeft);
+    expect(timeRight).toBeLessThanOrEqual(redialLeft);
+    expect(redialWidth).toBeGreaterThanOrEqual(44);
+    expect(redialHeight).toBeGreaterThanOrEqual(44);
+    expect(avatarWidth).toBe(44);
+    expect(avatarHeight).toBe(44);
+    expect(
+      await page.locator('.history-list').evaluate((element): boolean => {
+        return element.scrollWidth <= element.clientWidth;
+      }),
+    ).toBe(true);
+    expect(
+      await page.evaluate((): boolean => document.documentElement.scrollWidth <= innerWidth),
+    ).toBe(true);
+    await page.screenshot({ path: info.outputPath('history-large-text.png') });
   });
 }
 
