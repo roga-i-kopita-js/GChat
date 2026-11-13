@@ -135,7 +135,10 @@ self.addEventListener('push', (event) => {
         uuid(payload.message_id) &&
         typeof payload.body === 'string'
       ) {
-        await self.registration.showNotification('GChat', {
+        const name = typeof payload.title === 'string' ? payload.title.trim() : '';
+        const title = name && [...name].length <= 80 ? name : 'GChat';
+
+        await self.registration.showNotification(title, {
           body: payload.body,
           icon: config.icon,
           badge: config.icon,
@@ -150,11 +153,16 @@ self.addEventListener('push', (event) => {
         typeof payload?.call_id === 'string' &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.call_id);
       const expired = !valid || !(Date.parse(payload.ringing_deadline) > Date.now());
+      const name =
+        typeof payload?.caller_display_name === 'string' ? payload.caller_display_name.trim() : '';
+      const callerName = name && [...name].length <= 80 ? name : '';
+      const callBody = callerName
+        ? 'Входящий звонок'
+        : 'Входящий звонок. Откройте GChat, чтобы ответить.';
+      const title = !expired && callerName ? callerName : 'GChat';
 
-      await self.registration.showNotification('GChat', {
-        body: expired
-          ? 'Откройте GChat, чтобы проверить звонки.'
-          : 'Входящий звонок. Откройте GChat, чтобы ответить.',
+      await self.registration.showNotification(title, {
+        body: expired ? 'Откройте GChat, чтобы проверить звонки.' : callBody,
         icon: config.icon,
         badge: config.icon,
         tag: valid ? 'gchat-call-' + payload.call_id : 'gchat-calls',

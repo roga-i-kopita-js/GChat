@@ -13,10 +13,19 @@ export interface WebPushResult {
 export class WebPushClient {
   constructor(private readonly config: ConfigService) {}
 
-  async send(address: WebPushAddress, callId: string, deadline: string): Promise<WebPushResult> {
+  async send(
+    address: WebPushAddress,
+    callId: string,
+    deadline: string,
+    callerDisplayName?: string,
+  ): Promise<WebPushResult> {
     return this.sendPayload(
       address,
-      { call_id: callId, ringing_deadline: deadline },
+      {
+        call_id: callId,
+        ringing_deadline: deadline,
+        ...(callerDisplayName ? { caller_display_name: callerDisplayName } : {}),
+      },
       deadline,
       false,
     );

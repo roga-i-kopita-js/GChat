@@ -18,7 +18,7 @@ interface Fixture {
   state: StoredSession;
   tokens: TokensDto;
   token: string;
-  accounts: jest.Mocked<Pick<AuthRepository, 'byLogin'>>;
+  accounts: jest.Mocked<Pick<AuthRepository, 'byLogin' | 'byId'>>;
   crypto: jest.Mocked<
     Pick<AuthCrypto, 'verifyPassword' | 'issue' | 'decrypt' | 'encrypt' | 'verifyAccess'>
   >;
@@ -67,7 +67,10 @@ function fixture(): Fixture {
       set: (): { where: jest.Mock<() => Promise<void>> } => ({ where: write }),
     }),
   } as unknown as DatabaseTransaction;
-  const accounts = { byLogin: jest.fn<AuthRepository['byLogin']>().mockResolvedValue(account) };
+  const accounts = {
+    byLogin: jest.fn<AuthRepository['byLogin']>().mockResolvedValue(account),
+    byId: jest.fn<AuthRepository['byId']>().mockResolvedValue(account),
+  };
   const crypto = {
     verifyPassword: jest.fn<AuthCrypto['verifyPassword']>().mockResolvedValue(true),
     issue: jest.fn<AuthCrypto['issue']>().mockResolvedValue(tokens),
@@ -99,6 +102,17 @@ function fixture(): Fixture {
 }
 
 describe('Auth PostgreSQL orchestration', (): void => {
+  it('returns only the display name of an active account for notifications', async (): Promise<void> => {
+    const f = fixture();
+
+    await expect(f.service.displayName(f.account.id)).resolves.toBe('Test');
+    expect(f.accounts.byId).toHaveBeenCalledWith(f.account.id);
+    f.accounts.byId.mockResolvedValue({ ...f.account, disabledAt: new Date() });
+    await expect(f.service.displayName(f.account.id)).resolves.toBeUndefined();
+    f.accounts.byId.mockResolvedValue(undefined);
+    await expect(f.service.displayName(f.account.id)).resolves.toBeUndefined();
+  });
+
   it('rechecks the verified password hash under the account lock', async (): Promise<void> => {
     const f = fixture();
 

@@ -2,6 +2,7 @@ import type { OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { AuthService } from '../auth/auth.service.js';
 import { DevicesService } from '../devices/devices.service.js';
 import { DirectCallsDeliveryStore } from '../direct-calls/direct-calls.delivery-store.js';
 import { DirectCallsService } from '../direct-calls/direct-calls.service.js';
@@ -20,6 +21,7 @@ export class WebPushWorker implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly client: WebPushClient,
     private readonly config: ConfigService,
     private readonly logger: LoggerService,
+    private readonly auth: AuthService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -76,8 +78,14 @@ export class WebPushWorker implements OnApplicationBootstrap, OnModuleDestroy {
           continue;
         }
 
-        const { call_id: callCallId, ringing_deadline: callRingingDeadline2 } = call;
-        const result = await this.client.send(target, callCallId, callRingingDeadline);
+        const { call_id: callId, caller_id: callerId } = call;
+        const callerDisplayName = await this.callerName(callerId);
+        const result = await this.client.send(
+          target,
+          callId,
+          callRingingDeadline,
+          callerDisplayName,
+        );
 
         const { status: resultStatus } = result;
 
@@ -101,6 +109,18 @@ export class WebPushWorker implements OnApplicationBootstrap, OnModuleDestroy {
       } catch {
         await this.store.retry(job.id, job.leaseToken, job.attempts);
       }
+    }
+  }
+
+  private async callerName(userId: string): Promise<string | undefined> {
+    try {
+      const raw = await this.auth.displayName(userId);
+      const { trim } = raw ?? '';
+      const name = trim.call(raw ?? '');
+
+      return name && [...name].length <= 80 ? name : undefined;
+    } catch {
+      return undefined;
     }
   }
 

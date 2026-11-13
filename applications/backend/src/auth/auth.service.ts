@@ -30,6 +30,12 @@ export class AuthService {
     private readonly error: ErrorService,
   ) {}
 
+  async displayName(userId: string): Promise<string | undefined> {
+    const { displayName, disabledAt } = (await this.accounts.byId(userId)) ?? {};
+
+    return disabledAt ? undefined : displayName;
+  }
+
   async login(input: LoginDto): Promise<TokensDto> {
     const login = input.login.trim().toLowerCase();
 

@@ -1,6 +1,8 @@
 import type { MessageDto } from '../dialogs/dialogs.dto.js';
 
-export function dialogPushPayload(message: MessageDto, apns: boolean): object {
+export function dialogPushPayload(message: MessageDto, apns: boolean, senderName?: string): object {
+  const name = senderName?.trim();
+  const title = name && [...name].length <= 80 ? name : 'GChat';
   const meta = {
     type: 'dialog.message',
     dialog_id: message.dialog_id,
@@ -10,8 +12,8 @@ export function dialogPushPayload(message: MessageDto, apns: boolean): object {
   };
   const build = (body: string): object =>
     apns
-      ? { aps: { alert: { title: 'GChat', body }, sound: 'default' }, ...meta }
-      : { ...meta, title: 'GChat', body };
+      ? { aps: { alert: { title, body }, sound: 'default' }, ...meta }
+      : { ...meta, title, body };
   const body = message.content.kind === 'text' ? message.content.text : 'Стикер';
   const budget = apns ? 4096 : 3000;
 

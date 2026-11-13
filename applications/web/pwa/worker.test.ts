@@ -194,6 +194,96 @@ describe('PWA worker', (): void => {
       }),
     );
   });
+  it.each([true, false])(
+    'shows the caller name as the notification title (%s)',
+    async (server): Promise<void> => {
+      const f = fixture(server);
+
+      await f.dispatch('push', {
+        data: {
+          json: (): object => ({
+            call_id: '11111111-1111-4111-8111-111111111111',
+            ringing_deadline: new Date(Date.now() + 60000).toISOString(),
+            caller_display_name: '  Андрей  ',
+          }),
+        },
+      });
+      expect(f.self.registration.showNotification).toHaveBeenCalledWith(
+        'Андрей',
+        expect.objectContaining({
+          body: 'Входящий звонок',
+          renotify: true,
+        }),
+      );
+    },
+  );
+  it.each([undefined, null, 42, {}, '', '   ', 'я'.repeat(81)])(
+    'uses the general call text for a missing or invalid name (%s)',
+    async (name): Promise<void> => {
+      const f = fixture();
+
+      await f.dispatch('push', {
+        data: {
+          json: (): object => ({
+            call_id: '11111111-1111-4111-8111-111111111111',
+            ringing_deadline: new Date(Date.now() + 60000).toISOString(),
+            caller_display_name: name,
+          }),
+        },
+      });
+      expect(f.self.registration.showNotification).toHaveBeenCalledWith(
+        'GChat',
+        expect.objectContaining({
+          body: 'Входящий звонок. Откройте GChat, чтобы ответить.',
+        }),
+      );
+    },
+  );
+  it.each(['11111111-1111-4111-8111-111111111111', 'invalid'])(
+    'hides the caller name for late or invalid calls (%s)',
+    async (call_id): Promise<void> => {
+      const f = fixture();
+
+      await f.dispatch('push', {
+        data: {
+          json: (): object => ({
+            call_id,
+            ringing_deadline: new Date(
+              call_id === 'invalid' ? Date.now() + 60000 : 0,
+            ).toISOString(),
+            caller_display_name: 'Андрей',
+          }),
+        },
+      });
+      expect(f.self.registration.showNotification).toHaveBeenCalledWith(
+        'GChat',
+        expect.objectContaining({
+          body: 'Откройте GChat, чтобы проверить звонки.',
+          renotify: false,
+        }),
+      );
+    },
+  );
+  it('accepts an 80-code-point caller name', async (): Promise<void> => {
+    const f = fixture();
+    const name = '😀'.repeat(80);
+
+    await f.dispatch('push', {
+      data: {
+        json: (): object => ({
+          call_id: '11111111-1111-4111-8111-111111111111',
+          ringing_deadline: new Date(Date.now() + 60000).toISOString(),
+          caller_display_name: name,
+        }),
+      },
+    });
+    expect(f.self.registration.showNotification).toHaveBeenCalledWith(
+      name,
+      expect.objectContaining({
+        body: 'Входящий звонок',
+      }),
+    );
+  });
   it('shows message text with a per-message tag and forwards only a validated dialog intent', async (): Promise<void> => {
     const f = fixture();
     const id = '11111111-1111-4111-8111-111111111111';
@@ -206,12 +296,13 @@ describe('PWA worker', (): void => {
           dialog_id: id,
           message_id: message,
           body: 'Тест уведомления',
+          title: '  Андрей  ',
           url: 'https://evil.invalid',
         }),
       },
     });
     expect(f.self.registration.showNotification).toHaveBeenCalledWith(
-      'GChat',
+      'Андрей',
       expect.objectContaining({
         body: 'Тест уведомления',
         tag: 'gchat-message-' + message,
@@ -237,6 +328,30 @@ describe('PWA worker', (): void => {
       'https://gchat.example/apps/client/calls?dialog_id=' + id,
     );
   });
+  it.each([undefined, null, 42, {}, '', '  ', 'я'.repeat(81)])(
+    'keeps message text and uses GChat for missing or invalid message titles (%s)',
+    async (title): Promise<void> => {
+      const f = fixture();
+
+      await f.dispatch('push', {
+        data: {
+          json: (): object => ({
+            type: 'dialog.message',
+            dialog_id: '11111111-1111-4111-8111-111111111111',
+            message_id: '22222222-2222-4222-8222-222222222222',
+            title,
+            body: 'Some text',
+          }),
+        },
+      });
+      expect(f.self.registration.showNotification).toHaveBeenCalledWith(
+        'GChat',
+        expect.objectContaining({
+          body: 'Some text',
+        }),
+      );
+    },
+  );
   it('focuses an existing call client without reloading it and never follows payload URLs', async (): Promise<void> => {
     const f = fixture();
     const focus = vi.fn();

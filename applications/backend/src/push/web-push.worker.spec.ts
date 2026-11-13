@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { ConfigService } from '@nestjs/config';
 
+import { AuthService } from '../auth/auth.service.js';
 import { DevicesService } from '../devices/devices.service.js';
 import { DirectCallsDeliveryStore } from '../direct-calls/direct-calls.delivery-store.js';
 import { DirectCallsService } from '../direct-calls/direct-calls.service.js';
@@ -44,12 +45,16 @@ describe('Web Push outbox processing', (): void => {
         state: 'ringing',
         ringing_deadline: new Date(Date.now() + 60000).toISOString(),
         call_id: 'call',
+        caller_id: 'caller',
       } as any),
     };
     const client = {
       send: jest
         .fn<WebPushClient['send']>()
         .mockResolvedValue({ status: 201, retryAfterSeconds: 0 }),
+    };
+    const auth = {
+      displayName: jest.fn<AuthService['displayName']>().mockResolvedValue('  Андрей  '),
     };
     const worker = new WebPushWorker(
       store as any,
@@ -58,9 +63,10 @@ describe('Web Push outbox processing', (): void => {
       client as any,
       new ConfigService({ WEB_PUSH_ENABLED: webPushEnabled }),
       new LoggerService(),
+      auth as any,
     );
 
-    return { worker, store, devices, calls, client };
+    return { worker, store, devices, calls, client, auth };
   }
 
   it('does not consume Web Push jobs when disabled', async (): Promise<void> => {
@@ -85,6 +91,51 @@ describe('Web Push outbox processing', (): void => {
     expect(f.store.repeatWebPush).toHaveBeenCalledWith('job', 'lease');
     expect(f.store.complete).not.toHaveBeenCalled();
     expect(f.client.send).toHaveBeenCalledTimes(1);
+    expect(f.auth.displayName).toHaveBeenCalledWith('caller');
+    expect(f.client.send).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user' }),
+      'call',
+      expect.any(String),
+      'Андрей',
+    );
+  });
+
+  it.each([undefined, '', '   ', 'я'.repeat(81)])(
+    'sends without the caller name when it is unavailable or invalid (%s)',
+    async (name): Promise<void> => {
+      const f = fixture();
+
+      f.auth.displayName.mockResolvedValue(name);
+      await f.worker.tick();
+      expect(f.client.send).toHaveBeenCalledWith(
+        expect.anything(),
+        'call',
+        expect.any(String),
+        undefined,
+      );
+      expect(f.store.repeatWebPush).toHaveBeenCalledWith('job', 'lease');
+    },
+  );
+
+  it('still delivers when the name lookup fails and refreshes the name on repeats', async (): Promise<void> => {
+    const f = fixture();
+
+    f.auth.displayName.mockRejectedValueOnce(new Error('unavailable'));
+    await f.worker.tick();
+    expect(f.client.send).toHaveBeenLastCalledWith(
+      expect.anything(),
+      'call',
+      expect.any(String),
+      undefined,
+    );
+    f.auth.displayName.mockResolvedValue('Новое имя');
+    await f.worker.tick();
+    expect(f.client.send).toHaveBeenLastCalledWith(
+      expect.anything(),
+      'call',
+      expect.any(String),
+      'Новое имя',
+    );
   });
 
   it.each(['connecting', 'active', 'ended'])(
@@ -117,6 +168,7 @@ describe('Web Push outbox processing', (): void => {
     f.devices.resolveWebPushTarget.mockResolvedValue(undefined);
     await f.worker.tick();
     expect(f.client.send).not.toHaveBeenCalled();
+    expect(f.auth.displayName).not.toHaveBeenCalled();
   });
 
   it('retries unknown results and throttling with the current lease and Retry-After', async (): Promise<void> => {

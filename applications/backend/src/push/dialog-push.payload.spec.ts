@@ -13,8 +13,8 @@ const base: MessageDto = {
 
 describe('Dialog push JSON budget', (): void => {
   it('keeps full short text and uses the separate alert shape', (): void => {
-    expect(dialogPushPayload(base, true)).toEqual({
-      aps: { alert: { title: 'GChat', body: 'hello' }, sound: 'default' },
+    expect(dialogPushPayload(base, true, '  Андрей  ')).toEqual({
+      aps: { alert: { title: 'Андрей', body: 'hello' }, sound: 'default' },
       type: 'dialog.message',
       dialog_id: base.dialog_id,
       message_id: base.message_id,
@@ -25,20 +25,34 @@ describe('Dialog push JSON budget', (): void => {
       dialogPushPayload(
         { ...base, content: { kind: 'sticker', sticker_id: 'animal-pals-v1-cat' } },
         false,
+        'Андрей',
       ),
-    ).toEqual(expect.objectContaining({ body: 'Стикер' }));
+    ).toEqual(expect.objectContaining({ title: 'Андрей', body: 'Стикер' }));
   });
+  it.each([true, false])(
+    'falls back to GChat for missing or invalid names (APNs=%s)',
+    (apns): void => {
+      for (const name of [undefined, '', '  ', 'я'.repeat(81)]) {
+        const payload: any = dialogPushPayload(base, apns, name);
+
+        expect(apns ? payload.aps.alert.title : payload.title).toBe('GChat');
+        expect(apns ? payload.aps.alert.body : payload.body).toBe('hello');
+      }
+    },
+  );
   it.each([true, false])(
     'truncates on graphemes within serialized UTF-8 budget (APNs=%s)',
     (apns): void => {
       const payload: any = dialogPushPayload(
         { ...base, content: { kind: 'text', text: '👨‍👩‍👦'.repeat(600) } },
         apns,
+        '😀'.repeat(80),
       );
 
       expect(Buffer.byteLength(JSON.stringify(payload))).toBeLessThanOrEqual(apns ? 4096 : 3000);
       const body = apns ? payload.aps.alert.body : payload.body;
 
+      expect(apns ? payload.aps.alert.title : payload.title).toBe('😀'.repeat(80));
       expect(body.endsWith('…')).toBe(true);
       expect(body.slice(0, -1).replaceAll('👨‍👩‍👦', '')).toBe('');
     },

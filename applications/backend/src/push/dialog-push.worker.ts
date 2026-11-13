@@ -2,6 +2,7 @@ import type { OnModuleDestroy } from '@nestjs/common';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { AuthService } from '../auth/auth.service.js';
 import { DevicesService } from '../devices/devices.service.js';
 import type { MessageDto } from '../dialogs/dialogs.dto.js';
 import { type DialogNotice, DialogsEvents } from '../dialogs/dialogs.events.js';
@@ -61,6 +62,7 @@ export class DialogPushWorker implements OnModuleDestroy {
     private readonly web: WebPushClient,
     private readonly config: ConfigService,
     private readonly logger: LoggerService,
+    private readonly auth: AuthService,
   ) {
     this.unsubscribe = events.subscribe((notice): Promise<void> => {
       this.enqueue(notice);
@@ -136,6 +138,7 @@ export class DialogPushWorker implements OnModuleDestroy {
           return;
         }
 
+        const senderName = await this.senderName(job.message.sender_id);
         const current = await this.devices.resolveApnsTarget(target.deviceId, target.sessionId);
 
         const { version: currentVersion } = current ?? {};
@@ -148,7 +151,7 @@ export class DialogPushWorker implements OnModuleDestroy {
         const result = await this.apns.send(
           job.message.message_id,
           currentToken,
-          dialogPushPayload(job.message, true),
+          dialogPushPayload(job.message, true, senderName),
           new Date(job.deadline),
           'alert',
         );
@@ -184,6 +187,7 @@ export class DialogPushWorker implements OnModuleDestroy {
           return;
         }
 
+        const senderName = await this.senderName(job.message.sender_id);
         const current = await this.devices.resolveWebPushTarget(target.deviceId, target.sessionId);
 
         const { version: currentVersion3 } = current ?? {};
@@ -194,7 +198,7 @@ export class DialogPushWorker implements OnModuleDestroy {
 
         const { status: resultStatus } = await this.web.sendPayload(
           current,
-          dialogPushPayload(job.message, false),
+          dialogPushPayload(job.message, false, senderName),
           new Date(job.deadline).toISOString(),
         );
 
@@ -221,6 +225,14 @@ export class DialogPushWorker implements OnModuleDestroy {
         }
       }),
     );
+  }
+
+  private async senderName(userId: string): Promise<string | undefined> {
+    try {
+      return await this.auth.displayName(userId);
+    } catch {
+      return undefined;
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

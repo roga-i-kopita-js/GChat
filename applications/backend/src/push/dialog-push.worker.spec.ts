@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { ConfigService } from '@nestjs/config';
 
+import type { AuthService } from '../auth/auth.service.js';
 import type { DevicesService } from '../devices/devices.service.js';
 import { type DialogNotice, DialogsEvents } from '../dialogs/dialogs.events.js';
 import type { DialogsService } from '../dialogs/dialogs.service.js';
@@ -24,6 +25,12 @@ function fixture(): any {
     listApnsTargets: jest.fn<DevicesService['listApnsTargets']>().mockResolvedValue([target]),
     listWebPushTargets: jest.fn<DevicesService['listWebPushTargets']>().mockResolvedValue([]),
     resolveApnsTarget: jest.fn<DevicesService['resolveApnsTarget']>().mockResolvedValue(target),
+    resolveWebPushTarget: jest
+      .fn<DevicesService['resolveWebPushTarget']>()
+      .mockResolvedValue(target as any),
+    invalidateWebPushTarget: jest
+      .fn<DevicesService['invalidateWebPushTarget']>()
+      .mockResolvedValue(undefined),
     invalidateApnsTarget: jest
       .fn<DevicesService['invalidateApnsTarget']>()
       .mockResolvedValue(undefined),
@@ -37,6 +44,7 @@ function fixture(): any {
   };
   const logger = new LoggerService();
   const warn = jest.spyOn(logger, 'warn').mockImplementation((): void => {});
+  const auth = { displayName: jest.fn<AuthService['displayName']>().mockResolvedValue('Андрей') };
   const worker = new DialogPushWorker(
     events,
     dialogs as any,
@@ -45,6 +53,7 @@ function fixture(): any {
     web as any,
     new ConfigService({ APNS_ENABLED: true }),
     logger,
+    auth as any,
   );
   const notice: DialogNotice = {
     users: ['sender', 'recipient'],
@@ -64,7 +73,7 @@ function fixture(): any {
     },
   };
 
-  return { events, devices, dialogs, apns, web, worker, notice, warn };
+  return { events, devices, dialogs, apns, web, worker, notice, warn, auth, target };
 }
 
 describe('Best effort dialog push', (): void => {
@@ -89,11 +98,12 @@ describe('Best effort dialog push', (): void => {
     expect(f.apns.send.mock.calls[0][2]).toEqual(
       expect.objectContaining({
         type: 'dialog.message',
-        aps: { alert: { title: 'GChat', body: 'private' }, sound: 'default' },
+        aps: { alert: { title: 'Андрей', body: 'private' }, sound: 'default' },
       }),
     );
     expect(f.apns.send.mock.calls[0][4]).toBe('alert');
     expect(f.dialogs.canDeliver).toHaveBeenCalledWith('recipient', 'sid', 'device', 'dialog');
+    expect(f.auth.displayName).toHaveBeenCalledWith('sender');
     expect(f.devices.invalidateApnsTarget).toHaveBeenCalledWith('device', 'v1', 123);
     await jest.advanceTimersByTimeAsync(60000);
     expect(f.apns.send).toHaveBeenCalledTimes(1);
@@ -106,6 +116,7 @@ describe('Best effort dialog push', (): void => {
     f.events.publish(f.notice);
     await jest.advanceTimersByTimeAsync(0);
     expect(f.apns.send).not.toHaveBeenCalled();
+    expect(f.auth.displayName).not.toHaveBeenCalled();
     f.dialogs.canDeliver.mockResolvedValue(true);
     const awaitedValue = await f.devices.resolveApnsTarget();
 
@@ -125,6 +136,39 @@ describe('Best effort dialog push', (): void => {
     });
     await jest.advanceTimersByTimeAsync(0);
     expect(f.devices.listApnsTargets).toHaveBeenCalledTimes(2);
+    await f.worker.onModuleDestroy();
+  });
+  it('uses the sender name for browser notifications as well as native alerts', async (): Promise<void> => {
+    const f = fixture();
+
+    f.devices.listWebPushTargets.mockResolvedValue([f.target]);
+    f.events.publish(f.notice);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(f.web.sendPayload).toHaveBeenCalledWith(
+      f.target,
+      expect.objectContaining({ type: 'dialog.message', title: 'Андрей', body: 'private' }),
+      expect.any(String),
+    );
+    await f.worker.onModuleDestroy();
+  });
+  it('still sends to both transports when the sender name cannot be loaded', async (): Promise<void> => {
+    const f = fixture();
+
+    f.devices.listWebPushTargets.mockResolvedValue([f.target]);
+    f.auth.displayName.mockRejectedValue(new Error('unavailable'));
+    f.events.publish(f.notice);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(f.apns.send.mock.calls[0][2]).toEqual(
+      expect.objectContaining({
+        aps: { alert: { title: 'GChat', body: 'private' }, sound: 'default' },
+      }),
+    );
+    expect(f.web.sendPayload.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        title: 'GChat',
+        body: 'private',
+      }),
+    );
     await f.worker.onModuleDestroy();
   });
   it('bounds active messages at four, waiting jobs at 100 and includes queue delay in the ten-second deadline', async (): Promise<void> => {
