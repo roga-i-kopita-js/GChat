@@ -86,6 +86,8 @@ async function setup(
         body = { ticket: 'test-ticket', expires_at: new Date(Date.now() + 60000).toISOString() };
       } else if (path === '/api/calls/history') {
         body = { items: [], next_cursor: null };
+      } else if (path === '/api/dialogs') {
+        body = { dialogs: [], has_more: false };
       } else if (path === '/api/groups') {
         body = { groups: [{ id: 'family', name: 'близкие' }] };
       } else if (path === '/api/groups/family/members') {
@@ -418,7 +420,7 @@ for (const viewport of [
 
   test(`main sections keep one outer layout at ${viewport.width}px`, async ({
     page,
-  }): Promise<void> => {
+  }, info): Promise<void> => {
     await page.setViewportSize(viewport);
     await setup(page);
     const nav = page.getByRole('navigation', { name: 'Основные разделы' });
@@ -445,9 +447,22 @@ for (const viewport of [
         );
       }
 
-      await expect(
-        content.locator('.settings-heading, .panel-title, .dialogs-sidebar > .ui-page-header'),
-      ).toHaveCount(0);
+      await expect(content.locator('.settings-heading, .panel-title')).toHaveCount(0);
+
+      if (section === 'Диалоги') {
+        const header = content.locator('.dialogs-sidebar > .ui-page-header');
+
+        await expect(header.getByRole('heading', { name: 'Диалоги', exact: true })).toBeVisible();
+        await expect(header.getByRole('link', { name: 'Написать сообщение' })).toHaveAttribute(
+          'href',
+          '/dialogs/contacts',
+        );
+        await expect(page.getByText('Пока нет диалогов', { exact: true })).toBeVisible();
+        await page.screenshot({ path: info.outputPath('dialogs.png') });
+      } else {
+        await expect(content.locator('.dialogs-sidebar > .ui-page-header')).toHaveCount(0);
+      }
+
       await expect(content).toHaveCSS('padding', '0px');
       const bounds = await surface.boundingBox();
 

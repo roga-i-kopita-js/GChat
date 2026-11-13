@@ -9,7 +9,7 @@ export async function login(page: Page, name: string): Promise<void> {
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
   await expect(page.getByRole('main', { name: 'Звонки', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Диалоги', exact: true }).click();
-  await page.getByRole('link', { name: 'Контакты', exact: true }).click();
+  await page.getByRole('link', { name: 'Написать сообщение', exact: true }).click();
   await expect(page.getByRole('button', { name: /^Позвонить:/ }).first()).toBeEnabled();
 }
 

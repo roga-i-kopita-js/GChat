@@ -1,6 +1,6 @@
 import './dialogs.css';
 
-import { MessageCircle, Users } from 'lucide-react';
+import { MessageCircle } from 'lucide-react';
 import type { JSX } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { Link, Outlet, useParams, useRevalidator, useRouteLoaderData } from 'react-router';
@@ -10,6 +10,7 @@ import { DialogModelEvent } from '../../shared/dialogs/live-models';
 import { dialogError, type DialogRuntime } from '../../shared/dialogs/runtime';
 import { Skeleton } from '../../shared/ui';
 import { UserCard } from '../users/UserCard';
+import { DialogsHeader } from './DialogsHeader';
 import { time } from './format';
 import type { DialogsData } from './loaders';
 
@@ -101,11 +102,7 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
   return (
     <div className={'dialogs-layout' + (dialogId ? ' dialog-selected' : '')}>
       <section className="dialogs-sidebar" aria-label="Диалоги">
-        <div className="dialog-contacts-access">
-          <Link to="/dialogs/contacts">
-            <Users size={18} aria-hidden="true" /> Контакты
-          </Link>
-        </div>
+        <DialogsHeader />
         {state.storageWarning && (
           <p className="dialog-notice" role="status">
             {state.storageWarning}
@@ -147,6 +144,7 @@ function Dialogs({ runtime }: { runtime: DialogRuntime }): JSX.Element {
 }
 
 export function DialogsPage(): JSX.Element {
+  const { dialogId } = useParams();
   const { runtime: bootstrapRuntime, error, retry } = useBootstrap();
   const index = useRouteLoaderData<DialogsData>('dialog-index');
   const conversation = useRouteLoaderData<DialogsData>('dialog-conversation');
@@ -170,21 +168,25 @@ export function DialogsPage(): JSX.Element {
   return runtime ? (
     <Dialogs runtime={runtime} />
   ) : (
-    <section className="dialog-empty">
-      <Link to="/dialogs/contacts">Контакты</Link>
-      <p role={error ? 'alert' : 'status'}>{error ?? 'Подготавливаем переписку…'}</p>
+    <div className={'dialogs-layout' + (dialogId ? ' dialog-selected' : '')}>
+      <section className="dialogs-sidebar" aria-label="Диалоги">
+        <DialogsHeader />
+        <div className="dialog-empty">
+          <p role={error ? 'alert' : 'status'}>{error ?? 'Подготавливаем переписку…'}</p>
+          {error && (
+            <button
+              className="secondary"
+              onClick={(): void => {
+                retry();
+                void revalidator.revalidate();
+              }}
+            >
+              Повторить
+            </button>
+          )}
+        </div>
+      </section>
       <Outlet />
-      {error && (
-        <button
-          className="secondary"
-          onClick={(): void => {
-            retry();
-            void revalidator.revalidate();
-          }}
-        >
-          Повторить
-        </button>
-      )}
-    </section>
+    </div>
   );
 }

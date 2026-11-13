@@ -335,7 +335,7 @@ test('keeps failures distinct from empty history and exposes contacts from dialo
   await page.getByRole('button', { name: 'Повторить', exact: true }).click();
   await expect(page.locator('.history-row')).toHaveCount(30);
   await page.getByRole('link', { name: 'Диалоги', exact: true }).click();
-  await page.getByRole('link', { name: 'Контакты', exact: true }).click();
+  await page.getByRole('link', { name: 'Написать сообщение', exact: true }).click();
   await expect(page).toHaveURL(/\/dialogs\/contacts$/);
   await expect(
     page.getByRole('button', { name: 'Позвонить: Анна Смирнова', exact: true }),
