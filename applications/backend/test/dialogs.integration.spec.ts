@@ -199,7 +199,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     await pool?.end();
 
     try {
-      await admin?.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      await admin?.query(`DROP DATABASE IF EXISTS "${name}"`);
     } finally {
       await admin?.end();
     }

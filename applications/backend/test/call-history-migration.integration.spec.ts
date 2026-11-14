@@ -33,9 +33,12 @@ integration('call history migration over the previous schema', (): void => {
     folder = await mkdtemp(join(tmpdir(), 'gchat-history-migration-'));
     await cp(resolve('drizzle'), folder, { recursive: true });
     const journal = JSON.parse(await readFile(join(folder, 'meta/_journal.json'), 'utf8'));
-    const last = journal.entries.pop();
+    const historyIndex = journal.entries.findIndex(
+      (entry: { tag: string }): boolean => entry.tag === '0008_call_history',
+    );
 
-    expect(last.tag).toBe('0008_call_history');
+    expect(historyIndex).toBeGreaterThan(0);
+    journal.entries = journal.entries.slice(0, historyIndex);
     await writeFile(join(folder, 'meta/_journal.json'), JSON.stringify(journal));
     await runMigrations(url, folder);
     const caller = randomUUID();
