@@ -905,6 +905,7 @@ export class GChatClient {
           }),
         ).call,
       );
+      await this.ping();
     } catch (cause) {
       this.connectedAttempt = null;
 

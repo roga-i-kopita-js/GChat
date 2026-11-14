@@ -55,12 +55,26 @@ public struct DialogStorageFailure: Error {
         db = connection
         do {
             let version = try rows("PRAGMA user_version", []).first?[0] ?? "0"
-            guard version == "0" || version == "1" else { throw DialogStorageFailure("STORAGE_VERSION_UNSUPPORTED") }
+            guard version == "0" || version == "1" || version == "2" else { throw DialogStorageFailure("STORAGE_VERSION_UNSUPPORTED") }
             try execute("PRAGMA journal_mode=WAL", [])
             try execute("PRAGMA synchronous=FULL", [])
             try execute("CREATE TABLE IF NOT EXISTS dialog_records (namespace TEXT NOT NULL, epoch INTEGER NOT NULL, id TEXT NOT NULL, revision INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(namespace,epoch,id))", [])
             try execute("CREATE TABLE IF NOT EXISTS dialog_messages (namespace TEXT NOT NULL, epoch INTEGER NOT NULL, dialog_id TEXT NOT NULL, id TEXT NOT NULL, sequence INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(namespace,epoch,id), UNIQUE(namespace,epoch,dialog_id,sequence))", [])
-            try execute("PRAGMA user_version=1", [])
+            if version != "2" {
+                try execute("BEGIN IMMEDIATE", [])
+                do {
+                    for row in try rows("SELECT namespace,epoch,id,body FROM dialog_records", []) {
+                        let record = try migrateRecord(object(row[3]))
+                        try execute("UPDATE dialog_records SET body=? WHERE namespace=? AND epoch=? AND id=?", [try json(record), row[0], row[1], row[2]])
+                    }
+                    for row in try rows("SELECT namespace,epoch,id,body FROM dialog_messages", []) {
+                        let message = try migrateMessage(object(row[3]))
+                        try execute("UPDATE dialog_messages SET body=? WHERE namespace=? AND epoch=? AND id=?", [try json(message), row[0], row[1], row[2]])
+                    }
+                    try execute("PRAGMA user_version=2", [])
+                    try execute("COMMIT", [])
+                } catch { try? execute("ROLLBACK", []); throw error }
+            }
         } catch { sqlite3_close(connection); db = nil; throw error }
     }
     private func statement(_ sql: String, _ values: [String]) throws -> OpaquePointer {
@@ -93,7 +107,7 @@ public struct DialogStorageFailure: Error {
         }
     }
     private func json(_ value: Any) throws -> String {
-        let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+        let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes])
         guard data.count <= 524288, let text = String(data: data, encoding: .utf8) else { throw DialogStorageFailure("STORAGE_FULL") }
         return text
     }
@@ -103,7 +117,7 @@ public struct DialogStorageFailure: Error {
     }
     private func empty() -> [String: Any] {
         ["revision": 0, "dialog": NSNull(), "permissions": NSNull(), "initialized": false,
-         "sync_sequence": 0, "ranges": [], "before_sequence": NSNull(), "has_older": false,
+         "sync_sequence": 0, "edit_sync_sequence": 0, "ranges": [], "before_sequence": NSNull(), "has_older": false,
          "draft": ["text": "", "revision": 0], "outbox": [], "read": 0, "peer_read": 0]
     }
     private func number(_ value: Any?) -> Int? {
@@ -113,9 +127,9 @@ public struct DialogStorageFailure: Error {
         return value.intValue
     }
     private func validate(_ record: [String: Any], id: String, expected: Int) throws {
-        guard Set(record.keys) == ["revision", "dialog", "permissions", "initialized", "sync_sequence", "ranges", "before_sequence", "has_older", "draft", "outbox", "read", "peer_read"],
+        guard Set(record.keys) == ["revision", "dialog", "permissions", "initialized", "sync_sequence", "edit_sync_sequence", "ranges", "before_sequence", "has_older", "draft", "outbox", "read", "peer_read"],
               number(record["revision"]) == expected + 1,
-              number(record["sync_sequence"]) != nil, number(record["read"]) != nil, number(record["peer_read"]) != nil,
+              number(record["sync_sequence"]) != nil, number(record["edit_sync_sequence"]) != nil, number(record["read"]) != nil, number(record["peer_read"]) != nil,
               record["initialized"] is Bool, record["has_older"] is Bool,
               let ranges = record["ranges"] as? [[Any]], ranges.allSatisfy({ $0.count == 2 && number($0[0]) != nil && number($0[1]) != nil && number($0[0])! <= number($0[1])! }),
               record["before_sequence"] is NSNull || number(record["before_sequence"]) != nil,
@@ -148,14 +162,37 @@ public struct DialogStorageFailure: Error {
         }
     }
     private func validateMessage(_ message: [String: Any], id: String) throws {
-        guard Set(message.keys) == ["message_id", "dialog_id", "client_message_id", "sequence", "sender_id", "created_at", "content", "status"],
+        guard Set(message.keys) == ["message_id", "dialog_id", "client_message_id", "sequence", "sender_id", "created_at", "content", "status", "version", "edited_at", "edit_sequence", "last_edit_id"],
               message["dialog_id"] as? String == id, let sequence = number(message["sequence"]), sequence > 0,
               let identifier = message["message_id"] as? String, UUID(uuidString: identifier) != nil,
               let sender = message["sender_id"] as? String, UUID(uuidString: sender) != nil,
               let client = message["client_message_id"] as? String, UUID(uuidString: client) != nil,
               message["created_at"] is String, let status = message["status"] as? String, ["sent", "read"].contains(status),
               let content = message["content"] as? [String: Any] else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
+        guard let version = number(message["version"]), version >= 1, let edit = number(message["edit_sequence"]) else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
+        if version == 1 {
+            guard edit == 0, message["edited_at"] is NSNull, message["last_edit_id"] is NSNull else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
+        } else {
+            guard edit > 0, message["edited_at"] is String, let editId = message["last_edit_id"] as? String, UUID(uuidString: editId) != nil else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
+        }
         try validateContent(content)
+    }
+    private func migrateMessage(_ input: [String: Any]) throws -> [String: Any] {
+        var value = input
+        if value["version"] == nil { value["version"] = 1 }
+        if value["edited_at"] == nil { value["edited_at"] = NSNull() }
+        if value["edit_sequence"] == nil { value["edit_sequence"] = 0 }
+        if value["last_edit_id"] == nil { value["last_edit_id"] = NSNull() }
+        return value
+    }
+    private func migrateRecord(_ input: [String: Any]) throws -> [String: Any] {
+        var value = input
+        if value["edit_sync_sequence"] == nil { value["edit_sync_sequence"] = 0 }
+        if var dialog = value["dialog"] as? [String: Any], let message = dialog["last_message"] as? [String: Any] {
+            dialog["last_message"] = try migrateMessage(message)
+            value["dialog"] = dialog
+        }
+        return value
     }
     private func validateContent(_ content: [String: Any]) throws {
         if content["kind"] as? String == "text" {
@@ -182,7 +219,7 @@ public struct DialogStorageFailure: Error {
         guard let area = control.areas[areaKey] else { throw DialogStorageFailure("STORAGE_STALE_CONTEXT") }
         return ["cycleId": cycle, "accountId": account, "sessionId": session, "deviceId": device,
                 "namespaceId": area.namespace, "epoch": area.epoch, "adapterEpoch": control.adapterEpoch,
-                "schemaVersion": 1, "adapter": control.adapter, "purgePending": control.areas.values.contains { $0.purgePending || $0.webPurgePending == true },
+                "schemaVersion": 2, "adapter": control.adapter, "purgePending": control.areas.values.contains { $0.purgePending || $0.webPurgePending == true },
                 "pendingWebPurges": Array(Set(control.areas.values.filter { $0.webPurgePending == true }.map { $0.account })).sorted()]
     }
     private func cleanupIfAvailable() throws {
@@ -212,7 +249,7 @@ public struct DialogStorageFailure: Error {
         try cleanupIfAvailable()
     }
     public func execute(_ envelope: [String: Any], account: String, session: String, device: String, cycle: String) throws -> [String: Any] {
-        guard Set(envelope.keys) == ["version", "cycleId", "operationId", "namespaceId", "epoch", "adapterEpoch", "command", "args"], number(envelope["version"]) == 1,
+        guard Set(envelope.keys) == ["version", "cycleId", "operationId", "namespaceId", "epoch", "adapterEpoch", "command", "args"], number(envelope["version"]) == 2,
               envelope["cycleId"] as? String == cycle,
               let operation = envelope["operationId"] as? String, UUID(uuidString: operation) != nil,
               let namespace = envelope["namespaceId"] as? String,
@@ -220,7 +257,7 @@ public struct DialogStorageFailure: Error {
               let command = envelope["command"] as? String, let args = envelope["args"] as? [String: Any],
               let area = control.areas[account + ":" + device], area.namespace == namespace, area.epoch == epoch, area.session == session else { throw DialogStorageFailure("STORAGE_STALE_CONTEXT") }
         _ = try json(envelope)
-        let response: (Any) -> [String: Any] = { ["version": 1, "cycleId": cycle, "operationId": operation, "data": $0] }
+        let response: (Any) -> [String: Any] = { ["version": 2, "cycleId": cycle, "operationId": operation, "data": $0] }
         if command == "beginFallback" {
             if !control.fallbackPending && control.adapter != "indexeddb" { control.adapterEpoch += 1; control.fallbackPending = true; try persist() }
             let readable = (try? open()) != nil
@@ -267,7 +304,7 @@ public struct DialogStorageFailure: Error {
             guard let after = number(args["after"]), let limit = number(args["limit"]), (1...100).contains(limit) else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }
             return response(try history(namespace: namespace, epoch: epoch, id: id, after: after, limit: limit))
         }
-        guard ["commitPage", "commitMetadata", "saveDraft", "prepareSend", "markAttempt", "commitSent", "confirmRead"].contains(command),
+        guard ["commitEdits", "commitPage", "commitMetadata", "saveDraft", "prepareSend", "markAttempt", "commitSent", "confirmRead"].contains(command),
               Set(args.keys) == ["id", "expectedRevision", "record", "messages"],
               let expected = number(args["expectedRevision"]), let record = args["record"] as? [String: Any],
               let messages = args["messages"] as? [[String: Any]], messages.count <= 100 else { throw DialogStorageFailure("STORAGE_INVALID_ARGUMENT") }

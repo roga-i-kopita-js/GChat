@@ -1,7 +1,7 @@
 import { stickerIds } from '@gchat/dialog-assets';
 import { ArrowUp, Smile, X } from 'lucide-react';
 import type { JSX } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import {
   checkText,
@@ -18,10 +18,14 @@ export function Composer({
   runtime,
   id,
   draft,
+  editLast,
+  onPrepared,
 }: {
   runtime: DialogRuntime;
   id: string;
   draft: DialogRecord['draft'];
+  editLast(): boolean;
+  onPrepared(clientId: string): void;
 }): JSX.Element {
   const [text, setText] = useState(draft.text);
   const [error, setError] = useState('');
@@ -36,6 +40,30 @@ export function Composer({
   const tail = useRef(Promise.resolve());
   const conflictRef = useRef(false);
   const mounted = useRef(true);
+  const sending = useRef(false);
+  const returnFocus = useRef(false);
+
+  useLayoutEffect((): void => {
+    const textarea = field.current;
+
+    if (
+      !busy &&
+      returnFocus.current &&
+      !runtime.signal.aborted &&
+      textarea?.isConnected &&
+      !textarea.closest('[hidden]') &&
+      document.hasFocus()
+    ) {
+      textarea.focus({ preventScroll: true });
+      returnFocus.current = false;
+    }
+  }, [busy, runtime]);
+
+  function prepared(clientId: string): void {
+    if (mounted.current && !runtime.signal.aborted && !field.current?.closest('[hidden]')) {
+      onPrepared(clientId);
+    }
+  }
 
   const save = useCallback(async (): Promise<void> => {
     const run = async (): Promise<void> => {
@@ -190,7 +218,7 @@ export function Composer({
     }
   }
   async function send(sticker?: string): Promise<void> {
-    if (busy || conflict) {
+    if (busy || sending.current || conflict) {
       return;
     }
 
@@ -207,6 +235,9 @@ export function Composer({
       return;
     }
 
+    sending.current = true;
+    returnFocus.current = true;
+    field.current?.focus({ preventScroll: true });
     setBusy(true);
     setError('');
 
@@ -214,15 +245,16 @@ export function Composer({
       await save();
 
       if (sticker && isStickerId(sticker)) {
-        await runtime.send(id, { kind: 'sticker', sticker_id: sticker });
+        await runtime.send(id, { kind: 'sticker', sticker_id: sticker }, undefined, prepared);
       } else {
-        await runtime.send(id, { kind: 'text', text: value }, revision.current);
+        await runtime.send(id, { kind: 'text', text: value }, revision.current, prepared);
       }
     } catch (cause) {
       if (mounted.current) {
         setError(dialogError(cause));
       }
     } finally {
+      sending.current = false;
       const saved = await (async () => {
         try {
           return await runtime.view(id);
@@ -231,7 +263,7 @@ export function Composer({
         }
       })();
 
-      if (mounted.current) {
+      if (mounted.current && !runtime.signal.aborted) {
         if (saved) {
           const { record: savedRecord3 } = saved;
 
@@ -245,7 +277,6 @@ export function Composer({
 
         setBusy(false);
         setPanel(false);
-        field.current?.focus();
       }
     }
   }
@@ -331,7 +362,12 @@ export function Composer({
           rows={1}
           placeholder="Сообщение"
           aria-label="Сообщение"
-          disabled={busy || runtime.isUpdating()}
+          disabled={runtime.isUpdating()}
+          readOnly={busy}
+          aria-busy={busy}
+          onBlur={(): void => {
+            returnFocus.current = false;
+          }}
           onChange={(event): void => {
             current.current = event.target.value;
             dirty.current = true;
@@ -339,14 +375,41 @@ export function Composer({
             setError('');
           }}
           onKeyDown={(event): void => {
+            if (event.nativeEvent.isComposing || event.keyCode === 229) {
+              return;
+            }
+
             if (
-              event.key === 'Enter' &&
+              event.key === 'ArrowUp' &&
               !event.shiftKey &&
-              !event.nativeEvent.isComposing &&
-              matchMedia('(min-width: 801px)').matches
+              !event.ctrlKey &&
+              !event.altKey &&
+              !event.metaKey &&
+              !event.repeat &&
+              !current.current.length &&
+              !panel &&
+              !busy &&
+              !conflict &&
+              !runtime.isUpdating() &&
+              editLast()
             ) {
               event.preventDefault();
-              void send();
+
+              return;
+            }
+
+            if (
+              event.key === 'Enter' &&
+              !event.ctrlKey &&
+              !event.altKey &&
+              !event.metaKey &&
+              (event.shiftKey || matchMedia('(min-width: 801px)').matches)
+            ) {
+              event.preventDefault();
+
+              if (!event.repeat) {
+                void send();
+              }
             }
           }}
         />
@@ -368,6 +431,7 @@ export function Composer({
           className="dialog-send"
           disabled={busy || conflict || !text.trim()}
           aria-label="Отправить сообщение"
+          onMouseDown={(event): void => event.preventDefault()}
         >
           <ArrowUp size={23} />
         </Button>

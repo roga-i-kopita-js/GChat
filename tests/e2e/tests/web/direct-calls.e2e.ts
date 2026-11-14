@@ -5,6 +5,8 @@ import { expect, test } from '@playwright/test';
 
 import { dial, login } from '../../fixtures/web/actions';
 
+test.use({ actionTimeout: 15000 });
+
 test.beforeEach((): void => {
   execFileSync(process.execPath, [
     fileURLToPath(new URL('../../scripts/reset.mjs', import.meta.url)),
@@ -69,6 +71,8 @@ test('full browser call uses relay audio, mute, reload and ends for both users',
     await expect(maximGetByTestId2.bind(maxim)('call-status')).toHaveText('Разговор');
 
     for (const page of [anna, maxim]) {
+      await page.getByRole('link', { name: 'Звонки', exact: true }).click();
+      await page.getByRole('button', { name: 'Вернуться к звонку', exact: true }).click();
       await page.getByRole('button', { name: 'Диагностика', exact: true }).click();
       await expect(page.getByTestId('relay')).toHaveText('TURN (relay)', { timeout: 10000 });
       await expect
@@ -127,6 +131,7 @@ test('full browser call uses relay audio, mute, reload and ends for both users',
     const { getByRole: annaGetByRole4 } = anna;
 
     await expect(annaGetByRole4.bind(anna)('main', { name: 'Звонки', exact: true })).toBeVisible();
+    await annaGetByRole4.bind(anna)('button', { name: 'Вернуться к звонку', exact: true }).click();
     const { getByTestId: annaGetByTestId4 } = anna;
 
     await expect(annaGetByTestId4.bind(anna)('call-status')).toHaveText('Разговор', {
@@ -206,7 +211,9 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
     await annaReload2.bind(anna)();
     const { getByRole: annaGetByRole11 } = anna;
 
-    await expect(annaGetByRole11.bind(anna)('main', { name: 'Звонки', exact: true })).toBeVisible();
+    await expect(
+      annaGetByRole11.bind(anna)('main', { name: 'Диалоги', exact: true }),
+    ).toBeVisible();
     const { getByRole: annaGetByRole12 } = anna;
 
     await expect(
@@ -229,6 +236,10 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
 
     await annaGetByRole13
       .bind(anna)('button', { name: 'Позвонить: Максим Волков', exact: true })
+      .click();
+    await annaGetByRole13
+      .bind(anna)('dialog', { name: 'Позвонить?', exact: true })
+      .getByRole('button', { name: 'Позвонить', exact: true })
       .click();
     const { getByRole: annaGetByRole14 } = anna;
 
@@ -274,6 +285,11 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
       await page.getByRole('button', { name: 'Вернуться к истории' }).click();
       await expect(page.getByRole('button', { name: 'Позвонить', exact: true })).not.toBeVisible();
       await expect(
+        page.getByRole('region', { name: 'История звонков', exact: true }),
+      ).toBeVisible();
+      await page.getByRole('link', { name: 'Диалоги', exact: true }).click();
+      await page.getByRole('link', { name: 'Написать сообщение', exact: true }).click();
+      await expect(
         page.getByRole('button', { name: 'Елена Соколова Голосовой звонок' }),
       ).toBeVisible();
       await expect(page.getByTestId('call-status')).not.toBeVisible();
@@ -281,6 +297,7 @@ test('responsive contacts, cancel confirmation, reject and persist session', asy
 
     const { getByRole: annaGetByRole15 } = anna;
 
+    await annaGetByRole15.bind(anna)('link', { name: 'Звонки', exact: true }).click();
     await annaGetByRole15.bind(anna)('button', { name: 'Диагностика', exact: true }).click();
     await dial(maxim, 'Анна Смирнова');
     const { getByRole: annaGetByRole16 } = anna;
@@ -330,7 +347,7 @@ test('an idle secondary tab can enable calls without opening diagnostics', async
     await secondaryAddInitScript.bind(secondary)((): void => localStorage.removeItem('debug'));
     const { goto: secondaryGoto } = secondary;
 
-    await secondaryGoto.bind(secondary)('/');
+    await secondaryGoto.bind(secondary)('/dialogs/contacts');
     const { getByRole: secondaryGetByRole } = secondary;
     const call = secondaryGetByRole.bind(secondary)('button', {
       name: 'Позвонить: Максим Волков',
@@ -345,8 +362,13 @@ test('an idle secondary tab can enable calls without opening diagnostics', async
     ).toHaveCount(0);
     const { getByRole: secondaryGetByRole3 } = secondary;
 
+    await secondaryGetByRole3.bind(secondary)('link', { name: 'Звонки', exact: true }).click();
     await secondaryGetByRole3
       .bind(secondary)('button', { name: 'Открыть здесь', exact: true })
+      .click();
+    await secondaryGetByRole3.bind(secondary)('link', { name: 'Диалоги', exact: true }).click();
+    await secondaryGetByRole3
+      .bind(secondary)('link', { name: 'Написать сообщение', exact: true })
       .click();
     await expect(call).toBeEnabled();
     const { getByRole: primaryGetByRole } = primary;
@@ -355,6 +377,10 @@ test('an idle secondary tab can enable calls without opening diagnostics', async
       primaryGetByRole.bind(primary)('button', { name: 'Позвонить: Максим Волков', exact: true }),
     ).toBeDisabled();
     await call.click();
+    await secondaryGetByRole
+      .bind(secondary)('dialog', { name: 'Позвонить?', exact: true })
+      .getByRole('button', { name: 'Позвонить', exact: true })
+      .click();
     const { getByTestId: secondaryGetByTestId } = secondary;
 
     await expect(secondaryGetByTestId.bind(secondary)('call-status')).toHaveText('Вызываем…');

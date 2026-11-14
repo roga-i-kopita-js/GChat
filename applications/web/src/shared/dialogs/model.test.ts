@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   checkText,
+  commitEdits,
   commitPage,
   type DialogMessage,
   dialogSchema,
@@ -10,6 +11,7 @@ import {
   mergeMessages,
   mergeMetadata,
   recordSchema,
+  visibleMessages,
 } from './model';
 
 const actor = '00000000-0000-4000-8000-000000000001';
@@ -25,6 +27,10 @@ function message(sequence: number, sender_id = actor): DialogMessage {
     content: { kind: 'text', text: 'message' },
     created_at: '2026-11-07T00:00:00Z',
     status: 'sent',
+    version: 1,
+    edited_at: null,
+    edit_sequence: 0,
+    last_edit_id: null,
   };
 }
 describe('dialog history invariants', (): void => {
@@ -193,4 +199,98 @@ describe('message text limits', (): void => {
     expect(checkText('текст \udc00')).not.toBeNull();
     expect(checkText('  Привет\n😀  ')).toBeNull();
   });
+});
+
+describe('message edit convergence', (): void => {
+  it('keeps the newest content across delayed pages and independently merges read status', (): void => {
+    const original = message(1);
+    const edited = {
+      ...original,
+      version: 2,
+      edited_at: '2026-11-14T00:00:00Z',
+      edit_sequence: 1,
+      last_edit_id: actor,
+      content: { kind: 'text' as const, text: 'edited' },
+    };
+    const next = mergeMessages([edited], [{ ...original, status: 'read' }]);
+
+    expect(next[0]).toMatchObject({ version: 2, content: edited.content, status: 'read' });
+    const record = emptyRecord();
+
+    record.dialog = {
+      ...dialogSchema.parse({
+        dialog_id: actor,
+        peer_id: peer,
+        peer_display_name: 'Peer',
+        has_unread_messages: false,
+        last_message: {
+          ...edited,
+          message_id: actor,
+          dialog_id: actor,
+          client_message_id: peer,
+          sender_id: actor,
+        },
+        created_at: original.created_at,
+        last_message_at: original.created_at,
+        last_sequence: 1,
+        last_read_sequence: 0,
+        peer_last_read_sequence: 0,
+      }),
+    };
+    const newer = record.dialog.last_message;
+
+    mergeMetadata(record, {
+      ...record.dialog,
+      last_message: {
+        ...newer!,
+        version: 1,
+        edited_at: null,
+        edit_sequence: 0,
+        last_edit_id: null,
+        content: original.content,
+      },
+    });
+    expect(record.dialog.last_message?.version).toBe(2);
+    expect((): unknown =>
+      mergeMessages([edited], [{ ...edited, content: { kind: 'text', text: 'contradiction' } }]),
+    ).toThrow('INVALID_MESSAGE_VERSION');
+  });
+});
+
+it('commits sparse edits and their cursor without inventing history ranges', (): void => {
+  const value = { record: emptyRecord(), messages: [message(50)] };
+
+  value.record.ranges = [[50, 50]];
+  const edited = {
+    ...message(1),
+    version: 2,
+    edited_at: '2026-11-14T00:00:00Z',
+    edit_sequence: 4,
+    last_edit_id: actor,
+  };
+
+  commitEdits(value, { messages: [edited], next_edit_sequence: 4, has_more: true }, 0);
+  expect(value.record.edit_sync_sequence).toBe(4);
+  expect(value.record.sync_sequence).toBe(0);
+  expect(visibleMessages(value).map((m): number => m.sequence)).toEqual([50]);
+  value.messages = commitPage(
+    value.record,
+    value.messages,
+    { messages: [message(1)], has_more: false },
+    'initial',
+  );
+  expect(value.messages[0]?.version).toBe(2);
+});
+it('rejects stale edit cursors and impossible continuations without advancing', (): void => {
+  const value = { record: emptyRecord(), messages: [] };
+
+  expect((): void =>
+    commitEdits(value, { messages: [], next_edit_sequence: 1, has_more: true }, 0),
+  ).toThrow('INVALID_PAGE');
+  expect((): void =>
+    commitEdits(value, { messages: [], next_edit_sequence: 2, has_more: false }, 1),
+  ).toThrow('STORAGE_CONFLICT');
+  expect(value.record.edit_sync_sequence).toBe(0);
+  commitEdits(value, { messages: [], next_edit_sequence: 3, has_more: false }, 0);
+  expect(value.record.edit_sync_sequence).toBe(3);
 });

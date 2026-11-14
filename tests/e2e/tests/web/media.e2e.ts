@@ -461,6 +461,8 @@ test('live audio survives real JWT expiry and one refresh shared by browser tabs
       await page.getByRole('button', { name: 'Диагностика', exact: true }).click();
       await expect(page.getByText('Звонками управляет другая вкладка GChat.')).toBeVisible();
       await page.getByRole('button', { name: 'Закрыть', exact: true }).click();
+      await page.getByRole('link', { name: 'Диалоги', exact: true }).click();
+      await page.getByRole('link', { name: 'Написать сообщение', exact: true }).click();
     }),
   );
   await expect.poll((): number => contactsAfterRefresh, { timeout: 15000 }).toBeGreaterThan(0);

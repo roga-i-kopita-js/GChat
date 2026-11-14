@@ -22,7 +22,7 @@ const contextSchema = z.strictObject({
   namespaceId: z.string(),
   epoch: z.number().int().nonnegative(),
   adapterEpoch: z.number().int().nonnegative(),
-  schemaVersion: z.literal(1),
+  schemaVersion: z.union([z.literal(1), z.literal(2)]),
   adapter: z.enum(['sqlite', 'indexeddb']),
   purgePending: z.boolean(),
   pendingWebPurges: z.array(z.string().uuid()),
@@ -76,7 +76,7 @@ class NativeDialogStorage implements DialogStorage {
 
     try {
       const value = await nativePlugin.dialogStorage({
-        version: 1,
+        version: this.context.schemaVersion,
         cycleId: this.context.cycleId,
         operationId,
         namespaceId: this.context.namespaceId,
@@ -89,7 +89,7 @@ class NativeDialogStorage implements DialogStorage {
       this.check();
       const response = z
         .strictObject({
-          version: z.literal(1),
+          version: z.literal(this.context.schemaVersion),
           cycleId: z.literal(this.context.cycleId),
           operationId: z.literal(operationId),
           data: z.unknown(),
@@ -149,15 +149,20 @@ class NativeDialogStorage implements DialogStorage {
     }
   }
 
-  private async switchToIndexedDb(): Promise<void> {
+  async switchToIndexedDb(): Promise<void> {
     const transition = z
       .object({ adapterEpoch: z.number().int(), migrationHandle: z.string().nullable() })
       .parse(await this.command('beginFallback', {}));
 
     this.context.adapterEpoch = transition.adapterEpoch;
     const staging = await IndexedDialogStorage.open(this.scope, this.epoch);
+    const { close: stagingClose1 } = staging;
 
     try {
+      if (!transition.migrationHandle) {
+        throw new StorageError('STORAGE_UNAVAILABLE');
+      }
+
       if (transition.migrationHandle) {
         let cursor: string | null = null;
 
@@ -208,38 +213,10 @@ class NativeDialogStorage implements DialogStorage {
           }
         } while (!this.closed);
       }
-    } catch {
-      // A partial export cannot carry a checkpoint for messages that never reached staging.
-      const { list: stagingList } = staging;
+    } catch (cause) {
+      stagingClose1.bind(staging)();
 
-      for (const dialog of await stagingList.bind(staging)()) {
-        const { change: stagingChange2 } = staging;
-
-        await stagingChange2.bind(staging)(dialog.dialog_id, 'commitPage', ({ record }): void => {
-          record.initialized = false;
-          record.sync_sequence = 0;
-          record.ranges = [];
-          record.before_sequence = null;
-          record.has_older = false;
-        });
-      }
-
-      // Only data actually available to this Web cycle is recoverable from a failed SQLite snapshot.
-      for (const [id, known] of this.known) {
-        const { change: stagingChange3 } = staging;
-
-        await stagingChange3.bind(staging)(id, 'commitPage', (value): void => {
-          value.record = {
-            ...known.record,
-            initialized: false,
-            sync_sequence: 0,
-            ranges: [],
-            has_older: false,
-            before_sequence: null,
-          };
-          value.messages = known.messages;
-        });
-      }
+      throw cause;
     }
 
     const { list: stagingList2 } = staging;
@@ -249,7 +226,9 @@ class NativeDialogStorage implements DialogStorage {
 
       await stagingChange4.bind(staging)(dialog.dialog_id, 'markAttempt', ({ record }): void => {
         for (const pending of record.outbox) {
-          pending.state = 'unknown';
+          if (pending.state === 'sending') {
+            pending.state = 'unknown';
+          }
         }
       });
     }
@@ -258,8 +237,7 @@ class NativeDialogStorage implements DialogStorage {
       await this.command('selectIndexedDb', {});
       this.check();
       this.fallback = staging;
-      this.warning =
-        'Переписка хранится в WebView. Недоступные в прежней базе черновики могли не перенестись.';
+      this.warning = 'Переписка хранится в WebView.';
     } catch (error) {
       const { close: stagingClose } = staging;
 
@@ -349,6 +327,7 @@ class NativeDialogStorage implements DialogStorage {
           const value = await this.read(id);
           const { record: valueRecord } = value;
           const expectedRevision = valueRecord.revision;
+          const originalRecord = structuredClone(valueRecord);
           const { messages: valueMessages } = value;
           const previous = new Map(
             valueMessages.map((message): [string, string] => [
@@ -365,14 +344,78 @@ class NativeDialogStorage implements DialogStorage {
           try {
             const { record: valueRecord3, messages: valueMessages2 } = value;
 
-            await this.command(command, {
-              id,
-              expectedRevision,
-              record: valueRecord3,
-              messages: valueMessages2.filter(
-                (message): boolean => previous.get(message.message_id) !== JSON.stringify(message),
-              ),
-            });
+            const patches = valueMessages2.filter(
+              (message): boolean => previous.get(message.message_id) !== JSON.stringify(message),
+            );
+            const fits = (record: typeof valueRecord3, messages: DialogMessage[]): boolean =>
+              messages.length <= 100 &&
+              new TextEncoder().encode(
+                JSON.stringify({
+                  version: this.context.schemaVersion,
+                  cycleId: this.context.cycleId,
+                  operationId: '00000000-0000-4000-8000-000000000000',
+                  namespaceId: this.context.namespaceId,
+                  epoch: this.context.epoch,
+                  adapterEpoch: this.context.adapterEpoch,
+                  command,
+                  args: { id, expectedRevision: record.revision - 1, record, messages },
+                }),
+              ).length <= 500000;
+
+            if (fits(valueRecord3, patches)) {
+              await this.command(command, {
+                id,
+                expectedRevision,
+                record: valueRecord3,
+                messages: patches,
+              });
+            } else {
+              let revision = expectedRevision;
+              let batch: DialogMessage[] = [];
+              const flush = async (): Promise<void> => {
+                if (!batch.length) {
+                  return;
+                }
+
+                const record = { ...originalRecord, revision: revision + 1 };
+
+                if (!fits(record, batch)) {
+                  throw new StorageError('STORAGE_FULL');
+                }
+
+                await this.command(command, {
+                  id,
+                  expectedRevision: revision,
+                  record,
+                  messages: batch,
+                });
+                revision++;
+                batch = [];
+              };
+
+              for (const message of patches) {
+                if (!fits({ ...originalRecord, revision: revision + 1 }, [...batch, message])) {
+                  await flush();
+                }
+
+                batch.push(message);
+              }
+
+              await flush();
+              valueRecord3.revision = revision + 1;
+
+              if (!fits(valueRecord3, [])) {
+                throw new StorageError('STORAGE_FULL');
+              }
+
+              await this.command(command, {
+                id,
+                expectedRevision: revision,
+                record: valueRecord3,
+                messages: [],
+              });
+            }
+
             this.known.set(id, value);
 
             return value;
@@ -438,7 +481,7 @@ export async function openNativeDialogs(): Promise<DialogStorage> {
     cleanedClose.bind(cleaned)();
     const response = z.object({ data: z.object({ purgePending: z.boolean() }) }).parse(
       await nativePlugin.dialogStorage({
-        version: 1,
+        version: context.schemaVersion,
         cycleId: context.cycleId,
         operationId: crypto.randomUUID(),
         namespaceId: context.namespaceId,
@@ -462,5 +505,11 @@ export async function openNativeDialogs(): Promise<DialogStorage> {
     return storage;
   }
 
-  return new NativeDialogStorage({ ...context, purgePending });
+  const storage = new NativeDialogStorage({ ...context, purgePending });
+
+  if (context.schemaVersion === 1) {
+    await storage.switchToIndexedDb();
+  }
+
+  return storage;
 }

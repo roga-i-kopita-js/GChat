@@ -5,8 +5,10 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 /** Bound decompressed message JSON before buffering; preserve the existing defaults elsewhere. */
 export function setupDialogBodyLimit(app: NestExpressApplication): void {
   const messages = (req: IncomingMessage): boolean =>
-    req.method === 'POST' &&
-    /^\/dialogs\/[^/]+\/messages\/?$/i.test((req.url ?? '').split('?')[0]!);
+    (req.method === 'POST' &&
+      /^\/dialogs\/[^/]+\/messages\/?$/i.test((req.url ?? '').split('?')[0]!)) ||
+    (req.method === 'PATCH' &&
+      /^\/dialogs\/[^/]+\/messages\/[^/]+\/?$/i.test((req.url ?? '').split('?')[0]!));
   const json = (req: IncomingMessage): boolean =>
     /^application\/json(?:\s*;|$)/i.test(req.headers['content-type'] ?? '');
 

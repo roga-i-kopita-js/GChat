@@ -192,6 +192,7 @@
   overflow-anchor: none;
 }
 .dialog-message-row {
+  position: relative;
   display: flex;
   justify-content: flex-start;
   padding: var(--ui-space-1) var(--ui-space-3);
@@ -199,9 +200,15 @@
 .dialog-message-row.own {
   justify-content: flex-end;
 }
+.dialog-message-container {
+  position: relative;
+  width: fit-content;
+  min-width: 0;
+  max-width: min(85%, var(--ui-size-560));
+}
 .dialog-message {
   min-width: var(--ui-size-70);
-  max-width: min(85%, var(--ui-size-560));
+  max-width: 100%;
   padding: var(--ui-space-2) var(--ui-space-3) var(--ui-space-1-5);
   border-radius: var(--ui-radius-16) var(--ui-radius-16) var(--ui-radius-16) var(--ui-radius-6);
   background: var(--ui-surface);
@@ -382,4 +389,131 @@
 .dialogs-header .dialog-icon:focus-visible {
   outline: var(--ui-focus-width) solid var(--ui-focus);
   outline-offset: var(--ui-focus-offset);
+}
+
+.dialog-edit-preview {
+  display: flex;
+  align-items: center;
+  min-height: var(--ui-control-height);
+  gap: var(--ui-space-1);
+  padding: var(--ui-space-1) var(--ui-space-2) 0;
+  border-top: var(--ui-size-1) solid var(--ui-border);
+}
+.dialog-edit-symbol {
+  width: var(--ui-control-height);
+  height: var(--ui-control-height);
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--ui-accent);
+}
+.dialog-edit-reference {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  border-left: var(--ui-size-2) solid var(--ui-accent);
+  padding-left: var(--ui-space-2);
+  gap: var(--ui-space-0-5);
+  font-size: var(--ui-font-size-13);
+  line-height: var(--ui-leading-tight);
+}
+.dialog-edit-title {
+  font-weight: var(--ui-weight-semibold);
+  color: var(--ui-accent);
+}
+.dialog-edit-original {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-muted);
+}
+.dialog-edit .dialog-edit-cancel {
+  color: var(--ui-muted);
+  flex: none;
+}
+.dialog-edit .dialog-composer textarea {
+  background: var(--ui-canvas);
+}
+.dialog-edit .draft-conflict .dialog-message-text {
+  overflow-wrap: anywhere;
+}
+.dialog-edit-spinner {
+  animation: dialog-edit-spin var(--ui-duration-spinner) linear infinite;
+}
+@keyframes dialog-edit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.dialog-message-actions {
+  position: absolute;
+  left: calc(-1 * var(--ui-control-height));
+  bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ui-duration-fast);
+  color: var(--ui-muted);
+}
+.dialog-message-row:focus-within .dialog-message-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.dialog-message[aria-haspopup='menu']:focus-visible {
+  outline: var(--ui-focus-width) solid var(--ui-focus);
+  outline-offset: var(--ui-focus-offset);
+}
+.dialog-message-menu {
+  position: fixed;
+  z-index: var(--ui-layer-menu);
+  inset: auto;
+  width: var(--ui-size-220);
+  max-width: calc(100vw - var(--ui-space-4));
+  margin: 0;
+  padding: var(--ui-space-1);
+  border: var(--ui-size-1) solid var(--ui-border);
+  border-radius: var(--ui-radius-14);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  box-shadow: var(--ui-shadow-modal);
+  overflow: hidden;
+}
+.dialog-message-menu::backdrop {
+  background: transparent;
+}
+.dialog-message-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-6);
+  width: 100%;
+  min-height: var(--ui-control-height);
+  padding: var(--ui-space-2) var(--ui-space-3);
+  border: 0;
+  border-radius: var(--ui-radius-10);
+  color: inherit;
+  background: transparent;
+  font-size: var(--ui-font-size-15);
+  cursor: pointer;
+}
+.dialog-message-menu button:hover,
+.dialog-message-menu button:focus-visible {
+  background: var(--ui-accent-surface);
+  outline: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .dialog-message-row:hover .dialog-message-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+@media (min-width: 801px) {
+  .dialog-edit-preview {
+    padding-inline: var(--ui-space-4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog-message-actions {
+    transition: none;
+  }
 }

@@ -10,6 +10,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -27,6 +28,7 @@ export const dialogs = pgTable(
       .notNull()
       .references((): AnyPgColumn => users.id, { onDelete: 'restrict' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastEditSequence: bigint('last_edit_sequence', { mode: 'number' }).notNull().default(0),
     lastSequence: bigint('last_sequence', { mode: 'number' }).notNull().default(0),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
     lowRead: bigint('participant_low_last_read_sequence', { mode: 'number' }).notNull().default(0),
@@ -37,6 +39,7 @@ export const dialogs = pgTable(
   (t): PgTableExtraConfigValue[] => [
     unique('gchat_dialog_pair').on(t.participantLowId, t.participantHighId),
     check('gchat_dialog_pair_order', sql`${t.participantLowId} < ${t.participantHighId}`),
+    check('gchat_dialog_edit_sequence', sql`${t.lastEditSequence} between 0 and 9007199254740991`),
     check('gchat_dialog_sequence', sql`${t.lastSequence} between 0 and 9007199254740991`),
     check(
       'gchat_dialog_empty',
@@ -71,6 +74,10 @@ export const dialogMessages = pgTable(
     clientMessageId: uuid('client_message_id').notNull(),
     sequence: bigint('sequence', { mode: 'number' }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    version: bigint('version', { mode: 'number' }).notNull().default(1),
+    editSequence: bigint('edit_sequence', { mode: 'number' }).notNull().default(0),
+    editedAt: timestamp('edited_at', { withTimezone: true }),
+    lastEditId: uuid('last_edit_id'),
     encryptionVersion: integer('encryption_version').notNull(),
     encryptionKeyId: text('encryption_key_id').notNull(),
     iv: bytea('iv').notNull(),
@@ -82,7 +89,21 @@ export const dialogMessages = pgTable(
     unique('gchat_dialog_message_client').on(t.dialogId, t.senderId, t.clientMessageId),
     unique('gchat_dialog_message_iv').on(t.encryptionKeyId, t.iv),
     check('gchat_dialog_message_sequence_range', sql`${t.sequence} between 1 and 9007199254740991`),
-    check('gchat_dialog_message_version', sql`${t.encryptionVersion} = 1`),
+    check(
+      'gchat_dialog_message_version',
+      sql`${t.encryptionVersion} in (1,2) and (${t.encryptionVersion} <> 1 or ${t.version} = 1)`,
+    ),
+    check(
+      'gchat_dialog_message_edit_range',
+      sql`${t.version} between 1 and 9007199254740991 and ${t.editSequence} between 0 and 9007199254740991`,
+    ),
+    check(
+      'gchat_dialog_message_edit_state',
+      sql`(${t.version}=1 and ${t.editSequence}=0 and ${t.editedAt} is null and ${t.lastEditId} is null) or (${t.version}>1 and ${t.editSequence}>0 and ${t.editedAt} is not null and ${t.lastEditId} is not null)`,
+    ),
+    uniqueIndex('gchat_dialog_message_edit_position')
+      .on(t.dialogId, t.editSequence)
+      .where(sql`${t.editSequence}>0`),
     check('gchat_dialog_message_key', sql`length(${t.encryptionKeyId}) > 0`),
     check('gchat_dialog_message_iv_size', sql`octet_length(${t.iv}) = 12`),
     check('gchat_dialog_message_cipher_size', sql`octet_length(${t.ciphertext}) > 0`),

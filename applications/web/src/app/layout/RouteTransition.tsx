@@ -37,7 +37,7 @@ export function RouteTransition({ children }: { children: ReactNode }): JSX.Elem
     section !== committedRoute.section
       ? nextIndex < previousIndex
       : returningToParent || (!openingChild && historyBack);
-  const animation = backward ? 'route-slide-backward' : 'route-slide-forward';
+  const animation = backward ? 'route-page-backward' : 'route-page-forward';
 
   // React runs passive effects after the transition; reset the prop for later fetcher updates.
   useEffect((): void => {

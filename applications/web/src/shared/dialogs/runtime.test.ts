@@ -62,8 +62,10 @@ afterEach((): void => {
 describe('durable dialog sends', (): void => {
   it('saves immutable UUID/content before HTTP and manually retries the same logical send', async (): Promise<void> => {
     const f = fixture();
+    const prepared = vi.fn();
 
     f.api.dialogsSendMessage.mockImplementationOnce(async ({ body }: any): Promise<never> => {
+      expect(prepared).toHaveBeenCalledWith(body.client_message_id);
       expect(f.saved().record.outbox[0]).toMatchObject({
         client_message_id: body.client_message_id,
         content: body.content,
@@ -72,9 +74,9 @@ describe('durable dialog sends', (): void => {
 
       throw new TypeError('network');
     });
-    await expect(f.runtime.send('dialog', { kind: 'text', text: 'Original' }, 1)).rejects.toThrow(
-      'network',
-    );
+    await expect(
+      f.runtime.send('dialog', { kind: 'text', text: 'Original' }, 1, prepared),
+    ).rejects.toThrow('network');
     const pending = f.saved().record.outbox[0]!;
 
     expect(pending.state).toBe('unknown');
@@ -91,6 +93,10 @@ describe('durable dialog sends', (): void => {
           created_at: new Date().toISOString(),
           content: pending.content,
           status: 'sent',
+          version: 1,
+          edited_at: null,
+          edit_sequence: 0,
+          last_edit_id: null,
         },
       },
     });
@@ -173,6 +179,10 @@ describe('dialog list previews', (): void => {
       created_at: new Date().toISOString(),
       content: { kind: 'text', text: 'Полный текст\n😀 ' + 'т'.repeat(1000) },
       status: 'sent',
+      version: 1,
+      edited_at: null,
+      edit_sequence: 0,
+      last_edit_id: null,
     };
     const dialog = {
       dialog_id: id,
@@ -211,4 +221,16 @@ describe('dialog list previews', (): void => {
       f.runtime.stop();
     }
   });
+});
+
+it('does not request a scroll or start HTTP when the outbox cannot be saved', async (): Promise<void> => {
+  const f = fixture();
+  const prepared = vi.fn();
+
+  f.store.change.mockRejectedValueOnce(new Error('storage unavailable'));
+  await expect(
+    f.runtime.send('dialog', { kind: 'text', text: 'Original' }, 1, prepared),
+  ).rejects.toThrow('storage unavailable');
+  expect(prepared).not.toHaveBeenCalled();
+  expect(f.api.dialogsSendMessage).not.toHaveBeenCalled();
 });

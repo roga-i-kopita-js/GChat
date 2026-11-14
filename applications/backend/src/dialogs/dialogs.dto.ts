@@ -28,6 +28,26 @@ export class SendMessageDto {
   content!: MessageContent;
 }
 
+@ApiExtraModels(TextContentDto)
+export class EditMessageDto {
+  @IsUUID() client_edit_id!: string;
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  @ApiProperty({ type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER })
+  expected_version!: number;
+  @IsObject()
+  @ApiProperty({ type: () => TextContentDto })
+  content!: { kind: 'text'; text: string };
+}
+
+export class MessageEditsResponseDto {
+  @ApiProperty({ type: () => [MessageDto] }) messages!: MessageDto[];
+  @ApiProperty({ type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
+  next_edit_sequence!: number;
+  has_more!: boolean;
+}
+
 export class ReadDialogDto {
   @IsInt()
   @Min(0)
@@ -43,6 +63,11 @@ export class MessageDto {
   client_message_id!: string;
   @ApiProperty({ type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }) sequence!: number;
   sender_id!: string;
+  @ApiProperty({ type: 'integer', minimum: 1, maximum: Number.MAX_SAFE_INTEGER }) version!: number;
+  @ApiProperty({ type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
+  edit_sequence!: number;
+  @ApiProperty({ type: String, nullable: true }) edited_at!: string | null;
+  @ApiProperty({ type: String, nullable: true }) last_edit_id!: string | null;
   created_at!: string;
   @ApiProperty({
     oneOf: [{ $ref: getSchemaPath(TextContentDto) }, { $ref: getSchemaPath(StickerContentDto) }],

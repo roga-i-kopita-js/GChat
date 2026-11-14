@@ -6,6 +6,7 @@ import { prepareUpdate, updateChannel, updateLock, updateRequested } from '../pw
 import { DialogModels } from './live-models';
 import type { DialogMessage } from './model';
 import {
+  commitEdits,
   commitPage,
   dialogSchema,
   type DialogSummary,
@@ -18,6 +19,7 @@ import {
   type Scope,
   StorageError,
   type StoredDialog,
+  visibleMessages,
 } from './model';
 import { type DialogStorage, readDeadline } from './storage';
 
@@ -55,6 +57,10 @@ export function dialogError(error: unknown): string {
   }
 
   if (error instanceof ApiError) {
+    if (error.code === 'MESSAGE_VERSION_CONFLICT') {
+      return 'Сообщение уже изменено на другом устройстве.';
+    }
+
     if (error.code === 'DIALOG_NOT_ALLOWED') {
       return 'Действие недоступно по текущим правам.';
     }
@@ -612,7 +618,12 @@ export class DialogRuntime {
 
     this.signal.throwIfAborted();
 
-    return { ...value, syncing: this.busy.has(id), error: this.errors.get(id) ?? null };
+    return {
+      ...value,
+      messages: visibleMessages(value),
+      syncing: this.busy.has(id),
+      error: this.errors.get(id) ?? null,
+    };
   }
 
   private async storeMetadata(dialog: DialogSummary, version: number): Promise<void> {
@@ -785,10 +796,37 @@ export class DialogRuntime {
               value = await this.storage.read(id);
               const cursor = value.record.sync_sequence;
               const page = await this.history(id, { after_sequence: cursor });
+              const { has_more: pageHas_more3 } = page;
 
               await this.savePage(id, page, 'after', cursor);
 
-              const { has_more: pageHasMore2 } = page ?? {};
+              const { record: recordResult1 } = await this.storage.read(id);
+              const editCursor = recordResult1.edit_sync_sequence;
+              const edits = await this.get((api): ReturnType<typeof api.dialogsMessageEdits> =>
+                api.dialogsMessageEdits({
+                  path: { dialog_id: id },
+                  query: { after_edit_sequence: editCursor, limit: 30 },
+                  signal: this.networkSignal,
+                }),
+              );
+              const { messages: editsMessages2 } = edits;
+
+              const editPage = {
+                ...edits,
+                messages: editsMessages2.map((message): DialogMessage =>
+                  messageSchema.parse(message),
+                ),
+              };
+
+              if (editPage.messages.some((message): boolean => message.dialog_id !== id)) {
+                throw new StorageError('INVALID_PAGE');
+              }
+
+              await this.storage.change(id, 'commitEdits', (value): void =>
+                commitEdits(value, editPage, editCursor),
+              );
+              this.publish(id);
+              const pageHasMore2 = pageHas_more3 || editPage.has_more;
 
               if (this.updating || (!pageHasMore2 && !this.dirty.has(id))) {
                 break;
@@ -954,7 +992,12 @@ export class DialogRuntime {
     return valueRecord5.draft.revision;
   }
 
-  async send(id: string, content: MessageInput, draftRevision?: number): Promise<void> {
+  async send(
+    id: string,
+    content: MessageInput,
+    draftRevision?: number,
+    onPrepared?: (clientId: string) => void,
+  ): Promise<void> {
     await this.tracked(async (): Promise<void> => {
       const pending: PendingMessage = {
         client_message_id: crypto.randomUUID(),
@@ -992,17 +1035,105 @@ export class DialogRuntime {
         record.outbox.push(pending);
       });
       this.publish(id);
+      this.sendPrepared(pending.client_message_id, onPrepared);
       await this.attempt(id, pending);
     });
   }
 
-  async resend(id: string, clientId: string): Promise<void> {
+  async resend(
+    id: string,
+    clientId: string,
+    onPrepared?: (clientId: string) => void,
+  ): Promise<void> {
     await this.tracked(async (): Promise<void> => {
       const { record } = await this.storage.read(id);
       const pending = record.outbox.find((value): boolean => value.client_message_id === clientId);
 
       if (pending) {
+        this.sendPrepared(clientId, onPrepared);
         await this.attempt(id, pending);
+      }
+    });
+  }
+
+  private sendPrepared(clientId: string, onPrepared?: (clientId: string) => void): void {
+    if (this.signal.aborted) {
+      return;
+    }
+
+    try {
+      onPrepared?.(clientId);
+    } catch {
+      /* A UI observer cannot cancel a durable send. */
+    }
+  }
+
+  async messageGet(id: string, messageId: string): Promise<DialogMessage> {
+    return this.tracked(async (): Promise<DialogMessage> => {
+      const result = await this.get((api): ReturnType<typeof api.dialogsMessageGet> =>
+        api.dialogsMessageGet({
+          path: { dialog_id: id, message_id: messageId },
+          signal: this.networkSignal,
+        }),
+      );
+      const { message: resultMessage4 } = result;
+
+      const message = messageSchema.parse(resultMessage4);
+
+      if (message.dialog_id !== id || message.message_id !== messageId) {
+        throw new StorageError('INVALID_PAGE');
+      }
+
+      await this.storage.change(id, 'commitEdits', (value): void =>
+        commitEdits(value, { messages: [message], next_edit_sequence: 0, has_more: false }),
+      );
+      this.publish(id);
+
+      return message;
+    });
+  }
+
+  async edit(
+    id: string,
+    message: DialogMessage,
+    text: string,
+    clientEditId: string,
+  ): Promise<DialogMessage> {
+    return this.tracked(async (): Promise<DialogMessage> => {
+      if (Date.now() < this.sendUntil) {
+        throw new Error('RATE_LIMITED');
+      }
+
+      try {
+        const result = await this.request((api): ReturnType<typeof api.dialogsMessageEdit> =>
+          api.dialogsMessageEdit({
+            path: { dialog_id: id, message_id: message.message_id },
+            body: {
+              client_edit_id: clientEditId,
+              expected_version: message.version,
+              content: { kind: 'text', text },
+            },
+            signal: this.networkSignal,
+          }),
+        );
+        const { message: resultMessage5 } = result;
+
+        const updated = messageSchema.parse(resultMessage5);
+
+        if (updated.dialog_id !== id || updated.message_id !== message.message_id) {
+          throw new StorageError('INVALID_PAGE');
+        }
+
+        await this.storage.change(id, 'commitEdits', (value): void =>
+          commitEdits(value, { messages: [updated], has_more: false, next_edit_sequence: 0 }),
+        );
+        this.publish(id);
+
+        return updated;
+      } catch (cause) {
+        this.sendUntil = Date.now() + retryAfter(cause) * 1000;
+
+        throw cause;
       }
     });
   }
@@ -1046,6 +1177,7 @@ export class DialogRuntime {
 
       await this.storage.change(id, 'commitSent', (value): void => {
         value.messages = mergeMessages(value.messages, [message]);
+        value.record.ranges.push([message.sequence, message.sequence]);
         value.record.outbox = value.record.outbox.filter(
           (item): boolean => item.client_message_id !== message.client_message_id,
         );

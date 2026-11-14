@@ -40,6 +40,10 @@ export const messageSchema = z.object({
   created_at: z.string(),
   content: contentSchema,
   status: z.enum(['sent', 'read']),
+  version: sequence.min(1).default(1),
+  edited_at: z.string().nullable().default(null),
+  edit_sequence: sequence.default(0),
+  last_edit_id: z.string().uuid().nullable().default(null),
 });
 
 export const dialogSchema = z.object({
@@ -60,6 +64,10 @@ export type DialogSummary = Omit<DialogDto, 'last_message'> & {
 };
 
 export const eventSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('dialog.message_edits_available'),
+    payload: z.object({ dialog_id: z.string().uuid(), last_edit_sequence: sequence }),
+  }),
   z.object({
     type: z.literal('dialog.messages_available'),
     payload: z.object({ dialog_id: z.string().uuid(), last_sequence: sequence }),
@@ -90,6 +98,7 @@ export const recordSchema = z.object({
   permissions: z.object({ can_read: z.boolean(), can_send: z.boolean() }).nullable(),
   initialized: z.boolean(),
   sync_sequence: sequence,
+  edit_sync_sequence: sequence.default(0),
   ranges: z.array(z.tuple([sequence, sequence])),
   before_sequence: sequence.nullable(),
   has_older: z.boolean(),
@@ -125,6 +134,7 @@ export function emptyRecord(): DialogRecord {
     permissions: null,
     initialized: false,
     sync_sequence: 0,
+    edit_sync_sequence: 0,
     ranges: [],
     before_sequence: null,
     has_older: false,
@@ -176,8 +186,27 @@ export function mergeMessages(
   for (const message of incoming) {
     const previous = messages.get(message.message_id);
 
+    if (
+      previous &&
+      previous.version === message.version &&
+      JSON.stringify([
+        previous.content,
+        previous.edited_at,
+        previous.edit_sequence,
+        previous.last_edit_id,
+      ]) !==
+        JSON.stringify([
+          message.content,
+          message.edited_at,
+          message.edit_sequence,
+          message.last_edit_id,
+        ])
+    ) {
+      throw new StorageError('INVALID_MESSAGE_VERSION');
+    }
+
     messages.set(message.message_id, {
-      ...message,
+      ...(previous && previous.version > message.version ? previous : message),
       status: previous?.status === 'read' ? 'read' : message.status,
     });
   }
@@ -208,6 +237,16 @@ export function mergeMetadata(
     last_read_sequence: record.read,
     peer_last_read_sequence: record.peer_read,
   };
+
+  if (
+    record.dialog?.last_message &&
+    previous?.last_message?.message_id === record.dialog.last_message.message_id
+  ) {
+    record.dialog.last_message = mergeMessages(
+      [previous.last_message],
+      [record.dialog.last_message],
+    )[0]!;
+  }
 
   if (permissions) {
     record.permissions = permissions;
@@ -293,3 +332,53 @@ export function commitPage(
 }
 
 export type MessageInput = SendMessageDto['content'];
+
+export interface EditPage extends Page {
+  next_edit_sequence: number;
+}
+
+export function commitEdits(value: StoredDialog, page: EditPage, cursor?: number): void {
+  if (cursor !== undefined) {
+    if (value.record.edit_sync_sequence !== cursor) {
+      throw new StorageError('STORAGE_CONFLICT');
+    }
+
+    if (
+      !Number.isSafeInteger(page.next_edit_sequence) ||
+      page.next_edit_sequence < cursor ||
+      (page.has_more && (!page.messages.length || page.next_edit_sequence <= cursor)) ||
+      page.messages.some(
+        (message): boolean =>
+          message.edit_sequence <= cursor || message.edit_sequence > page.next_edit_sequence,
+      ) ||
+      page.messages.some(
+        (message, index): boolean =>
+          index > 0 && page.messages[index - 1]!.edit_sequence >= message.edit_sequence,
+      ) ||
+      (page.has_more && page.messages.at(-1)?.edit_sequence !== page.next_edit_sequence)
+    ) {
+      throw new StorageError('INVALID_PAGE');
+    }
+  }
+
+  value.messages = mergeMessages(value.messages, page.messages);
+  const preview = value.record.dialog?.last_message;
+  const updated =
+    preview && value.messages.find((message): boolean => message.message_id === preview.message_id);
+
+  if (preview && updated && value.record.dialog) {
+    value.record.dialog.last_message = mergeMessages([preview], [updated])[0]!;
+  }
+
+  if (cursor !== undefined) {
+    value.record.edit_sync_sequence = page.next_edit_sequence;
+  }
+}
+
+export function visibleMessages(value: StoredDialog): DialogMessage[] {
+  return value.messages.filter((message): boolean =>
+    value.record.ranges.some(
+      ([first, last]): boolean => message.sequence >= first && message.sequence <= last,
+    ),
+  );
+}

@@ -9,7 +9,7 @@ const schema = JSON.parse(await readFile(new URL('../openapi.json', import.meta.
 test('real schema contains all operations', () => {
   const operations = validateSchema(schema);
 
-  assert.equal(operations.length, 24);
+  assert.equal(operations.length, 27);
   assert.deepEqual(
     operations
       .filter(({ operation }) => operation.operationId.startsWith('callsHistory'))
@@ -27,6 +27,9 @@ test('real schema contains all operations', () => {
       'dialogsGet',
       'dialogsHistory',
       'dialogsList',
+      'dialogsMessageEdit',
+      'dialogsMessageEdits',
+      'dialogsMessageGet',
       'dialogsPermissions',
       'dialogsRead',
       'dialogsSendMessage',

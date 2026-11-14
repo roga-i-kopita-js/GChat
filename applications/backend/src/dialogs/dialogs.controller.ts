@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -35,7 +36,9 @@ import {
   CreateDialogDto,
   DialogListResponseDto,
   DialogResponseDto,
+  EditMessageDto,
   HistoryResponseDto,
+  MessageEditsResponseDto,
   MessageResponseDto,
   PermissionsResponseDto,
   ReadDialogDto,
@@ -195,6 +198,76 @@ export class DialogsController {
     }
 
     return this.dialogs.history(req.user, id.toLowerCase(), this.limit(query.limit), after, before);
+  }
+
+  @Get(':dialog_id/messages/:message_id')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'dialogsMessageGet' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  messageGet(
+    @Req() req: Request,
+    @Param('dialog_id', new ParseUUIDPipe()) id: string,
+    @Param('message_id', new ParseUUIDPipe()) messageId: string,
+  ): Promise<MessageResponseDto> {
+    return this.dialogs.messageGet(req.user, id.toLowerCase(), messageId.toLowerCase());
+  }
+
+  @Patch(':dialog_id/messages/:message_id')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'dialogsMessageEdit' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiResponse({ status: 409, type: ErrorResponseDto })
+  @ApiResponse({ status: 413, type: ErrorResponseDto })
+  edit(
+    @Req() req: Request,
+    @Param('dialog_id', new ParseUUIDPipe()) id: string,
+    @Param('message_id', new ParseUUIDPipe()) messageId: string,
+    @Body() input: EditMessageDto,
+  ): Promise<MessageResponseDto> {
+    const content = contentValue(input.content, this.error);
+
+    if (content.kind !== 'text') {
+      throw this.error.validation();
+    }
+
+    return this.dialogs.edit(req.user, id.toLowerCase(), messageId.toLowerCase(), {
+      ...input,
+      client_edit_id: input.client_edit_id.toLowerCase(),
+      content,
+    });
+  }
+
+  @Get(':dialog_id/message-edits')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'dialogsMessageEdits' })
+  @ApiOkResponse({ type: MessageEditsResponseDto })
+  @ApiQuery({
+    name: 'after_edit_sequence',
+    required: false,
+    schema: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER, default: 0 },
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 30 },
+  })
+  edits(
+    @Req() req: Request,
+    @Param('dialog_id', new ParseUUIDPipe()) id: string,
+    @Query() query: Record<string, unknown>,
+  ): Promise<MessageEditsResponseDto> {
+    if (
+      Object.keys(query).some((key): boolean => !['after_edit_sequence', 'limit'].includes(key))
+    ) {
+      throw this.error.validation();
+    }
+
+    return this.dialogs.edits(
+      req.user,
+      id.toLowerCase(),
+      queryInteger(query.after_edit_sequence, 'after_edit_sequence', 0, this.error)!,
+      this.limit(query.limit),
+    );
   }
 
   @Post(':dialog_id/read')

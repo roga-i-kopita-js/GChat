@@ -30,6 +30,10 @@ function setup(): {
     clientMessageId: randomUUID(),
     sequence: 1,
     createdAt: new Date('2026-11-07T01:02:03.004Z'),
+    version: 1,
+    editSequence: 0,
+    editedAt: null,
+    lastEditId: null,
     encryptionVersion: 1,
     encryptionKeyId: 'one',
   };
@@ -131,5 +135,43 @@ describe('Dialog encryption', (): void => {
     }
 
     expect(parseDialogKeys(JSON.stringify({ one: key }), 'one').get('one')?.length).toBe(32);
+  });
+});
+
+describe('edited message authentication', (): void => {
+  it('authenticates v2 version, edit position, operation and time while preserving legacy reads', (): void => {
+    const { crypto, row } = setup();
+    const legacy = crypto.encrypt(row, { kind: 'text', text: 'before' });
+
+    expect(crypto.decrypt({ ...row, ...legacy })).toEqual({ kind: 'text', text: 'before' });
+    const edited = {
+      ...row,
+      encryptionVersion: 2,
+      version: 2,
+      editSequence: 7,
+      editedAt: new Date('2026-11-14T00:00:00.000Z'),
+      lastEditId: randomUUID(),
+    };
+    const encrypted = crypto.encrypt(edited, { kind: 'text', text: 'after' });
+
+    expect(JSON.parse(messageAad(edited).toString()).slice(-4)).toEqual([
+      '2',
+      '2026-11-14T00:00:00.000Z',
+      '7',
+      edited.lastEditId,
+    ]);
+    expect(crypto.decrypt({ ...edited, ...encrypted }).kind).toBe('text');
+
+    for (const change of [
+      { version: 3 },
+      { editSequence: 8 },
+      { editedAt: new Date(0) },
+      { lastEditId: randomUUID() },
+      { encryptionVersion: 1 },
+    ]) {
+      expect((): unknown => crypto.decrypt({ ...edited, ...encrypted, ...change })).toThrow(
+        expect.objectContaining({ code: 'INTERNAL_ERROR' }),
+      );
+    }
   });
 });

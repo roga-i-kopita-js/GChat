@@ -1937,31 +1937,40 @@ body:has(.app-shell) {
   animation-duration: var(--ui-view-transition-duration);
   animation-timing-function: var(--ui-view-transition-easing);
 }
-::view-transition-group(.route-slide-forward),
-::view-transition-group(.route-slide-backward) {
+::view-transition-group(.route-page-forward),
+::view-transition-group(.route-page-backward),
+::view-transition-group(.route-fade) {
   animation-name: none;
   overflow: clip;
 }
-::view-transition-old(.route-slide-forward),
-::view-transition-new(.route-slide-forward),
-::view-transition-old(.route-slide-backward),
-::view-transition-new(.route-slide-backward) {
+::view-transition-old(.route-page-forward),
+::view-transition-new(.route-page-forward),
+::view-transition-old(.route-page-backward),
+::view-transition-new(.route-page-backward),
+::view-transition-old(.route-fade),
+::view-transition-new(.route-fade) {
   animation-duration: var(--ui-view-transition-duration);
   animation-timing-function: var(--ui-view-transition-easing);
   animation-fill-mode: both;
   mix-blend-mode: normal;
 }
-::view-transition-old(.route-slide-forward) {
+::view-transition-old(.route-page-forward) {
   animation-name: route-leave-left;
 }
-::view-transition-new(.route-slide-forward) {
+::view-transition-new(.route-page-forward) {
   animation-name: route-enter-right;
 }
-::view-transition-old(.route-slide-backward) {
+::view-transition-old(.route-page-backward) {
   animation-name: route-leave-right;
 }
-::view-transition-new(.route-slide-backward) {
+::view-transition-new(.route-page-backward) {
   animation-name: route-enter-left;
+}
+::view-transition-old(.route-fade) {
+  animation-name: route-fade-out;
+}
+::view-transition-new(.route-fade) {
+  animation-name: route-fade-in;
 }
 @keyframes route-enter-right {
   from {
@@ -1993,6 +2002,32 @@ body:has(.app-shell) {
   }
   to {
     transform: translateX(100%);
+  }
+}
+@keyframes route-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes route-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (min-width: 801px) {
+  ::view-transition-old(.route-page-forward),
+  ::view-transition-old(.route-page-backward) {
+    animation-name: route-fade-out;
+  }
+  ::view-transition-new(.route-page-forward),
+  ::view-transition-new(.route-page-backward) {
+    animation-name: route-fade-in;
   }
 }
 :root:has(dialog[open])::view-transition {

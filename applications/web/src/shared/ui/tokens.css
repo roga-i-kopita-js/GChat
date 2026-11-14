@@ -9,6 +9,8 @@
   --ui-accent: #2477ad;
   --ui-accent-hover: color-mix(in srgb, var(--ui-accent) 88%, #000);
   --ui-muted: #617785;
+  --ui-scrollbar-thumb: color-mix(in srgb, var(--ui-muted) 50%, transparent);
+  --ui-scrollbar-width: var(--ui-size-6);
   --ui-danger: #bf3643;
   --ui-success: #24744c;
   --ui-focus: var(--ui-accent);
@@ -48,6 +50,7 @@
       color-mix(in srgb, var(--ui-canvas-ice) 97%, #000 3%),
       var(--ui-canvas)
     );
+  --ui-layer-menu: 40;
   --ui-overlay: #34455a24;
   --ui-shadow-color: #24364a12;
   --ui-shadow-small: 0 2px 8px var(--ui-shadow-color);
@@ -285,7 +288,7 @@
   --ui-snow-rotation: 65deg;
   --ui-weather-layer: 4;
   --ui-weather-edge: 8%;
-  --ui-view-transition-duration: 420ms;
+  --ui-view-transition-duration: 210ms;
   --ui-view-transition-easing: cubic-bezier(0.32, 0, 0.2, 1);
 }
 

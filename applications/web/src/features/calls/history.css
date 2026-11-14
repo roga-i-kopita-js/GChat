@@ -48,6 +48,22 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-scrollbar-thumb) transparent;
+  scrollbar-gutter: stable;
+}
+@supports not (scrollbar-width: thin) {
+  .history-list::-webkit-scrollbar {
+    width: var(--ui-scrollbar-width);
+    height: var(--ui-scrollbar-width);
+  }
+  .history-list::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .history-list::-webkit-scrollbar-thumb {
+    background: var(--ui-scrollbar-thumb);
+    border-radius: var(--ui-radius-6);
+  }
 }
 .history-day {
   margin: 0;

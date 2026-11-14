@@ -62,7 +62,7 @@ export function messageAad(row: Omit<MessageRow, 'iv' | 'ciphertext' | 'authTag'
   return Buffer.from(
     JSON.stringify([
       'gchat.dialog.message',
-      1,
+      row.encryptionVersion,
       row.encryptionKeyId,
       row.id.toLowerCase(),
       row.dialogId.toLowerCase(),
@@ -71,6 +71,14 @@ export function messageAad(row: Omit<MessageRow, 'iv' | 'ciphertext' | 'authTag'
       row.clientMessageId.toLowerCase(),
       String(row.sequence),
       row.createdAt.toISOString(),
+      ...(row.encryptionVersion === 2
+        ? [
+            String(row.version),
+            row.editedAt?.toISOString() ?? null,
+            String(row.editSequence),
+            row.lastEditId?.toLowerCase() ?? null,
+          ]
+        : []),
     ]),
     'utf8',
   );
@@ -180,7 +188,16 @@ export class DialogsCrypto implements OnModuleInit {
     }
 
     try {
-      if (row.encryptionVersion !== 1 || row.iv.length !== 12 || row.authTag.length !== 16) {
+      if (
+        ![1, 2].includes(row.encryptionVersion) ||
+        (row.encryptionVersion === 1 &&
+          (row.version !== 1 ||
+            row.editSequence !== 0 ||
+            row.editedAt !== null ||
+            row.lastEditId !== null)) ||
+        row.iv.length !== 12 ||
+        row.authTag.length !== 16
+      ) {
         throw new Error();
       }
 

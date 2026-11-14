@@ -926,4 +926,177 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
 
     expect(getResultBody.error.code).toBe('ACCESS_TOKEN_INVALID');
   });
+  it('edits with CAS, preserves activity/read state and synchronizes coalesced old-message edits', async (): Promise<void> => {
+    const id = await dialog();
+    const firstInput = input('original');
+    const { message: messageResult1 } = await service.send(actors[0], id, firstInput);
+    const first = messageResult1;
+
+    await service.send(actors[1], id, input('latest'));
+    await service.read(actors[1], id, first.sequence);
+    const { dialog: dialogResult2 } = await service.get(actors[0], id);
+    const before = dialogResult2;
+    const editId = randomUUID();
+    const patch = {
+      client_edit_id: editId,
+      expected_version: 1,
+      content: { kind: 'text' as const, text: '  corrected 👩‍💻\n' },
+    };
+    const updated = await request(app.getHttpServer())
+      .patch(`/dialogs/${id}/messages/${first.message_id}`)
+      .set('Authorization', 'Bearer ' + actors[0].token)
+      .send(patch)
+      .expect(200);
+    const { body: updatedBody3 } = updated;
+
+    expect(updatedBody3.message).toMatchObject({
+      version: 2,
+      edit_sequence: 1,
+      last_edit_id: editId,
+      status: 'read',
+      content: patch.content,
+      sequence: first.sequence,
+      created_at: first.created_at,
+    });
+    expect(updatedBody3.message.edited_at).toEqual(expect.any(String));
+    const { dialog: dialogResult4 } = await service.get(actors[0], id);
+    const after = dialogResult4;
+
+    expect(after.last_sequence).toBe(before.last_sequence);
+    expect(after.last_message_at).toBe(before.last_message_at);
+    expect(after.peer_last_read_sequence).toBe(before.peer_last_read_sequence);
+    const { message: messageResult5 } = await service.send(actors[0], id, firstInput);
+
+    expect(messageResult5.content).toEqual(patch.content);
+    const replay = await service.edit(actors[0], id, first.message_id, {
+      ...patch,
+      content: { kind: 'text', text: 'ignored' },
+    });
+    const { message: replayMessage6 } = replay;
+
+    expect(replayMessage6.version).toBe(2);
+    expect(replayMessage6.content).toEqual(patch.content);
+    const noOp = await service.edit(actors[0], id, first.message_id, {
+      ...patch,
+      expected_version: 2,
+      client_edit_id: randomUUID(),
+    });
+    const { message: noOpMessage7 } = noOp;
+
+    expect(noOpMessage7.version).toBe(2);
+    await service.edit(actors[0], id, first.message_id, {
+      ...patch,
+      expected_version: 2,
+      client_edit_id: randomUUID(),
+      content: { kind: 'text', text: 'again' },
+    });
+    const page = await service.edits(actors[1], id, 0, 1);
+    const { messages: pageMessages8 } = page;
+
+    expect(page).toMatchObject({ has_more: false, next_edit_sequence: 2 });
+    expect(pageMessages8).toHaveLength(1);
+    expect(pageMessages8[0]).toMatchObject({
+      version: 3,
+      edit_sequence: 2,
+      content: { kind: 'text', text: 'again' },
+    });
+    expect(await service.edits(actors[1], id, 2, 30)).toEqual({
+      messages: [],
+      has_more: false,
+      next_edit_sequence: 2,
+    });
+    await resetRates();
+    await expect(service.edit(actors[0], id, first.message_id, patch)).rejects.toMatchObject({
+      status: 409,
+      code: 'MESSAGE_VERSION_CONFLICT',
+    });
+    await expect(service.edits(actors[0], id, 3, 30)).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+    await new Promise((resolve): void => {
+      setImmediate(resolve);
+    });
+    const editedNotices = notices.filter(
+      (notice): boolean => notice.event.type === 'dialog.message_edits_available',
+    );
+
+    expect(editedNotices).toHaveLength(2);
+    expect(editedNotices.every((notice): boolean => !notice.message)).toBe(true);
+  });
+
+  it('serializes competing edits and rejects peer, sticker, foreign message and invalid PATCH bodies', async (): Promise<void> => {
+    const id = await dialog();
+    const { message: messageResult9 } = await service.send(actors[0], id, input());
+    const original = messageResult9;
+    const make = (
+      text: string,
+    ): {
+      client_edit_id: string;
+      expected_version: number;
+      content: { kind: 'text'; text: string };
+    } => ({ client_edit_id: randomUUID(), expected_version: 1, content: { kind: 'text', text } });
+    const results = await Promise.allSettled(
+      ['one', 'two'].map((text): ReturnType<typeof service.edit> =>
+        service.edit(actors[0], id, original.message_id, make(text)),
+      ),
+    );
+    const { filter: resultsFilter10 } = results;
+
+    expect(
+      resultsFilter10.bind(results)((result): boolean => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      resultsFilter10.bind(results)((result): boolean => result.status === 'rejected'),
+    ).toMatchObject([{ reason: { code: 'MESSAGE_VERSION_CONFLICT' } }]);
+    await expect(
+      service.edit(actors[1], id, original.message_id, make('peer')),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(service.messageGet(actors[2], id, original.message_id)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    await expect(service.messageGet(actors[0], id, randomUUID())).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+    const { message: messageResult11 } = await service.send(actors[0], id, {
+      client_message_id: randomUUID(),
+      content: { kind: 'sticker', sticker_id: 'animal-pals-v1-cat' },
+    });
+    const sticker = messageResult11;
+
+    await expect(
+      service.edit(actors[0], id, sticker.message_id, make('sticker')),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await resetRates();
+
+    for (const body of [
+      { ...make('valid'), expected_version: '2' },
+      { ...make('valid'), extra: true },
+      make('   '),
+      make('a'.repeat(4001)),
+      { ...make('valid'), content: { kind: 'sticker', sticker_id: 'animal-pals-v1-cat' } },
+    ]) {
+      await request(app.getHttpServer())
+        .patch(`/dialogs/${id}/messages/${original.message_id}`)
+        .set('Authorization', 'Bearer ' + actors[0].token)
+        .send(body)
+        .expect(400);
+    }
+
+    await request(app.getHttpServer())
+      .patch(`/dialogs/${id}/messages/${original.message_id}`)
+      .set('Authorization', 'Bearer ' + actors[0].token)
+      .send({ ...make('valid'), padding: 'a'.repeat(65536) })
+      .expect(413);
+    await request(app.getHttpServer())
+      .get(`/dialogs/${id}/message-edits?unknown=1`)
+      .set('Authorization', 'Bearer ' + actors[0].token)
+      .expect(400);
+    await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[0].userId]);
+    await expect(
+      service.edit(actors[0], id, original.message_id, {
+        ...make('lost access'),
+        expected_version: 2,
+      }),
+    ).rejects.toMatchObject({ code: 'DIALOG_NOT_ALLOWED' });
+  });
 });

@@ -266,6 +266,61 @@ export class BackendApi {
     );
   }
 
+  dialogsMessageGet(
+    args: Pick<Types.DialogsMessageGetData, 'path'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsMessageGetResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsMessageGetResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/messages/{message_id}',
+        method: 'get',
+        protected: true,
+        emptyResponses: [],
+        parameters: [
+          { name: 'dialog_id', in: 'path' },
+          { name: 'message_id', in: 'path' },
+        ],
+      },
+      args,
+    );
+  }
+
+  dialogsMessageEdit(
+    args: Pick<Types.DialogsMessageEditData, 'body' | 'path'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsMessageEditResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsMessageEditResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/messages/{message_id}',
+        method: 'patch',
+        protected: true,
+        emptyResponses: [],
+        parameters: [
+          { name: 'dialog_id', in: 'path' },
+          { name: 'message_id', in: 'path' },
+        ],
+      },
+      args,
+    );
+  }
+
+  dialogsMessageEdits(
+    args: Pick<Types.DialogsMessageEditsData, 'path' | 'query'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsMessageEditsResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsMessageEditsResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/message-edits',
+        method: 'get',
+        protected: true,
+        emptyResponses: [],
+        parameters: [
+          { name: 'dialog_id', in: 'path' },
+          { name: 'limit', in: 'query' },
+          { name: 'after_edit_sequence', in: 'query' },
+        ],
+      },
+      args,
+    );
+  }
+
   dialogsRead(
     args: Pick<Types.DialogsReadData, 'body' | 'path'> & { signal?: AbortSignal },
   ): Promise<ApiResult<NormalizeVoid<Types.DialogsReadResponse>>> {

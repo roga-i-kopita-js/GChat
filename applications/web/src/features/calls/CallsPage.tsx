@@ -40,7 +40,6 @@ export function CallsPage(): JSX.Element {
   const [committedList, setCommittedList] = useState({ filter, pathname: location.pathname });
   const switchingFilter =
     committedList.pathname === location.pathname && committedList.filter !== filter;
-  const filterAnimation = filter === 'missed' ? 'route-slide-forward' : 'route-slide-backward';
   const navigate = useNavigate();
   const view = snapshot.views[filter];
   const scroll = useRef<HTMLDivElement>(null);
@@ -238,7 +237,7 @@ export function CallsPage(): JSX.Element {
             <Phone size={18} /> Вернуться к звонку
           </Button>
         )}
-        <ViewTransition default="none" update={switchingFilter ? filterAnimation : 'none'}>
+        <ViewTransition default="none" update={switchingFilter ? 'route-fade' : 'none'}>
           <div
             className="history-list"
             ref={scroll}

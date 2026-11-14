@@ -71,10 +71,43 @@ function completed(tx: IDBTransaction): Promise<void> {
   });
 }
 async function database(): Promise<IDBDatabase> {
-  const request = indexedDB.open(databaseName, 1);
+  const request = indexedDB.open(databaseName, 2);
 
-  request.onupgradeneeded = (): void => {
+  request.onupgradeneeded = (event): void => {
     const db = request.result;
+
+    if (event.oldVersion > 0) {
+      const tx = request.transaction;
+
+      if (!tx) {
+        return;
+      }
+
+      for (const name of ['records', 'messages']) {
+        const cursor = tx.objectStore(name).openCursor();
+
+        cursor.onsuccess = (): void => {
+          const row = cursor.result;
+
+          if (!row) {
+            return;
+          }
+
+          const value = row.value;
+
+          if (name === 'records') {
+            value.record = recordSchema.parse(value.record);
+          } else {
+            value.message = messageSchema.parse(value.message);
+          }
+
+          row.update(value);
+          row.continue();
+        };
+      }
+
+      return;
+    }
 
     db.createObjectStore('control', { keyPath: 'key' });
 

@@ -22,7 +22,7 @@ for (const [format, Client] of [
     );
     assert.equal(
       Object.getOwnPropertyNames(Client.prototype).filter((name) => name !== 'constructor').length,
-      24,
+      27,
     );
   });
 

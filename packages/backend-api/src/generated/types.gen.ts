@@ -115,6 +115,10 @@ export type StickerContentDto = {
 
 export type MessageDto = {
   sequence: number;
+  version: number;
+  edit_sequence: number;
+  edited_at: string | null;
+  last_edit_id: string | null;
   content: TextContentDto | StickerContentDto;
   status: 'sent' | 'read';
   message_id: string;
@@ -166,6 +170,18 @@ export type MessageResponseDto = {
 
 export type HistoryResponseDto = {
   messages: Array<MessageDto>;
+  has_more: boolean;
+};
+
+export type EditMessageDto = {
+  expected_version: number;
+  content: TextContentDto;
+  client_edit_id: string;
+};
+
+export type MessageEditsResponseDto = {
+  messages: Array<MessageDto>;
+  next_edit_sequence: number;
   has_more: boolean;
 };
 
@@ -724,6 +740,94 @@ export type DialogsSendMessageResponses = {
 
 export type DialogsSendMessageResponse =
   DialogsSendMessageResponses[keyof DialogsSendMessageResponses];
+
+export type DialogsMessageGetData = {
+  body?: never;
+  path: {
+    dialog_id: string;
+    message_id: string;
+  };
+  query?: never;
+  url: '/dialogs/{dialog_id}/messages/{message_id}';
+};
+
+export type DialogsMessageGetErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsMessageGetError = DialogsMessageGetErrors[keyof DialogsMessageGetErrors];
+
+export type DialogsMessageGetResponses = {
+  200: MessageResponseDto;
+};
+
+export type DialogsMessageGetResponse =
+  DialogsMessageGetResponses[keyof DialogsMessageGetResponses];
+
+export type DialogsMessageEditData = {
+  body: EditMessageDto;
+  path: {
+    dialog_id: string;
+    message_id: string;
+  };
+  query?: never;
+  url: '/dialogs/{dialog_id}/messages/{message_id}';
+};
+
+export type DialogsMessageEditErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  409: ErrorResponseDto;
+  413: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsMessageEditError = DialogsMessageEditErrors[keyof DialogsMessageEditErrors];
+
+export type DialogsMessageEditResponses = {
+  200: MessageResponseDto;
+};
+
+export type DialogsMessageEditResponse =
+  DialogsMessageEditResponses[keyof DialogsMessageEditResponses];
+
+export type DialogsMessageEditsData = {
+  body?: never;
+  path: {
+    dialog_id: string;
+  };
+  query?: {
+    limit?: number;
+    after_edit_sequence?: number;
+  };
+  url: '/dialogs/{dialog_id}/message-edits';
+};
+
+export type DialogsMessageEditsErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsMessageEditsError = DialogsMessageEditsErrors[keyof DialogsMessageEditsErrors];
+
+export type DialogsMessageEditsResponses = {
+  200: MessageEditsResponseDto;
+};
+
+export type DialogsMessageEditsResponse =
+  DialogsMessageEditsResponses[keyof DialogsMessageEditsResponses];
 
 export type DialogsReadData = {
   body: ReadDialogDto;

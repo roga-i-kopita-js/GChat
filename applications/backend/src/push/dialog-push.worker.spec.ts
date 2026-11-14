@@ -69,6 +69,10 @@ function fixture(): any {
       sequence: 1,
       created_at: new Date(0).toISOString(),
       status: 'sent',
+      version: 1,
+      edited_at: null,
+      edit_sequence: 0,
+      last_edit_id: null,
       content: { kind: 'text', text: 'private' },
     },
   };

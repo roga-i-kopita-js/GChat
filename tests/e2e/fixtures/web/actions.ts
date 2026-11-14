@@ -15,7 +15,8 @@ export async function login(page: Page, name: string): Promise<void> {
 
 export async function dial(page: Page, name: string): Promise<void> {
   if (!page.url().includes('/dialogs/contacts')) {
-    await page.goto('/dialogs/contacts');
+    await page.getByRole('link', { name: 'Диалоги', exact: true }).click();
+    await page.getByRole('link', { name: 'Написать сообщение', exact: true }).click();
   }
 
   await page.getByRole('button', { name: name + ' Голосовой звонок' }).click();

@@ -3,6 +3,10 @@ import { Injectable } from '@nestjs/common';
 import type { MessageDto } from './dialogs.dto.js';
 
 export type DialogEvent =
+  | {
+      type: 'dialog.message_edits_available';
+      payload: { dialog_id: string; last_edit_sequence: number };
+    }
   | { type: 'dialog.messages_available'; payload: { dialog_id: string; last_sequence: number } }
   | {
       type: 'dialog.read_updated';

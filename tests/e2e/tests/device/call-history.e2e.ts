@@ -81,6 +81,7 @@ async function setup(
     last_message_at: null,
     last_message: null,
     last_sequence: 0,
+    last_edit_sequence: 0,
     last_read_sequence: 0,
     peer_last_read_sequence: 0,
     has_unread_messages: false,
@@ -117,6 +118,8 @@ async function setup(
       json = { dialogs: { can_read: true, can_send: true } };
     } else if (path === `/api/dialogs/${dialogId}/messages`) {
       json = { messages: [], has_more: false };
+    } else if (path === `/api/dialogs/${dialogId}/message-edits`) {
+      json = { messages: [], next_edit_sequence: 0, has_more: false };
     } else if (path === '/api/calls/history') {
       if (failed) {
         await route.fulfill({ status: 503, json: { error: { code: 'SERVICE_UNAVAILABLE' } } });
@@ -756,7 +759,11 @@ test('winter tokens and decoration persist across navigation and respect reduced
             const easing = effect.getKeyframes()[0]?.easing;
             const name = animation instanceof CSSAnimation ? animation.animationName : '';
 
-            return [{ name, pseudo: effect.pseudoElement, duration, transforms, easing }];
+            const opacities = effect.getKeyframes().map((frame) => frame.opacity);
+
+            return [
+              { name, pseudo: effect.pseudoElement, duration, transforms, opacities, easing },
+            ];
           });
 
           root.dataset.winterTransitionFrames = JSON.stringify(animations);
@@ -777,48 +784,79 @@ test('winter tokens and decoration persist across navigation and respect reduced
   const transitionsBeforeFiltering = await page.evaluate(() =>
     Number(document.documentElement.dataset.winterTransitions ?? 0),
   );
-  const headerBounds = await page.locator('.history-header').boundingBox();
-  const filterBounds = await page.locator('.history-filter').boundingBox();
-  const expectListSlide = async (entering: string, leaving: string): Promise<void> => {
-    await expect
-      .poll(async () =>
-        page.evaluate(() =>
-          JSON.parse(document.documentElement.dataset.winterTransitionFrames ?? '[]'),
-        ),
-      )
-      .toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ name: entering, duration: 420 }),
-          expect.objectContaining({ name: leaving, duration: 420 }),
-        ]),
-      );
-    expect(
-      await page.evaluate(() =>
-        JSON.parse(document.documentElement.dataset.winterTransitionTargets ?? '[]'),
-      ),
-    ).toEqual(['history-list']);
-    expect(await page.locator('.history-header').boundingBox()).toEqual(headerBounds);
-    expect(await page.locator('.history-filter').boundingBox()).toEqual(filterBounds);
-  };
 
-  await page.getByRole('link', { name: 'Пропущенные', exact: true }).click();
-  await expect(page).toHaveURL(/\/calls\?filter=missed$/);
-  await expect(page.locator('.history-row:not(.history-missed)')).toHaveCount(0);
-  await expect(page.locator('.history-row')).not.toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Пропущенные', exact: true })).toHaveAttribute(
-    'aria-current',
-    'page',
-  );
-  await expectListSlide('route-enter-right', 'route-leave-left');
-  await page.getByRole('link', { name: 'Пропущенные', exact: true }).click();
-  await page.getByRole('link', { name: 'Все', exact: true }).click();
-  await expect(page).toHaveURL(/\/calls$/);
-  await expect(page.locator('.history-row')).toHaveCount(30);
-  await expect(page.locator('.history-row:not(.history-missed)').first()).toBeVisible();
-  await expectListSlide('route-enter-left', 'route-leave-right');
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(page.locator('.history-list')).toHaveCSS('scrollbar-width', 'thin');
+    await expect(page.locator('.history-list')).toHaveCSS('scrollbar-gutter', 'stable');
+    expect(
+      await page.locator('.history-list').evaluate((element) => {
+        const color = getComputedStyle(element).scrollbarColor;
+
+        element.scrollTop = 100;
+        const scrolled = element.scrollTop > 0;
+
+        element.scrollTop = 0;
+
+        return { transparentTrack: color.endsWith('rgba(0, 0, 0, 0)'), scrolled };
+      }),
+    ).toEqual({ transparentTrack: true, scrolled: true });
+    await page.screenshot({ path: info.outputPath(`winter-calls-${width}.png`) });
+    const headerBounds = await page.locator('.history-header').boundingBox();
+    const filterBounds = await page.locator('.history-filter').boundingBox();
+    const expectListFade = async (): Promise<void> => {
+      await expect
+        .poll(async () =>
+          page.evaluate(() =>
+            JSON.parse(document.documentElement.dataset.winterTransitionFrames ?? '[]'),
+          ),
+        )
+        .toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: 'route-fade-in',
+              duration: 210,
+              transforms: ['', ''],
+              opacities: ['0', '1'],
+            }),
+            expect.objectContaining({
+              name: 'route-fade-out',
+              duration: 210,
+              transforms: ['', ''],
+              opacities: ['1', '0'],
+            }),
+          ]),
+        );
+      expect(
+        await page.evaluate(() =>
+          JSON.parse(document.documentElement.dataset.winterTransitionTargets ?? '[]'),
+        ),
+      ).toEqual(['history-list']);
+      expect(await page.locator('.history-header').boundingBox()).toEqual(headerBounds);
+      expect(await page.locator('.history-filter').boundingBox()).toEqual(filterBounds);
+    };
+
+    await page.getByRole('link', { name: 'Пропущенные', exact: true }).click();
+    await expect(page).toHaveURL(/\/calls\?filter=missed$/);
+    await expect(page.locator('.history-row:not(.history-missed)')).toHaveCount(0);
+    await expect(page.locator('.history-row')).not.toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Пропущенные', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expectListFade();
+    await page.getByRole('link', { name: 'Пропущенные', exact: true }).click();
+    await page.getByRole('link', { name: 'Все', exact: true }).click();
+    await expect(page).toHaveURL(/\/calls$/);
+    await expect(page.locator('.history-row')).toHaveCount(30);
+    await expect(page.locator('.history-row:not(.history-missed)').first()).toBeVisible();
+    await expectListFade();
+  }
+
   expect(
     await page.evaluate(() => Number(document.documentElement.dataset.winterTransitions ?? 0)),
-  ).toBe(transitionsBeforeFiltering + 2);
+  ).toBe(transitionsBeforeFiltering + 4);
+  await page.setViewportSize({ width: 390, height: 844 });
   await page
     .locator('.winter-weather')
     .evaluate((element) => element.setAttribute('data-persisted', 'true'));
@@ -850,13 +888,13 @@ test('winter tokens and decoration persist across navigation and respect reduced
       expect.arrayContaining([
         expect.objectContaining({
           name: 'route-enter-right',
-          duration: 420,
+          duration: 210,
           easing: 'cubic-bezier(0.32, 0, 0.2, 1)',
           transforms: ['translateX(100%)', 'translateX(0%)'],
         }),
         expect.objectContaining({
           name: 'route-leave-left',
-          duration: 420,
+          duration: 210,
           easing: 'cubic-bezier(0.32, 0, 0.2, 1)',
           transforms: ['translateX(0%)', 'translateX(-100%)'],
         }),
@@ -924,18 +962,18 @@ test('winter tokens and decoration persist across navigation and respect reduced
       expect.arrayContaining([
         expect.objectContaining({
           name: 'route-enter-left',
-          duration: 420,
+          duration: 210,
           transforms: ['translateX(-100%)', 'translateX(0%)'],
         }),
         expect.objectContaining({
           name: 'route-leave-right',
-          duration: 420,
+          duration: 210,
           transforms: ['translateX(0%)', 'translateX(100%)'],
         }),
       ]),
     );
   await page.evaluate(() => {
-    document.documentElement.style.setProperty('--ui-view-transition-duration', '210ms');
+    document.documentElement.style.setProperty('--ui-view-transition-duration', '105ms');
     document.documentElement.style.setProperty('--ui-view-transition-easing', 'linear');
   });
   await page.getByRole('link', { name: 'Диалоги', exact: true }).click();
@@ -947,8 +985,8 @@ test('winter tokens and decoration persist across navigation and respect reduced
     )
     .toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: 'route-enter-right', duration: 210, easing: 'linear' }),
-        expect.objectContaining({ name: 'route-leave-left', duration: 210, easing: 'linear' }),
+        expect.objectContaining({ name: 'route-enter-right', duration: 105, easing: 'linear' }),
+        expect.objectContaining({ name: 'route-leave-left', duration: 105, easing: 'linear' }),
       ]),
     );
   await page.evaluate(() => {

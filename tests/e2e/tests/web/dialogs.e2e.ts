@@ -35,10 +35,24 @@ test('dialog loader replaces the old runtime when the authenticated session chan
   }
 
   await expect(page.getByRole('banner', { name: 'Панель приложения' })).toHaveCount(0);
-  await expect(page.locator('.dialog-room')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+  await expect(page.locator('.dialog-room')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const composerSurface = await page
+    .locator('.dialog-composer-area')
+    .evaluate((element): string => {
+      const probe = document.createElement('span');
+
+      probe.style.backgroundColor = 'var(--ui-surface)';
+      element.append(probe);
+      const color = getComputedStyle(probe).backgroundColor;
+
+      probe.remove();
+
+      return color;
+    });
+
   await expect(page.locator('.dialog-composer-area')).toHaveCSS(
     'background-color',
-    'rgb(255, 255, 255)',
+    composerSurface,
   );
   const path = new URL(page.url()).pathname;
   const previousRefresh = await page.evaluate(
@@ -65,12 +79,12 @@ test('dialog loader replaces the old runtime when the authenticated session chan
     await page.getByRole('link', { name: 'Назад к диалогам', exact: true }).click();
     await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toHaveCSS(
-      'padding-bottom',
+      'margin-bottom',
       '21px',
     );
     await page.getByRole('link', { name: 'Настройки', exact: true }).click();
     await expect(page.getByRole('navigation', { name: 'Основные разделы' })).toHaveCSS(
-      'padding-bottom',
+      'margin-bottom',
       '21px',
     );
   } finally {
@@ -505,4 +519,564 @@ test('tabs share one WSS, resolve draft conflicts explicitly, flush before updat
       return result;
     }),
   ).toBe(0);
+});
+
+test('message editing preserves drafts, handles keyboard, conflicts and offline updates', async ({
+  browser,
+}): Promise<void> => {
+  const a = await browser.newContext({ viewport: { width: 1280, height: 844 } });
+  const { newPage: aNewPage1, close: aClose37 } = a;
+
+  const b = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const { newPage: bNewPage2, setOffline: bSetOffline27, close: bClose38 } = b;
+
+  const anna = await aNewPage1.bind(a)();
+  const {
+    screenshot: annaScreenshot,
+    getByRole: annaGetByRole13,
+    url: annaUrl14,
+    getByLabel: annaGetByLabel16,
+    locator: annaLocator17,
+    evaluate: annaEvaluate19,
+    request: annaRequest20,
+    getByText: annaGetByText24,
+    route: annaRoute25,
+    unroute: annaUnroute26,
+    waitForTimeout: annaWaitForTimeout29,
+    setViewportSize: annaSetViewportSize36,
+  } = anna;
+
+  const maxim = await bNewPage2.bind(b)();
+  const {
+    goto: maximGoto15,
+    locator: maximLocator18,
+    reload: maximReload30,
+    getByLabel: maximGetByLabel31,
+    evaluate: maximEvaluate32,
+  } = maxim;
+
+  const marker = 'edit-' + randomUUID();
+
+  try {
+    await login(anna, 'anna');
+    await login(maxim, 'maxim');
+    await annaGetByRole13
+      .bind(anna)('button', { name: 'Написать: Максим Волков', exact: true })
+      .click();
+    await expect(annaGetByLabel16.bind(anna)('Сообщение', { exact: true })).toBeVisible();
+    const path = new URL(annaUrl14.bind(anna)()).pathname;
+
+    await maximGoto15.bind(maxim)(path);
+    const input = annaGetByLabel16.bind(anna)('Сообщение', { exact: true });
+
+    await input.fill(marker);
+    await input.press('Enter');
+    await expect(annaLocator17.bind(anna)('article').filter({ hasText: marker })).toBeVisible();
+    await expect(maximLocator18.bind(maxim)('article').filter({ hasText: marker })).toBeVisible();
+    const id = path.split('/').at(-1)!;
+    const token = async (): Promise<string> =>
+      annaEvaluate19.bind(anna)(
+        (): string => JSON.parse(localStorage.getItem('gchat.session.v1')!).access_token,
+      );
+    const authorization = 'Bearer ' + (await token());
+    const list = await annaRequest20.get(`/api/dialogs/${id}/messages`, {
+      headers: { Authorization: authorization },
+    });
+    const { ok: listOk21, json: listJson } = list;
+
+    expect(listOk21.bind(list)()).toBeTruthy();
+    const { messages: messagesResult22 } = await listJson.bind(list)();
+    const sent = messagesResult22.find(
+      (message: { content: { text?: string } }): boolean => message.content.text === marker,
+    );
+    const patch = async (text: string, version: number): Promise<void> => {
+      const authorization = 'Bearer ' + (await token());
+      const response = await annaRequest20.patch(`/api/dialogs/${id}/messages/${sent.message_id}`, {
+        headers: { Authorization: authorization },
+        data: {
+          client_edit_id: randomUUID(),
+          expected_version: version,
+          content: { kind: 'text', text },
+        },
+      });
+      const { status: responseStatus23 } = response;
+
+      const { text: responseText } = response;
+      const detail = await responseText.bind(response)();
+
+      expect(responseStatus23.bind(response)(), detail).toBe(200);
+    };
+
+    await input.fill('ordinary draft');
+    await input.press('ArrowUp');
+    await expect(
+      annaGetByLabel16.bind(anna)('Редактирование сообщения', { exact: true }),
+    ).toHaveCount(0);
+    await expect(input).toHaveValue('ordinary draft');
+    await annaLocator17
+      .bind(anna)('article')
+      .filter({ hasText: marker })
+      .click({ button: 'right' });
+    const menu = annaGetByRole13.bind(anna)('menu', { name: 'Действия сообщения', exact: true });
+
+    await expect(menu).toBeVisible();
+    await expect(
+      annaGetByRole13.bind(anna)('dialog', { name: 'Сообщение', exact: true }),
+    ).toHaveCount(0);
+    await annaScreenshot.bind(anna)({ path: '/tmp/gchat-message-menu-desktop.png' });
+    await menu.press('Escape');
+    const ownMessage = annaLocator17.bind(anna)('article').filter({ hasText: marker });
+
+    await expect(ownMessage).toBeFocused();
+    await ownMessage.press('Shift+F10');
+    await expect(menu).toBeVisible();
+    const menuBox = await menu.boundingBox();
+    const { x: menuBoxX1, width: menuBoxWidth2 } = menuBox!;
+
+    const messageBox = await ownMessage.boundingBox();
+    const { x: messageBoxX3, width: messageBoxWidth4 } = messageBox!;
+
+    expect(menuBox).not.toBeNull();
+    expect(messageBox).not.toBeNull();
+    expect(Math.abs(menuBoxX1 + menuBoxWidth2 - messageBoxX3 - messageBoxWidth4)).toBeLessThan(20);
+    await annaGetByRole13.bind(anna)('menuitem', { name: 'Редактировать', exact: true }).click();
+    const editor = annaGetByLabel16.bind(anna)('Текст сообщения', { exact: true });
+
+    await expect(editor).toBeFocused();
+    await editor.fill(marker + '-mine');
+    await annaScreenshot.bind(anna)({ path: '/tmp/gchat-message-editing-desktop.png' });
+    await patch(marker + '-other-device', 1);
+    await annaGetByRole13.bind(anna)('button', { name: 'Сохранить', exact: true }).click();
+    await expect(annaGetByText24.bind(anna)('Актуальный текст:', { exact: true })).toBeVisible();
+    await expect(editor).toHaveValue(marker + '-mine');
+    await annaGetByRole13
+      .bind(anna)('button', { name: 'Применить мой текст', exact: true })
+      .click();
+    await expect(input).toBeVisible();
+    await expect(input).toHaveValue('ordinary draft');
+    await expect(
+      maximLocator18
+        .bind(maxim)('article')
+        .filter({ hasText: marker + '-mine' }),
+    ).toBeVisible();
+    await input.fill(' ');
+    await input.press('ArrowUp');
+    await expect(editor).toHaveCount(0);
+    await input.fill('');
+    await input.press('Shift+ArrowUp');
+    await expect(editor).toHaveCount(0);
+    await input.dispatchEvent('keydown', { key: 'ArrowUp', isComposing: true });
+    await input.dispatchEvent('keydown', { key: 'ArrowUp', repeat: true });
+    await expect(editor).toHaveCount(0);
+    await input.press('ArrowUp');
+    await expect(editor).toHaveValue(marker + '-mine');
+    await editor.press('ArrowUp');
+    await expect(editor).toHaveValue(marker + '-mine');
+    await editor.press('Escape');
+    await expect(input).toBeFocused();
+    await input.press('ArrowUp');
+    await editor.fill(marker + '-unknown-result');
+    let allowReconcile = false;
+    let losePatchResponse = true;
+
+    await annaRoute25.bind(anna)('**/api/dialogs/*/messages/*', async (route): Promise<void> => {
+      if (route.request().method() === 'PATCH' && losePatchResponse) {
+        losePatchResponse = false;
+        await route.fetch();
+        await route.abort('failed');
+      } else if (route.request().method() === 'GET' && !allowReconcile) {
+        await route.abort('failed');
+      } else {
+        await route.continue();
+      }
+    });
+    await editor.press('Enter');
+    await expect(
+      annaGetByRole13.bind(anna)('button', { name: 'Проверить сохранение', exact: true }),
+    ).toBeEnabled();
+    await editor.fill(marker + '-after-unknown');
+    allowReconcile = true;
+    await annaGetByRole13
+      .bind(anna)('button', { name: 'Проверить сохранение', exact: true })
+      .click();
+    await expect(
+      annaGetByText24.bind(anna)('Предыдущая правка сохранена. Новый текст ещё не сохранён.', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(editor).toHaveValue(marker + '-after-unknown');
+    await editor.press('Enter');
+    await expect(input).toBeVisible();
+    await expect(
+      annaLocator17
+        .bind(anna)('article')
+        .filter({ hasText: marker + '-after-unknown' }),
+    ).toBeVisible();
+    await annaUnroute26.bind(anna)('**/api/dialogs/*/messages/*');
+    await bSetOffline27.bind(b)(true);
+
+    // Keep the first message outside the next initial history page.
+    for (let i = 0; i < 32; i++) {
+      const authorization = 'Bearer ' + (await token());
+      const response = await annaRequest20.post(`/api/dialogs/${id}/messages`, {
+        headers: { Authorization: authorization },
+        data: {
+          client_message_id: randomUUID(),
+          content: { kind: 'text', text: marker + '-tail-' + i },
+        },
+      });
+      const { status: responseStatus28 } = response;
+
+      expect(responseStatus28.bind(response)()).toBe(201);
+      await annaWaitForTimeout29.bind(anna)(220);
+    }
+
+    await patch(marker + '-offline-edited', 5);
+    await bSetOffline27.bind(b)(false);
+    await maximReload30.bind(maxim)();
+    await expect(maximGetByLabel31.bind(maxim)('Сообщение', { exact: true })).toBeVisible();
+    // Reloading uses the cached old message, then restores its edit independently of the new tail.
+    await expect
+      .poll(async (): Promise<boolean> =>
+        maximEvaluate32.bind(maxim)(
+          async ({ dialogId, messageId, expected }): Promise<boolean> => {
+            const db = await new Promise<IDBDatabase>((resolve, reject): void => {
+              const request = indexedDB.open('gchat-dialogs-v1', 2);
+
+              request.onsuccess = (): void => resolve(request.result);
+              request.onerror = (): void => reject(request.error);
+            });
+            const { transaction: dbTransaction33, close: dbClose35 } = db;
+
+            try {
+              const rows = await new Promise<
+                { message: { dialog_id: string; message_id: string; content: { text?: string } } }[]
+              >((resolve, reject): void => {
+                const request = dbTransaction33
+                  .bind(db)('messages')
+                  .objectStore('messages')
+                  .getAll();
+
+                request.onsuccess = (): void => resolve(request.result);
+                request.onerror = (): void => reject(request.error);
+              });
+              const { some: rowsSome34 } = rows;
+
+              return rowsSome34.bind(rows)(
+                ({ message }): boolean =>
+                  message.dialog_id === dialogId &&
+                  message.message_id === messageId &&
+                  message.content.text === expected,
+              );
+            } finally {
+              dbClose35.bind(db)();
+            }
+          },
+          { dialogId: id, messageId: sent.message_id, expected: marker + '-offline-edited' },
+        ),
+      )
+      .toBe(true);
+    await annaSetViewportSize36.bind(anna)({ width: 390, height: 844 });
+    await input.fill('');
+    await input.press('ArrowUp');
+    await expect(editor).toBeVisible();
+    await editor.fill('mobile\nline');
+    await annaScreenshot.bind(anna)({ path: '/tmp/gchat-message-editing-mobile.png' });
+    await editor.press('Enter');
+    await expect(editor).toHaveValue('mobile\nline\n');
+    await editor.press('Escape');
+    const touchMessage = annaLocator17.bind(anna)('article').last();
+
+    await touchMessage.scrollIntoViewIfNeeded();
+    await touchMessage.dispatchEvent('pointerdown', {
+      pointerType: 'touch',
+      clientX: 150,
+      clientY: 300,
+    });
+    await expect(menu).toBeVisible();
+    await touchMessage.dispatchEvent('pointerup', { pointerType: 'touch' });
+    await annaScreenshot.bind(anna)({ path: '/tmp/gchat-message-menu-mobile.png' });
+    const touchMenuBox = await menu.boundingBox();
+    const { x: touchMenuBoxX5, width: touchMenuBoxWidth6 } = touchMenuBox!;
+
+    expect(touchMenuBoxX5).toBeGreaterThanOrEqual(0);
+    expect(touchMenuBoxX5 + touchMenuBoxWidth6).toBeLessThanOrEqual(390);
+    await menu.press('Escape');
+    expect(
+      await annaLocator17
+        .bind(anna)('body')
+        .evaluate((element): boolean => element.scrollWidth <= innerWidth),
+    ).toBe(true);
+  } finally {
+    await aClose37.bind(a)();
+    await bClose38.bind(b)();
+  }
+});
+
+test('Shift+Enter sends and saves edits at desktop and narrow widths without IME or repeat submissions', async ({
+  page,
+}): Promise<void> => {
+  await login(page, 'anna');
+  await page.getByRole('button', { name: 'Написать: Максим Волков', exact: true }).click();
+  const input = page.getByLabel('Сообщение', { exact: true });
+
+  await expect(input).toBeVisible();
+  const requests = { send: 0, edit: 0 };
+
+  page.on('request', (request): void => {
+    if (
+      /\/api\/dialogs\/[^/]+\/messages$/.test(new URL(request.url()).pathname) &&
+      request.method() === 'POST'
+    ) {
+      requests.send++;
+    }
+
+    if (
+      /\/api\/dialogs\/[^/]+\/messages\/[^/]+$/.test(new URL(request.url()).pathname) &&
+      request.method() === 'PATCH'
+    ) {
+      requests.edit++;
+    }
+  });
+
+  for (const width of [1280, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    const text = 'Shift+Enter ' + width + ' ' + randomUUID();
+
+    await input.fill(text);
+
+    for (const state of [
+      { isComposing: true },
+      { keyCode: 229 },
+      { repeat: true },
+      { ctrlKey: true },
+      { altKey: true },
+      { metaKey: true },
+    ]) {
+      await input.dispatchEvent('keydown', { key: 'Enter', shiftKey: true, ...state });
+    }
+
+    await expect(input).toHaveValue(text);
+    const sentBefore = requests.send;
+    const [sent] = await Promise.all([
+      page.waitForResponse(
+        (response): boolean =>
+          response.request().method() === 'POST' &&
+          /\/api\/dialogs\/[^/]+\/messages$/.test(new URL(response.url()).pathname),
+      ),
+      input.press('Shift+Enter'),
+    ]);
+
+    expect(sent.status()).toBe(201);
+    await expect(input).toHaveValue('');
+    const { message: sentMessage } = await sent.json();
+
+    expect(sentMessage).toMatchObject({ content: { kind: 'text', text } });
+    expect(requests.send).toBe(sentBefore + 1);
+    await expect(input).toBeEnabled();
+    await input.press('ArrowUp');
+    const editor = page.getByLabel('Текст сообщения', { exact: true });
+
+    await expect(editor).toHaveValue(text);
+    const updated = text + ' исправлено';
+
+    await editor.fill(updated);
+    const editedBefore = requests.edit;
+
+    for (const state of [
+      { isComposing: true },
+      { keyCode: 229 },
+      { repeat: true },
+      { ctrlKey: true },
+      { altKey: true },
+      { metaKey: true },
+    ]) {
+      await editor.dispatchEvent('keydown', { key: 'Enter', shiftKey: true, ...state });
+    }
+
+    await expect(editor).toHaveValue(updated);
+    expect(requests.edit).toBe(editedBefore);
+    const [saved] = await Promise.all([
+      page.waitForResponse(
+        (response): boolean =>
+          response.request().method() === 'PATCH' &&
+          /\/api\/dialogs\/[^/]+\/messages\/[^/]+$/.test(new URL(response.url()).pathname),
+      ),
+      editor.press('Shift+Enter'),
+    ]);
+
+    expect(saved.status()).toBe(200);
+    await expect(editor).toHaveCount(0);
+    await expect(input).toBeVisible();
+    const { message: savedMessage } = await saved.json();
+
+    expect(savedMessage).toMatchObject({ content: { kind: 'text', text: updated } });
+    expect(requests.edit).toBe(editedBefore + 1);
+  }
+});
+
+test('local sends keep input focus and smoothly follow the tail before the HTTP response', async ({
+  page,
+}): Promise<void> => {
+  await login(page, 'anna');
+  await page.getByRole('button', { name: 'Написать: Максим Волков', exact: true }).click();
+  const input = page.getByLabel('Сообщение', { exact: true });
+  const feed = page.getByRole('log', { name: 'Сообщения', exact: true });
+
+  await expect(input).toBeVisible();
+
+  for (const scenario of [
+    { width: 1280, click: false, reduced: false },
+    { width: 390, click: true, reduced: false },
+    { width: 390, click: false, reduced: true },
+  ]) {
+    await page.setViewportSize({ width: scenario.width, height: 844 });
+    await page.emulateMedia({ reducedMotion: scenario.reduced ? 'reduce' : 'no-preference' });
+    await expect
+      .poll(async (): Promise<number> =>
+        feed.evaluate(
+          (element): number => element.scrollHeight - element.clientHeight - element.scrollTop,
+        ),
+      )
+      .toBeLessThanOrEqual(1);
+    // Allow virtua's 150 ms measurement window to settle after resizing the viewport.
+    await page.waitForTimeout(200);
+    await feed.hover();
+    await page.mouse.wheel(0, -550);
+    await expect
+      .poll(async (): Promise<number> =>
+        feed.evaluate(
+          (element): number => element.scrollHeight - element.clientHeight - element.scrollTop,
+        ),
+      )
+      .toBeGreaterThan(200);
+    const text = 'Фокус и прокрутка ' + randomUUID() + '\n' + 'Строка сообщения\n'.repeat(7);
+
+    await input.fill(text);
+    await page.evaluate((): void => {
+      const field = document.querySelector<HTMLTextAreaElement>('.dialog-composer textarea')!;
+      const log = document.querySelector<HTMLElement>('.dialog-feed')!;
+      const state = { start: log.scrollTop, frames: [] as number[], blurs: 0, stopped: false };
+      const blur = (): void => {
+        state.blurs++;
+      };
+
+      field.addEventListener('blur', blur);
+      const sample = (): void => {
+        if (state.stopped) {
+          return;
+        }
+
+        state.frames.push(log.scrollTop);
+        requestAnimationFrame(sample);
+      };
+
+      requestAnimationFrame(sample);
+      (window as any).__gchatSendProbe = {
+        state,
+        stop: (): void => {
+          state.stopped = true;
+          field.removeEventListener('blur', blur);
+        },
+      };
+    });
+    let release = (): void => {};
+    const held = new Promise<void>((resolve): void => {
+      release = resolve;
+    });
+    let requested = false;
+    const pattern = '**/api/dialogs/*/messages';
+
+    await page.route(pattern, async (route): Promise<void> => {
+      if (route.request().method() === 'POST') {
+        requested = true;
+        await held;
+      }
+
+      await route.continue();
+    });
+    const response = page.waitForResponse(
+      (value): boolean =>
+        value.request().method() === 'POST' &&
+        /\/api\/dialogs\/[^/]+\/messages$/.test(new URL(value.url()).pathname),
+    );
+
+    try {
+      if (scenario.click) {
+        await page.getByRole('button', { name: 'Отправить сообщение', exact: true }).click();
+      } else {
+        await input.press('Shift+Enter');
+      }
+
+      await expect.poll((): boolean => requested).toBe(true);
+      await expect(input).toBeFocused();
+      await expect(input).toHaveAttribute('readonly', '');
+      await expect
+        .poll(async (): Promise<number> =>
+          feed.evaluate(
+            (element): number => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        )
+        .toBeLessThanOrEqual(1);
+      const { start, frames, blurs } = await page.evaluate(
+        (): { start: number; frames: number[]; blurs: number } =>
+          (window as any).__gchatSendProbe.state,
+      );
+
+      expect(blurs).toBe(0);
+
+      if (!scenario.reduced) {
+        const end = await feed.evaluate((element): number => element.scrollTop);
+
+        expect(
+          new Set(
+            frames
+              .filter((offset): boolean => offset > start + 2 && offset < end - 2)
+              .map((offset): number => Math.round(offset)),
+          ).size,
+        ).toBeGreaterThan(2);
+      }
+
+      if (scenario.reduced) {
+        await page.getByRole('link', { name: 'Назад к диалогам', exact: true }).focus();
+      }
+
+      release();
+      const saved = await response;
+      const { status } = saved;
+
+      expect(status.bind(saved)()).toBe(201);
+      await expect(input).not.toHaveAttribute('readonly', '');
+      await expect(input).toHaveValue('');
+
+      if (scenario.reduced) {
+        await expect(
+          page.getByRole('link', { name: 'Назад к диалогам', exact: true }),
+        ).toBeFocused();
+      } else {
+        await expect(input).toBeFocused();
+      }
+
+      await expect
+        .poll(async (): Promise<number> =>
+          feed.evaluate(
+            (element): number => element.scrollHeight - element.clientHeight - element.scrollTop,
+          ),
+        )
+        .toBeLessThanOrEqual(1);
+    } finally {
+      release();
+
+      if (requested) {
+        try {
+          await response;
+        } catch {
+          /* The page may already have closed after a test failure. */
+        }
+      }
+
+      await page.unroute(pattern);
+      await page.evaluate((): void => (window as any).__gchatSendProbe.stop());
+    }
+  }
 });

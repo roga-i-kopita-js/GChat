@@ -151,7 +151,7 @@ import GChatCore
 
     private func handleGetCapabilities(_ call: CAPPluginCall) {
         traceHarness("capabilities")
-        call.resolve(["bridgeVersion": 1, "platform": "ios", "httpVersion": 1, "navigationVersion": 1, "mediaVersion": 1, "nativeAuth": true, "nativeCalls": true, "webCallControls": true, "nativeWebSocket": true, "dialogStorageVersion": 1, "dialogNotificationsVersion": 1])
+        call.resolve(["bridgeVersion": 1, "platform": "ios", "httpVersion": 1, "navigationVersion": 1, "mediaVersion": 1, "nativeAuth": true, "nativeCalls": true, "webCallControls": true, "nativeWebSocket": true, "dialogStorageVersion": 2, "dialogNotificationsVersion": 1])
     }
 
     @objc nonisolated func webReady(_ call: CAPPluginCall) {

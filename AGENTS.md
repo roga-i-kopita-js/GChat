@@ -4,6 +4,7 @@ GChat — самостоятельная звонилка: backend, нативн
 
 ## Перед работой
 
+- Текущий приоритет — backend и Web/PWA. iOS временно deprecated; границы и правила проверок закреплены в [требованиях продукта](docs/product/requirements.md#текущий-приоритет-платформ).
 - Начните с [карты документации](docs/README.md) и прочитайте только документы нужной задачи.
 - Веб-клиент описан в [README](applications/web/README.md); локальные правила — в [AGENTS.md](applications/web/AGENTS.md).
 - Для backend действуют [локальные инструкции](applications/backend/AGENTS.md); iOS описан в [README](applications/ios/README.md).

@@ -1,5 +1,7 @@
 # GChat iOS
 
+**Временно deprecated с 2026-11-14.** По [решению о приоритетах платформ](../../docs/product/requirements.md#текущий-приоритет-платформ) разработка и приёмка iOS отложены; текущий приоритет — backend и Web/PWA. Сборка iOS не блокирует их коммиты, обязательность системных E2E сохраняется. Описание ниже фиксирует сохранённую реализацию и прежние ограничения.
+
 Нативная iOS-оболочка общего Web-клиента по [D008](../../docs/architecture/decisions/D008-capacitor-bridge.md). Минимальная версия — iOS 16.0. Xcode-проект создан на основе официального SPM-шаблона Capacitor 8.6.0, зависимость закреплена в [Package.swift](App/CapApp-SPM/Package.swift). Для этой версии Capacitor требуется [Xcode 26+](https://capacitorjs.com/docs/getting-started/environment-setup).
 
 ## Что реализовано
@@ -19,7 +21,7 @@
 
 ## Диалоги и обычные уведомления
 
-Добавлены системная SQLite без сторонних библиотек, контроль поколений/CAS, очистка при завершении native-сессии и storage bridge v1 по [bootstrap](../../docs/web/bootstrap.md). Control metadata живёт отдельно в UserDefaults; отказ SQLite не препятствует сохранению постоянного выбора IndexedDB WebView. Незавершённая физическая очистка остаётся отдельным состоянием.
+Добавлены системная SQLite без сторонних библиотек, контроль поколений/CAS, очистка при завершении native-сессии и storage bridge v2 с миграцией существующего кеша по [контракту редактирования](../../docs/backend/modules/dialogs/message-editing.md) и [bootstrap](../../docs/web/bootstrap.md). Control metadata живёт отдельно в UserDefaults; отказ SQLite не препятствует сохранению постоянного выбора IndexedDB WebView. Незавершённая физическая очистка остаётся отдельным состоянием.
 
 Обычный APNs-токен регистрируется NativeCore через device.apns_token после binding; Web получает только безопасный intent диалога. Настройки push.enable/disable используют обычные уведомления, не VoIP. UI/bridge, XCTest и Simulator-сборка не заменяют приёмку доставки и работы на физическом iPhone.
 

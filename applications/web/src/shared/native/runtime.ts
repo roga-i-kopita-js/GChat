@@ -42,13 +42,13 @@ const capabilitiesSchema = z.strictObject({
   webCallControls: z.literal(true).optional(),
   nativeWebSocket: z.boolean().optional(),
   mediaVersion: z.literal(1).optional(),
-  dialogStorageVersion: z.literal(1).optional(),
+  dialogStorageVersion: z.union([z.literal(1), z.literal(2)]).optional(),
   dialogNotificationsVersion: z.literal(1).optional(),
 });
 
 export interface NativeState {
   mediaVersion?: 1;
-  dialogStorageVersion?: 1;
+  dialogStorageVersion?: 1 | 2;
   dialogNotificationsVersion?: 1;
   dialogIntent?: { intentId: string; dialogId: string };
   nativeCalls: boolean | null;

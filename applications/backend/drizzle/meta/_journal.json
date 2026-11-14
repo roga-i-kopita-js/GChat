@@ -64,6 +64,13 @@
       "when": 1794433477529,
       "tag": "0008_call_history",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794638916599,
+      "tag": "0009_message_editing",
+      "breakpoints": true
     }
   ]
 }
