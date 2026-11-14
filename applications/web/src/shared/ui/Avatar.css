@@ -1,0 +1,38 @@
+.avatar {
+  --avatar-top: var(--ui-avatar-sky-top);
+  --avatar-bottom: var(--ui-avatar-sky-bottom);
+  --avatar-ink: var(--ui-avatar-sky-ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--ui-avatar-size);
+  height: var(--ui-avatar-size);
+  border-radius: var(--ui-radius-full);
+  background: linear-gradient(var(--ui-avatar-angle), var(--avatar-top), var(--avatar-bottom));
+  color: var(--avatar-ink);
+  font-size: var(--ui-avatar-font-size);
+  font-weight: var(--ui-avatar-font-weight);
+  letter-spacing: var(--ui-tracking-wide);
+}
+.avatar[data-tone='ice'] {
+  --avatar-top: var(--ui-avatar-ice-top);
+  --avatar-bottom: var(--ui-avatar-ice-bottom);
+  --avatar-ink: var(--ui-avatar-ice-ink);
+}
+.avatar[data-tone='mist'] {
+  --avatar-top: var(--ui-avatar-mist-top);
+  --avatar-bottom: var(--ui-avatar-mist-bottom);
+  --avatar-ink: var(--ui-avatar-mist-ink);
+}
+.avatar[data-tone='steel'] {
+  --avatar-top: var(--ui-avatar-steel-top);
+  --avatar-bottom: var(--ui-avatar-steel-bottom);
+  --avatar-ink: var(--ui-avatar-steel-ink);
+}
+.avatar.large {
+  width: var(--ui-size-100);
+  height: var(--ui-size-100);
+  font-size: var(--ui-font-size-32);
+  letter-spacing: 0;
+}

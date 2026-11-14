@@ -3,6 +3,7 @@ import './Modal.css';
 import { X } from 'lucide-react';
 import type { JSX, ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 import { Button } from './Button';
 import { Text } from './Text';
@@ -22,7 +23,7 @@ export function Modal({
     ref.current?.showModal();
   }, []);
 
-  return (
+  return createPortal(
     <dialog
       ref={ref}
       onCancel={(event): void => {
@@ -45,6 +46,7 @@ export function Modal({
         {title}
       </Text>
       {children}
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }

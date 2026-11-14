@@ -1,18 +1,16 @@
 import './settings.css';
 
 import { ArrowLeft, ChevronRight, LoaderCircle, type LucideIcon } from 'lucide-react';
-import type { CSSProperties, JSX, ReactNode } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { Link } from 'react-router';
 
 import { deviceErrorMessage } from '../../shared/device/messages';
-import { Button, Card, ContentColumn, Text } from '../../shared/ui';
+import { Button, Card, ContentColumn, PageHeader, Text } from '../../shared/ui';
 import type { SettingsDevice } from './useSettingsDevice';
 
-function Badge({ icon: Icon, color }: { icon: LucideIcon; color: string }): JSX.Element {
-  const style: CSSProperties = { backgroundColor: color };
-
+function Badge({ icon: Icon }: { icon: LucideIcon }): JSX.Element {
   return (
-    <span className="settings-icon" style={style}>
+    <span className="settings-icon">
       <Icon size={19} aria-hidden="true" />
     </span>
   );
@@ -20,14 +18,12 @@ function Badge({ icon: Icon, color }: { icon: LucideIcon; color: string }): JSX.
 
 export function Row({
   icon,
-  color,
   title,
   value,
   to,
   children,
 }: {
   icon: LucideIcon;
-  color: string;
   title: string;
   value?: string;
   to?: string;
@@ -35,7 +31,7 @@ export function Row({
 }): JSX.Element {
   const body = (
     <>
-      <Badge icon={icon} color={color} />
+      <Badge icon={icon} />
       <span className="settings-row-copy">
         <Text variant="label">{title}</Text>
         {children}
@@ -86,6 +82,11 @@ export function SettingsScreen({
 }): JSX.Element {
   return (
     <section className="settings-page" aria-label={title}>
+      {!parent && (
+        <PageHeader variant="section">
+          <h1>{title}</h1>
+        </PageHeader>
+      )}
       <ContentColumn>
         {parent && (
           <Link className="settings-back" to={parent} aria-label="Назад">

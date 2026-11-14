@@ -10,7 +10,14 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import type { JSX } from 'react';
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  ViewTransition,
+} from 'react';
 import { Link, Outlet, useLoaderData, useLocation, useNavigate, useParams } from 'react-router';
 
 import { deviceErrorMessage } from '../../shared/device/messages';
@@ -30,6 +37,10 @@ export function CallsPage(): JSX.Element {
   const { call, incoming, ongoing, enabled, mobile, setMobile, setPerson } = useCalls();
   const { callId } = useParams();
   const location = useLocation();
+  const [committedList, setCommittedList] = useState({ filter, pathname: location.pathname });
+  const switchingFilter =
+    committedList.pathname === location.pathname && committedList.filter !== filter;
+  const filterAnimation = filter === 'missed' ? 'route-slide-forward' : 'route-slide-backward';
   const navigate = useNavigate();
   const view = snapshot.views[filter];
   const scroll = useRef<HTMLDivElement>(null);
@@ -46,6 +57,9 @@ export function CallsPage(): JSX.Element {
   const valid = sid === user?.sid && !snapshot.stopped;
   const back = '/calls' + (filter === 'missed' ? '?filter=missed' : '');
 
+  useEffect((): void => {
+    setCommittedList({ filter, pathname: location.pathname });
+  }, [filter, location.pathname]);
   useEffect((): (() => void) => model.visible(filter), [model, filter]);
   useEffect((): (() => void) => {
     attempt.current++;
@@ -196,19 +210,19 @@ export function CallsPage(): JSX.Element {
         </p>
       )}
       <section className="history-panel" aria-label="История звонков">
-        <PageHeader className="history-header">
+        <PageHeader variant="section" className="history-header">
           <h1>Звонки</h1>
         </PageHeader>
         <div className="history-filter" role="group" aria-label="Фильтр истории звонков">
           <Link
-            to="/calls"
+            to={location.pathname}
             aria-current={filter === 'all' ? 'page' : undefined}
             className={'history-filter-button' + (filter === 'all' ? ' selected' : '')}
           >
             Все
           </Link>
           <Link
-            to="/calls?filter=missed"
+            to={location.pathname + '?filter=missed'}
             aria-current={filter === 'missed' ? 'page' : undefined}
             className={'history-filter-button' + (filter === 'missed' ? ' selected' : '')}
           >
@@ -224,62 +238,64 @@ export function CallsPage(): JSX.Element {
             <Phone size={18} /> Вернуться к звонку
           </Button>
         )}
-        <div
-          className="history-list"
-          ref={scroll}
-          onScroll={(event): void => {
-            if (event.currentTarget.clientHeight > 0) {
-              model.scroll[filter] = event.currentTarget.scrollTop;
-            }
-          }}
-        >
-          {(!valid || (!view.loaded && view.loading)) && (
-            <div role="status" aria-label="Загрузка истории звонков">
-              {[0, 1, 2, 3].map((id): JSX.Element => (
-                <div className="skeleton-row" key={id}>
-                  <Skeleton variant="circular" width="var(--ui-control-height)" />
-                  <div className="skeleton-copy">
-                    <Skeleton width="60%" />
-                    <Skeleton width="40%" />
+        <ViewTransition default="none" update={switchingFilter ? filterAnimation : 'none'}>
+          <div
+            className="history-list"
+            ref={scroll}
+            onScroll={(event): void => {
+              if (event.currentTarget.clientHeight > 0) {
+                model.scroll[filter] = event.currentTarget.scrollTop;
+              }
+            }}
+          >
+            {(!valid || (!view.loaded && view.loading)) && (
+              <div role="status" aria-label="Загрузка истории звонков">
+                {[0, 1, 2, 3].map((id): JSX.Element => (
+                  <div className="skeleton-row" key={id}>
+                    <Skeleton variant="circular" width="var(--ui-control-height)" />
+                    <div className="skeleton-copy">
+                      <Skeleton width="60%" />
+                      <Skeleton width="40%" />
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {valid && view.error && (
-            <div className="history-error" role="alert">
-              <p>{view.error}</p>
-              <Button
-                variant="secondary"
-                onClick={(): void => {
-                  void model.head(filter);
-                }}
-              >
-                <RefreshCw size={16} /> Повторить
-              </Button>
-            </div>
-          )}
-          {valid && view.loaded && !view.ids.length && (
-            <div className="list-empty">
-              <Phone size={30} />
-              <h3>{filter === 'missed' ? 'Пропущенных звонков нет' : 'Звонков пока нет'}</h3>
-            </div>
-          )}
-          {rows}
-          {valid && view.nextCursor && (
-            <div className="history-more">
-              <Button
-                variant="secondary"
-                disabled={view.loading || view.loadingMore}
-                onClick={(): void => {
-                  void model.more(filter);
-                }}
-              >
-                {view.loadingMore ? 'Загружаем…' : 'Ещё звонки'}
-              </Button>
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+            {valid && view.error && (
+              <div className="history-error" role="alert">
+                <p>{view.error}</p>
+                <Button
+                  variant="secondary"
+                  onClick={(): void => {
+                    void model.head(filter);
+                  }}
+                >
+                  <RefreshCw size={16} /> Повторить
+                </Button>
+              </div>
+            )}
+            {valid && view.loaded && !view.ids.length && (
+              <div className="list-empty">
+                <Phone size={30} />
+                <h3>{filter === 'missed' ? 'Пропущенных звонков нет' : 'Звонков пока нет'}</h3>
+              </div>
+            )}
+            {rows}
+            {valid && view.nextCursor && (
+              <div className="history-more">
+                <Button
+                  variant="secondary"
+                  disabled={view.loading || view.loadingMore}
+                  onClick={(): void => {
+                    void model.more(filter);
+                  }}
+                >
+                  {view.loadingMore ? 'Загружаем…' : 'Ещё звонки'}
+                </Button>
+              </div>
+            )}
+          </div>
+        </ViewTransition>
       </section>
       {detailPanel && <div className="history-detail-panel">{detailPanel}</div>}
       {confirm && valid && !ongoing && (

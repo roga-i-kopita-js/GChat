@@ -5,7 +5,7 @@
   width: 100%;
   min-width: 0;
   color: var(--ui-text);
-  background: var(--ui-canvas);
+  background: transparent;
 }
 .settings-group {
   margin: 0 0 var(--ui-space-5);
@@ -15,7 +15,7 @@
   font-weight: var(--ui-weight-regular);
   text-transform: uppercase;
   letter-spacing: var(--ui-tracking-wide);
-  color: #65656b;
+  color: var(--ui-muted);
   margin: 0 var(--ui-space-4) var(--ui-space-1-5);
 }
 .settings-row {
@@ -34,11 +34,11 @@
   left: var(--ui-size-56);
   right: 0;
   height: var(--ui-size-1);
-  background: #e5e5ea;
+  background: var(--ui-border);
 }
 .settings-row[href]:active,
 .settings-action:active {
-  background: #e9e9ef;
+  background: var(--ui-secondary-surface);
 }
 .settings-icon {
   flex: 0 0 var(--ui-size-28);
@@ -48,7 +48,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--ui-text);
 }
 .settings-row-copy {
   display: flex;
@@ -61,34 +61,34 @@
 }
 .settings-row-copy small {
   font-size: var(--ui-font-size-12);
-  color: #65656b;
+  color: var(--ui-muted);
   padding-top: var(--ui-space-0-5);
 }
 .settings-value {
-  color: #65656b;
+  color: var(--ui-muted);
   font-size: var(--ui-font-body);
   max-width: 42%;
   overflow-wrap: anywhere;
   text-align: right;
 }
 .settings-chevron {
-  color: #b6b6bd;
+  color: var(--ui-muted);
   flex: 0 0 var(--ui-size-17);
 }
 .settings-note {
   font-size: var(--ui-font-caption);
   line-height: var(--ui-leading-relaxed);
-  color: #65656b;
+  color: var(--ui-muted);
   margin: calc(-1 * var(--ui-space-2-5)) var(--ui-space-4) var(--ui-space-5);
 }
 .settings-intro {
   margin: var(--ui-space-0-5) var(--ui-space-4) var(--ui-space-5);
-  color: #65656b;
+  color: var(--ui-muted);
   font-size: var(--ui-font-body);
   line-height: var(--ui-leading-relaxed);
 }
 .settings-action {
-  color: #007aff;
+  color: var(--ui-accent);
   text-align: left;
   min-height: var(--ui-size-48);
   padding: var(--ui-space-3) var(--ui-space-4);
@@ -99,36 +99,43 @@
   justify-content: flex-start;
   border-radius: 0;
   font-weight: var(--ui-weight-regular);
-  background: #fff;
+  background: var(--ui-surface);
   font-size: var(--ui-font-label);
 }
 .settings-action + .settings-action {
-  border-top: var(--ui-size-1) solid #e5e5ea;
+  border-top: var(--ui-size-1) solid var(--ui-border);
 }
 .settings-danger {
-  color: #e53935;
+  color: var(--ui-danger);
+}
+.settings-page > .ui-page-header {
+  width: 100%;
+  max-width: var(--ui-column-width);
+  margin-inline: auto;
 }
 .settings-profile {
   display: flex;
   align-items: center;
-  flex-direction: column;
-  padding: var(--ui-space-4) var(--ui-space-3) var(--ui-space-7);
-  gap: var(--ui-space-1-5);
+  gap: var(--ui-space-3);
+  padding: var(--ui-list-row-padding) var(--ui-space-1) var(--ui-space-6);
 }
-.settings-profile .avatar {
-  width: var(--ui-size-76);
-  height: var(--ui-size-76);
-  font-size: var(--ui-font-size-28);
-  margin-bottom: var(--ui-space-1-5);
+.settings-profile > div {
+  flex: 1;
+  min-width: 0;
 }
 .settings-profile h2 {
-  font-size: var(--ui-font-title);
-  text-align: center;
+  font-size: var(--ui-list-title-size);
+  font-weight: var(--ui-weight-semibold);
   overflow-wrap: anywhere;
 }
 .settings-profile p {
-  color: #65656b;
+  margin-top: var(--ui-space-1);
+  color: var(--ui-muted);
   font-size: var(--ui-font-body);
+}
+.settings-surface.ui-card {
+  background: transparent;
+  border-radius: var(--ui-radius);
 }
 .settings-test-status {
   padding: var(--ui-space-3) var(--ui-space-4);
@@ -136,12 +143,12 @@
 }
 .settings-answers {
   display: flex;
-  border-top: var(--ui-size-1) solid #e5e5ea;
+  border-top: var(--ui-size-1) solid var(--ui-border);
 }
 .settings-answers button {
   min-height: var(--ui-size-48);
   flex: 1;
-  color: #007aff;
+  color: var(--ui-accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -149,23 +156,23 @@
   background: transparent;
 }
 .settings-answers button + button {
-  border-left: var(--ui-size-1) solid #e5e5ea;
+  border-left: var(--ui-size-1) solid var(--ui-border);
 }
 .settings-error {
-  background: #fff;
+  background: var(--ui-surface);
   border-radius: var(--ui-radius-12);
   padding: var(--ui-space-4);
   font-size: var(--ui-font-body);
   margin: var(--ui-space-4) 0;
 }
 .settings-error p {
-  color: #b42b30;
+  color: var(--ui-danger);
 }
 .settings-error button,
 .settings-file-actions button {
   min-height: var(--ui-control-height);
   background: transparent;
-  color: #007aff;
+  color: var(--ui-accent);
   text-align: left;
   padding: var(--ui-space-2) 0;
 }
@@ -176,7 +183,7 @@
   padding: 0 var(--ui-space-4) 0 var(--ui-space-14);
 }
 .settings-spinner {
-  animation: settings-spin 1s linear infinite;
+  animation: settings-spin var(--ui-duration-spinner) linear infinite;
 }
 @keyframes settings-spin {
   to {

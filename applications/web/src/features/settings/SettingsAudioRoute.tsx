@@ -21,12 +21,7 @@ export function SettingsAudioRoute(): JSX.Element {
     <SettingsScreen parent="/settings/general" title={titles.audio} device={device}>
       <p className="settings-intro">{descriptions.audio}</p>
       <Group>
-        <Row
-          icon={Headphones}
-          color="#ff9f0a"
-          title="Аудиовыход"
-          value={audio.output?.name ?? 'Системный выход'}
-        />
+        <Row icon={Headphones} title="Аудиовыход" value={audio.output?.name ?? 'Системный выход'} />
         {support.pick &&
           action('Выбрать аудиовыход', (): void => {
             void run((): ReturnType<typeof device.api.audio.outputs.pick> =>

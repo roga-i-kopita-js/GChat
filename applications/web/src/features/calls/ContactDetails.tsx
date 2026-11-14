@@ -27,7 +27,7 @@ export function ContactDetails({
     <>
       <div className="person-preview">
         <span className="eyebrow">ГОЛОСОВОЙ ЗВОНОК</span>
-        <Avatar name={person.display_name} large />
+        <Avatar name={person.display_name} seed={person.id} large />
         <h2>{person.display_name}</h2>
         <p>
           Хороший разговор начинается
@@ -48,7 +48,7 @@ export function ContactDetails({
       {confirm && person && (
         <Modal title="Позвонить?" close={(): void => setConfirm(false)}>
           <div className="confirm-person">
-            <Avatar name={person.display_name} />
+            <Avatar name={person.display_name} seed={person.id} />
             <strong>{person.display_name}</strong>
           </div>
           <p>Для звонка понадобится доступ к микрофону.</p>

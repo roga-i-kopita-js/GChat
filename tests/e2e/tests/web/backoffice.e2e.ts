@@ -19,7 +19,8 @@ test('layout has no top bar and nested settings keep their back navigation', asy
   const settings = page.getByRole('region', { name: 'Настройки', exact: true });
 
   await expect(settings).toBeVisible();
-  await expect(settings.locator(':scope > header')).toHaveCount(0);
+  await expect(settings.locator(':scope > header')).toHaveCount(1);
+  await expect(settings.getByRole('heading', { name: 'Настройки', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'Основные', exact: true }).click();
   const general = page.getByRole('region', { name: 'Основные', exact: true });
 
@@ -162,8 +163,22 @@ test('server search, filters and pagination are sent explicitly', async ({
 test('creates an account with group suggestions and shows credentials only once', async ({
   page,
 }): Promise<void> => {
+  await page.addInitScript(() => {
+    const start = document.startViewTransition.bind(document);
+
+    document.startViewTransition = (...args: Parameters<Document['startViewTransition']>) => {
+      const root = document.documentElement;
+
+      root.dataset.routeTransitions = String(Number(root.dataset.routeTransitions ?? 0) + 1);
+
+      return start(...args);
+    };
+  });
   await setup(page);
   await openAdmin(page);
+  const routeTransitions = await page.evaluate(
+    () => document.documentElement.dataset.routeTransitions,
+  );
   let sent: Record<string, unknown> = {};
 
   await page.route('**/api/admin/users', async (route): Promise<void> => {
@@ -173,6 +188,8 @@ test('creates an account with group suggestions and shows credentials only once'
   await page.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Создать аккаунт' });
 
+  await expect(page.locator('.ui-page-surface dialog')).toHaveCount(0);
+  await expect(dialog.locator('form')).toHaveAttribute('method', 'post');
   await dialog.getByLabel('Имя', { exact: true }).fill('Анна');
   await dialog.getByLabel('Группа', { exact: true }).fill('команда');
   await expect(
@@ -182,11 +199,15 @@ test('creates an account with group suggestions and shows credentials only once'
   await expect(
     dialog.getByText('Если группы с этим названием нет, она будет создана вместе с аккаунтом.'),
   ).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.routeTransitions)).toBe(
+    routeTransitions,
+  );
   const generated = await dialog.getByLabel('Новый пароль').inputValue();
 
   expect(generated).toMatch(/^[A-Za-z0-9_-]{24}$/);
   await dialog.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Данные для входа' })).toContainText(generated);
+  expect(page.url()).not.toContain('password=');
   expect(sent).toEqual({ display_name: 'Анна', group_name: 'новая', password: generated });
   expect(await page.evaluate((): string => JSON.stringify(localStorage))).not.toContain(generated);
   await page.getByRole('button', { name: 'Готово', exact: true }).click();

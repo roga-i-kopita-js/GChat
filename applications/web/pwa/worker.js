@@ -12,32 +12,48 @@ self.addEventListener('install', (event) => {
       try {
         const results = await Promise.allSettled(
           [...assetUrls].map(async (url) => {
-            const response = await fetch(url, { cache: 'reload', credentials: 'omit' });
+            try {
+              const response = await fetch(url, { cache: 'reload', credentials: 'omit' });
 
-            const {
-              ok: responseOk,
-              redirected: responseRedirected,
-              headers: responseHeaders,
-            } = response ?? {};
+              const {
+                ok: responseOk,
+                status: responseStatus,
+                redirected: responseRedirected,
+                headers: responseHeaders,
+              } = response;
 
-            if (
-              !responseOk ||
-              responseRedirected ||
-              responseHeaders.get('content-type')?.includes('text/html')
-            ) {
-              throw new Error('Incomplete frontend deployment');
+              if (!responseOk) {
+                throw new Error(`HTTP ${responseStatus}`);
+              }
+
+              if (responseRedirected) {
+                throw new Error('Unexpected redirect');
+              }
+
+              if (responseHeaders.get('content-type')?.includes('text/html')) {
+                throw new Error('HTML returned instead of asset');
+              }
+
+              const { put: cachePut } = cache;
+
+              await cachePut.bind(cache)(url, response);
+            } catch (cause) {
+              const reason = cause instanceof Error ? cause.message : String(cause);
+
+              throw new Error(
+                `Incomplete frontend deployment: ${new URL(url).pathname} (${reason})`,
+                {
+                  cause,
+                },
+              );
             }
-
-            const { put: cachePut } = cache;
-
-            await cachePut.bind(cache)(url, response);
           }),
         );
 
-        const { some: resultsSome } = results;
-
-        if (resultsSome.bind(results)((result) => result.status === 'rejected')) {
-          throw new Error('Incomplete frontend deployment');
+        for (const result of results) {
+          if (result.status === 'rejected') {
+            throw result.reason;
+          }
         }
 
         const { put: cachePut2 } = cache;

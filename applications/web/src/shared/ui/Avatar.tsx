@@ -1,4 +1,5 @@
 import './tokens.css';
+import './Avatar.css';
 
 import type { JSX } from 'react';
 
@@ -11,13 +12,13 @@ export function Avatar({
   large?: boolean;
   seed?: string;
 }): JSX.Element {
-  const paletteSize = 5;
-  const index = [...seed].reduce((sum, char): number => sum + char.charCodeAt(0), 0) % paletteSize;
+  const tones = ['sky', 'ice', 'mist', 'steel'];
+  const index = [...seed].reduce((sum, char): number => sum + char.charCodeAt(0), 0) % tones.length;
 
   return (
     <span
       className={'avatar' + (large ? ' large' : '')}
-      style={{ background: `var(--ui-avatar-${index + 1})` }}
+      data-tone={tones[index]}
       aria-hidden="true"
     >
       {name

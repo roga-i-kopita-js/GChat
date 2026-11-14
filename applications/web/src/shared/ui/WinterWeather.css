@@ -1,0 +1,71 @@
+.winter-weather {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ui-weather-layer);
+  overflow: clip;
+  pointer-events: none;
+  color: var(--ui-weather-color);
+  opacity: var(--ui-weather-opacity);
+  mask-image: linear-gradient(
+    transparent,
+    black var(--ui-weather-edge),
+    black calc(100% - var(--ui-weather-edge)),
+    transparent
+  );
+}
+.winter-flake {
+  --weather-count: clamp(0, calc(var(--ui-snow-count) - var(--weather-index)), 1);
+  position: absolute;
+  inset-block: 0;
+  left: var(--weather-x);
+  width: var(--weather-size);
+  opacity: calc(var(--weather-opacity) * var(--weather-count));
+  animation: winter-fall var(--weather-duration) linear var(--weather-delay) infinite;
+}
+.winter-flake-drift {
+  display: block;
+  animation: winter-sway var(--ui-snow-sway-duration) ease-in-out var(--weather-delay) infinite;
+}
+.winter-flake svg {
+  display: block;
+  width: var(--weather-size);
+  height: var(--weather-size);
+  animation: winter-turn var(--weather-duration) linear var(--weather-delay) infinite;
+}
+.winter-weather[data-paused='true'] .winter-flake,
+.winter-weather[data-paused='true'] .winter-flake-drift,
+.winter-weather[data-paused='true'] .winter-flake svg {
+  animation-play-state: paused;
+}
+@keyframes winter-fall {
+  from {
+    transform: translateY(calc(-1 * var(--weather-size)));
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes winter-turn {
+  to {
+    transform: rotate(var(--ui-snow-rotation));
+  }
+}
+@keyframes winter-sway {
+  0%,
+  100% {
+    transform: translateX(var(--ui-snow-sway-left));
+  }
+  45% {
+    transform: translateX(var(--ui-snow-sway-right));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .winter-flake {
+    inset-block-start: var(--weather-rest);
+    animation: none;
+  }
+  .winter-flake-drift,
+  .winter-flake svg {
+    animation: none;
+  }
+}

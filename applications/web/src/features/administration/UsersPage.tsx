@@ -14,7 +14,7 @@ import {
   Search,
 } from 'lucide-react';
 import type { FormEvent, JSX } from 'react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import {
   Link,
   Outlet,
@@ -31,7 +31,7 @@ import {
 } from 'react-router';
 
 import { useNavigationProtection } from '../../shared/navigation-protection';
-import { Avatar, Modal, Select } from '../../shared/ui';
+import { Avatar, Modal, PageHeader, Select } from '../../shared/ui';
 import type { Credentials } from './CredentialsDialog';
 import { generatePassword } from './policy';
 import type { AdminData, AdminResult, AdminUsersData } from './routes';
@@ -210,7 +210,7 @@ function AccountOperation({
     >
       {user && (
         <div className="confirm-person">
-          <Avatar name={user.display_name} />
+          <Avatar name={user.display_name} seed={user.id} />
           <div>
             <strong>{user.display_name}</strong>
             <p>@{user.login}</p>
@@ -219,6 +219,7 @@ function AccountOperation({
       )}
       <form
         className="admin-form"
+        method="post"
         ref={formRef}
         onChange={(): void => {
           discarded.current = false;
@@ -403,7 +404,7 @@ export function UsersPage({
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect((): (() => void) => (): void => clearTimeout(searchTimer.current), []);
-  useEffect((): void => {
+  useLayoutEffect((): void => {
     if (navigationType === 'POP' || editRevision.current === navigationRevision.current) {
       setSearchInput(q);
       clearTimeout(searchTimer.current);
@@ -504,7 +505,7 @@ export function UsersPage({
               setNotice('');
             }}
           >
-            <Avatar name={item.display_name} />
+            <Avatar name={item.display_name} seed={item.id} />
             <span className="admin-row-info">
               <strong>{item.display_name}</strong>
               <small>
@@ -549,6 +550,9 @@ export function UsersPage({
 
   return (
     <section className="admin-workspace" aria-label="Управление аккаунтами">
+      <PageHeader variant="section">
+        <h1>Администрирование</h1>
+      </PageHeader>
       <div className="admin-page-actions">
         <button
           className="primary"
@@ -688,7 +692,7 @@ export function UserDetailRoute(): JSX.Element {
   } else {
     detailContent = (
       <>
-        <Avatar name={user.display_name} large />
+        <Avatar name={user.display_name} seed={user.id} large />
         <h2>{user.display_name}</h2>
         <p>@{user.login}</p>
         <span className={'admin-status ' + user.status}>

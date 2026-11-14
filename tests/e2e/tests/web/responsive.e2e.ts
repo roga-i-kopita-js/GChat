@@ -382,6 +382,7 @@ for (const viewport of [
       style.setProperty('--ui-space-3', '16px');
       style.setProperty('--ui-page-gutter', '16px');
       style.setProperty('--ui-font-heading', '1.5rem');
+      style.setProperty('--ui-section-font-size', '1.5rem');
       style.setProperty('--ui-control-height', '52px');
       style.setProperty('--ui-radius', '16px');
     });
@@ -389,7 +390,11 @@ for (const viewport of [
       'padding-left',
       '16px',
     );
-    await expect(page.locator('.settings-page > .ui-page-header')).toHaveCount(0);
+    await expect(page.locator('.settings-page > .ui-page-header')).toHaveCount(1);
+    await expect(page.locator('.settings-page > .ui-page-header h1')).toHaveCSS(
+      'font-size',
+      '24px',
+    );
     const radii = await page
       .locator('.ui-card:not(.ui-page-surface)')
       .evaluateAll((elements): string[] =>
@@ -434,16 +439,24 @@ for (const viewport of [
       await expect(surface).toBeVisible();
       await expect(page.getByRole('banner', { name: 'Панель приложения' })).toHaveCount(0);
       await expect(page.getByRole('link', { name: /^Профиль:/ })).toHaveCount(0);
-      await expect(page.locator('.app-shell')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
-      await expect(surface).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+      await expect(page.locator('.app-shell')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(page.locator('html')).toHaveCSS(
+        'background-image',
+        /radial-gradient.*linear-gradient/,
+      );
+      await expect(surface).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(content.locator('.ui-page-header-section')).toHaveCSS(
+        'background-color',
+        'rgba(0, 0, 0, 0)',
+      );
       await expect(surface).toHaveCSS('border-radius', '0px');
       await expect(surface).toHaveCSS('border-top-width', '0px');
-      await expect(nav).toHaveCSS('background-color', 'rgb(255, 255, 255)');
+      await expect(nav).toHaveCSS('background-color', 'rgb(244, 249, 252)');
 
       if (section === 'Настройки') {
         await expect(page.locator('.settings-page')).toHaveCSS(
           'background-color',
-          'rgb(255, 255, 255)',
+          'rgba(0, 0, 0, 0)',
         );
       }
 

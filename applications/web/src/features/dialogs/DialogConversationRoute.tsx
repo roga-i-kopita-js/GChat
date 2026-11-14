@@ -15,10 +15,11 @@ import { Link, useLoaderData, useNavigate } from 'react-router';
 import { VList, type VListHandle } from 'virtua';
 
 import type { DeviceCore } from '../../shared/device';
+import { deviceErrorMessage } from '../../shared/device/messages';
 import { DialogModelEvent } from '../../shared/dialogs/live-models';
 import { type DialogMessage, isStickerId, type PendingMessage } from '../../shared/dialogs/model';
 import { dialogError, type DialogRuntime, type DialogView } from '../../shared/dialogs/runtime';
-import { Avatar, Button, PageHeader, Skeleton, Text } from '../../shared/ui';
+import { Avatar, Button, Modal, PageHeader, Skeleton, Text } from '../../shared/ui';
 import { useCalls } from '../calls/CallsProvider';
 import { Composer } from './Composer';
 import { time } from './format';
@@ -51,7 +52,7 @@ function Room({
   device: DeviceCore;
 }): JSX.Element {
   const navigate = useNavigate();
-  const { ongoing, setPerson, setMobile } = useCalls();
+  const { ongoing, enabled, setPerson, setMobile } = useCalls();
   const model = useMemo(
     (): ReturnType<DialogRuntime['conversationModel']> => runtime.conversationModel(id),
     [runtime, id],
@@ -63,6 +64,23 @@ function Room({
   );
   const result = useSyncExternalStore(subscribe, model.getSnapshot);
   const [error, setError] = useState('');
+  const [confirmCall, setConfirmCall] = useState(false);
+  const [preparingCall, setPreparingCall] = useState(false);
+  const calling = useRef(false);
+  const mounted = useRef(false);
+
+  useEffect((): (() => void) => {
+    mounted.current = true;
+
+    return (): void => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect((): void => {
+    if (ongoing) {
+      setConfirmCall(false);
+    }
+  }, [ongoing]);
 
   useEffect((): (() => void) => {
     runtime.select(id, false);
@@ -71,6 +89,39 @@ function Room({
   }, [runtime, id]);
   const data = result.view;
   const loadingPeer = !data?.record.dialog && result.status !== 'error' && !data?.error;
+
+  async function dial(): Promise<void> {
+    const dialog = data?.record.dialog;
+
+    if (!dialog || !enabled || ongoing || calling.current || runtime.signal.aborted) {
+      return;
+    }
+
+    calling.current = true;
+    setPreparingCall(true);
+    setConfirmCall(false);
+    setError('');
+    setPerson({ id: dialog.peer_id, display_name: dialog.peer_display_name });
+
+    try {
+      await device.calls.dial(dialog.peer_id);
+
+      if (mounted.current && !runtime.signal.aborted) {
+        setMobile(true);
+        void navigate('/calls');
+      }
+    } catch (cause) {
+      if (mounted.current && !runtime.signal.aborted) {
+        setError(deviceErrorMessage(cause));
+      }
+    } finally {
+      calling.current = false;
+
+      if (mounted.current && !runtime.signal.aborted) {
+        setPreparingCall(false);
+      }
+    }
+  }
 
   let conversationContent;
 
@@ -166,30 +217,37 @@ function Room({
               ? 'Вернуться к звонку'
               : `Позвонить: ${data?.record.dialog?.peer_display_name ?? 'собеседник'}`
           }
-          disabled={!data?.record.dialog}
+          disabled={!data?.record.dialog || preparingCall}
           onClick={(): void => {
-            const dialog = data?.record.dialog;
-
-            if (!dialog) {
-              return;
+            if (ongoing) {
+              setMobile(true);
+              void navigate('/calls');
+            } else {
+              setError('');
+              setConfirmCall(true);
             }
-
-            if (!ongoing) {
-              void (async () => {
-                try {
-                  return await device.calls.dismissEnded();
-                } catch (cause) {}
-              })();
-              setPerson({ id: dialog.peer_id, display_name: dialog.peer_display_name });
-            }
-
-            setMobile(true);
-            void navigate('/calls');
           }}
         >
           <Phone size={19} />
         </Button>
       </PageHeader>
+      {confirmCall && !ongoing && data?.record.dialog && (
+        <Modal title="Позвонить?" close={(): void => setConfirmCall(false)}>
+          <div className="confirm-person">
+            <Avatar name={data.record.dialog.peer_display_name} seed={data.record.dialog.peer_id} />
+            <strong>{data.record.dialog.peer_display_name}</strong>
+          </div>
+          <p>Для звонка понадобится доступ к микрофону.</p>
+          <div className="modal-actions">
+            <Button variant="secondary" onClick={(): void => setConfirmCall(false)}>
+              Отмена
+            </Button>
+            <Button disabled={!enabled || preparingCall} onClick={(): void => void dial()}>
+              Позвонить
+            </Button>
+          </div>
+        </Modal>
+      )}
       {data?.error && (
         <div className="dialog-error" role="alert">
           {data.error}
@@ -471,5 +529,12 @@ export function DialogConversationRoute(): JSX.Element {
     );
   }
 
-  return <Room key={dialogId} device={device} runtime={runtime} id={dialogId} />;
+  return (
+    <Room
+      key={runtime.scope.sessionId + ':' + dialogId}
+      device={device}
+      runtime={runtime}
+      id={dialogId}
+    />
+  );
 }

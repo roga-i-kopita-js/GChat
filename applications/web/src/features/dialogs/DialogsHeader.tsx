@@ -6,7 +6,7 @@ import { PageHeader, Text } from '../../shared/ui';
 
 export function DialogsHeader(): JSX.Element {
   return (
-    <PageHeader className="dialogs-header">
+    <PageHeader variant="section" className="dialogs-header">
       <Text as="h1" variant="heading">
         Диалоги
       </Text>

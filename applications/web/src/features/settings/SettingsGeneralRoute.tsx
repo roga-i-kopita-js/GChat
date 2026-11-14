@@ -48,39 +48,24 @@ export function SettingsGeneralRoute(): JSX.Element {
       <Group title="Звук">
         <Row
           icon={Mic}
-          color="#ff5b63"
           title="Микрофон"
           value={status('microphone')}
           to="/settings/general/microphone"
         />
         <Row
           icon={Headphones}
-          color="#ff9f0a"
           title="Динамики и звук"
           value={audio.output?.name ?? 'Системный выход'}
           to="/settings/general/audio"
         />
       </Group>
       <Group title="Уведомления">
-        <Row
-          icon={Bell}
-          color="#ff453a"
-          title="Push-уведомления"
-          value={pushLabel}
-          to="/settings/general/push"
-        />
+        <Row icon={Bell} title="Push-уведомления" value={pushLabel} to="/settings/general/push" />
       </Group>
       <Group title="Разрешения устройства">
-        <Row
-          icon={Camera}
-          color="#8e8e93"
-          title="Камера"
-          value={status('camera')}
-          to="/settings/general/camera"
-        />
+        <Row icon={Camera} title="Камера" value={status('camera')} to="/settings/general/camera" />
         <Row
           icon={LocateFixed}
-          color="#007aff"
           title="Геопозиция"
           value={status('geolocation')}
           to="/settings/general/geolocation"
@@ -89,7 +74,6 @@ export function SettingsGeneralRoute(): JSX.Element {
       <Group title="Файлы">
         <Row
           icon={Folder}
-          color="#30b0c7"
           title="Файлы и папки"
           value={fileAccessSummary}
           to="/settings/general/files"

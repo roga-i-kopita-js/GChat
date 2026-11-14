@@ -30,16 +30,18 @@ export function SettingsIndexRoute(): JSX.Element {
   return (
     <SettingsScreen title="Настройки">
       <div className="settings-profile">
-        <Avatar name={profile.displayName} seed={profile.id} large />
-        <Text as="h2" variant="title">
-          {profile.displayName}
-        </Text>
-        <Text as="p" tone="muted">
-          @{profile.login}
-        </Text>
+        <Avatar name={profile.displayName} seed={profile.id} />
+        <div>
+          <Text as="h2" variant="label">
+            {profile.displayName}
+          </Text>
+          <Text as="p" tone="muted">
+            @{profile.login}
+          </Text>
+        </div>
       </div>
       <Group>
-        <Row icon={Settings} color="#8e8e93" title="Основные" to="/settings/general" />
+        <Row icon={Settings} title="Основные" to="/settings/general" />
       </Group>
       <Group>
         <Button

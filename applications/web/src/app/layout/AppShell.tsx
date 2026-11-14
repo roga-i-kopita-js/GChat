@@ -10,6 +10,7 @@ import { DiagnosticsTrigger } from './DiagnosticsTrigger';
 import { LayoutOverlays } from './LayoutOverlays';
 import { useLayout } from './LayoutProvider';
 import { LayoutViewport } from './LayoutViewport';
+import { RouteTransition } from './RouteTransition';
 
 export function AppShell(): JSX.Element {
   const { section, label, contained, native, showNavigation } = useLayout();
@@ -31,9 +32,11 @@ export function AppShell(): JSX.Element {
           aria-label={label}
         >
           <CallNotices />
-          <PageSurface>
-            <Outlet />
-          </PageSurface>
+          <RouteTransition>
+            <PageSurface>
+              <Outlet />
+            </PageSurface>
+          </RouteTransition>
           <DiagnosticsTrigger />
         </PageContent>
       </LayoutViewport>

@@ -50,7 +50,6 @@ export function PermissionSettings({
       <Group>
         <Row
           icon={ShieldCheck}
-          color="#34c759"
           title="Доступ"
           value={permission ? permissionLabels[permission.permission] : 'Проверяем…'}
         />

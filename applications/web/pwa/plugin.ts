@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { Plugin } from 'vite';
+import type { HtmlTagDescriptor, Plugin } from 'vite';
 
 const directory = dirname(fileURLToPath(import.meta.url));
 
@@ -12,6 +12,13 @@ export function pwaPlugin(server: boolean): Plugin {
   const nativeLaunchSpike = process.env.VITE_GCHAT_IOS_LAUNCH_SPIKE === 'true';
   const base = server ? '/apps/' : '/';
   const startPath = server ? '/apps/client' : '';
+  const tokens = readFileSync(resolve(directory, '../src/shared/ui/tokens.css'), 'utf8');
+  const themeColor = tokens.match(/--ui-system-bar-color:\s*(#[\da-f]{6})\s*;/i)?.[1];
+
+  if (!themeColor) {
+    throw new Error('--ui-system-bar-color must be a six-digit HEX color');
+  }
+
   const manifest = JSON.parse(
     readFileSync(resolve(directory, '../public/site.webmanifest'), 'utf8'),
   );
@@ -19,6 +26,8 @@ export function pwaPlugin(server: boolean): Plugin {
   manifest.id = server ? '/apps/client' : '/';
   manifest.scope = server ? '/apps/client' : '/';
   manifest.start_url = `${startPath}/calls`;
+  manifest.theme_color = themeColor;
+  manifest.background_color = themeColor;
 
   for (const icon of manifest.icons) {
     icon.src = base + icon.src.replace(/^\//, '');
@@ -27,7 +36,13 @@ export function pwaPlugin(server: boolean): Plugin {
   return {
     name: 'gchat-pwa',
     enforce: 'post',
-    apply: 'build',
+    transformIndexHtml(): HtmlTagDescriptor[] {
+      return ['theme-color', 'msapplication-TileColor'].map((name) => ({
+        tag: 'meta',
+        attrs: { name, content: themeColor },
+        injectTo: 'head',
+      }));
+    },
     generateBundle(_options, bundle): void {
       const htmlAsset = bundle['index.html'];
 

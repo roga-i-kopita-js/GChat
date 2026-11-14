@@ -21,11 +21,10 @@ export function SettingsPushRoute(): JSX.Element {
       <Group>
         <Row
           icon={Bell}
-          color="#ff453a"
           title="Разрешение"
           value={state ? permissionLabels[state.push.permission] : 'Проверяем…'}
         />
-        <Row icon={Volume2} color="#007aff" title="Доставка" value={pushLabel} />
+        <Row icon={Volume2} title="Доставка" value={pushLabel} />
         {state?.push.delivery === 'unavailable'
           ? action('Открыть настройки', (): void => {
               void run((): ReturnType<typeof device.api.permissions.openSettings> =>

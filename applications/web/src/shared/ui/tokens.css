@@ -1,29 +1,60 @@
 /* Foundation scales. Visual constants are defined only here. */
 :root {
-  --ui-canvas: var(--ui-surface);
-  --ui-surface: #fff;
+  --ui-canvas: color-mix(in srgb, var(--ui-surface) 97%, #000 3%);
+  --ui-surface: #f4f9fc;
   --ui-on-accent: #fff;
   --ui-screen-lock-surface: #000;
-  --ui-text: #192738;
-  --ui-border: #e4eaf2;
-  --ui-accent: #087cf0;
-  --ui-accent-hover: #006bd8;
-  --ui-muted: #65656b;
-  --ui-danger: #ce4037;
+  --ui-text: #263e4e;
+  --ui-border: #d8e5ee;
+  --ui-accent: #2477ad;
+  --ui-accent-hover: color-mix(in srgb, var(--ui-accent) 88%, #000);
+  --ui-muted: #617785;
+  --ui-danger: #bf3643;
   --ui-success: #24744c;
-  --ui-focus: #75b8ff;
-  --ui-secondary-surface: #f0f4f8;
-  --ui-secondary-hover: #e6edf5;
-  --ui-secondary-text: #33465d;
-  --ui-accent-surface: #edf5ff;
-  --ui-danger-hover: #ad3029;
-  --ui-danger-surface: #fff0ee;
-  --ui-danger-surface-hover: #ffe1dd;
-  --ui-avatar-1: #dceaff;
-  --ui-avatar-2: #e8e2fb;
-  --ui-avatar-3: #dcf2eb;
-  --ui-avatar-4: #faeadc;
-  --ui-avatar-5: #f5e0eb;
+  --ui-focus: var(--ui-accent);
+  --ui-secondary-surface: #e0eff8;
+  --ui-secondary-hover: color-mix(in srgb, var(--ui-secondary-surface) 94%, var(--ui-accent));
+  --ui-secondary-text: var(--ui-text);
+  --ui-accent-surface: var(--ui-secondary-surface);
+  --ui-danger-hover: color-mix(in srgb, var(--ui-danger) 88%, #000);
+  --ui-danger-surface: color-mix(in srgb, var(--ui-danger) 8%, var(--ui-surface));
+  --ui-danger-surface-hover: color-mix(in srgb, var(--ui-danger) 14%, var(--ui-surface));
+  --ui-avatar-angle: 145deg;
+  --ui-avatar-sky-top: #e6f2fa;
+  --ui-avatar-sky-bottom: #cee1ef;
+  --ui-avatar-sky-ink: #416780;
+  --ui-avatar-ice-top: #e3f1f3;
+  --ui-avatar-ice-bottom: #cde2e7;
+  --ui-avatar-ice-ink: #426c75;
+  --ui-avatar-mist-top: #e8eff6;
+  --ui-avatar-mist-bottom: #d2e0ec;
+  --ui-avatar-mist-ink: #536a7d;
+  --ui-avatar-steel-top: #e0ebf4;
+  --ui-avatar-steel-bottom: #c5d9e9;
+  --ui-avatar-steel-ink: #446780;
+  --ui-canvas-ice: #deedf9;
+  --ui-canvas-mint: #e2f1e8;
+  --ui-canvas-angle: 120deg;
+  --ui-canvas-mint-stop: 65%;
+  --ui-system-bar-color: #ddeaeb;
+  --ui-canvas-background:
+    radial-gradient(
+      ellipse at 100% 0,
+      color-mix(in srgb, var(--ui-canvas-mint) 97%, #000 3%),
+      transparent var(--ui-canvas-mint-stop)
+    ),
+    linear-gradient(
+      var(--ui-canvas-angle),
+      color-mix(in srgb, var(--ui-canvas-ice) 97%, #000 3%),
+      var(--ui-canvas)
+    );
+  --ui-overlay: #34455a24;
+  --ui-shadow-color: #24364a12;
+  --ui-shadow-small: 0 2px 8px var(--ui-shadow-color);
+  --ui-shadow-modal: 0 18px 50px var(--ui-shadow-color);
+  --ui-warning: #624b18;
+  --ui-warning-surface: #fff6d9;
+  --ui-success-surface: color-mix(in srgb, var(--ui-success) 8%, var(--ui-surface));
   --ui-font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --ui-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -36,6 +67,8 @@
   --ui-tracking-wide: 0.025em;
   --ui-tracking-caps: 0.15em;
   --ui-duration-fast: 150ms;
+  --ui-duration-spinner: 1s;
+  --ui-duration-wave: 1s;
   --ui-duration-loading: 1200ms;
   --ui-opacity-disabled: 0.45;
   --ui-opacity-muted: 0.4;
@@ -177,7 +210,7 @@
   --ui-size-1120: 1120px;
 
   /* Semantic aliases shared by primitives and application layouts. */
-  --ui-font-body: var(--ui-font-size-14);
+  --ui-font-body: var(--ui-font-size-15);
   --ui-font-label: var(--ui-font-size-16);
   --ui-font-caption: var(--ui-font-size-13);
   --ui-font-navigation: var(--ui-font-size-11);
@@ -221,6 +254,39 @@
   --ui-loading-bar-finish-duration: var(--ui-duration-fast);
   --ui-loading-bar-fade-duration: var(--ui-duration-fast);
   --ui-layer-progress: 60;
+  --ui-section-font-size: var(--ui-font-size-28);
+  --ui-section-leading: 1.2;
+  --ui-section-tracking: -0.05rem;
+  --ui-section-padding-top: var(--ui-space-7);
+  --ui-section-padding-inline: var(--ui-space-6);
+  --ui-section-padding-bottom: var(--ui-space-6);
+  --ui-avatar-size: var(--ui-size-44);
+  --ui-avatar-font-size: var(--ui-font-size-13);
+  --ui-avatar-font-weight: var(--ui-weight-medium);
+  --ui-list-title-size: var(--ui-font-size-15);
+  --ui-list-subtitle-size: var(--ui-font-size-12);
+  --ui-list-gutter: var(--ui-space-4);
+  --ui-list-row-padding: var(--ui-size-15);
+  --ui-filter-gap: var(--ui-space-3);
+  --ui-filter-underline: var(--ui-size-2);
+  --ui-navigation-radius: var(--ui-radius-20);
+  --ui-navigation-item-radius: var(--ui-radius-12);
+  --ui-navigation-gutter: var(--ui-space-3);
+  --ui-navigation-padding: var(--ui-space-1-5);
+  --ui-navigation-duration: 180ms;
+  --ui-weather-color: #80a4bc;
+  --ui-weather-opacity: 1;
+  --ui-snow-count: 10;
+  --ui-snow-size: var(--ui-size-15);
+  --ui-snow-fall-duration: 30s;
+  --ui-snow-sway-duration: 8s;
+  --ui-snow-sway-left: -5px;
+  --ui-snow-sway-right: 8px;
+  --ui-snow-rotation: 65deg;
+  --ui-weather-layer: 4;
+  --ui-weather-edge: 8%;
+  --ui-view-transition-duration: 420ms;
+  --ui-view-transition-easing: cubic-bezier(0.32, 0, 0.2, 1);
 }
 
 /* Native CSS queries use the accepted viewport boundary directly. */

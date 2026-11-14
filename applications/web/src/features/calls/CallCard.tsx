@@ -26,6 +26,7 @@ export function CallCard(): JSX.Element | null {
     call,
     incoming,
     peerName,
+    peerId,
     duration,
     status,
     enabled,
@@ -157,7 +158,7 @@ export function CallCard(): JSX.Element | null {
           )}
       </div>
       <div className="call-person">
-        <Avatar name={peerName} large />
+        <Avatar name={peerName} seed={peerId ?? peerName} large />
         <h2>{peerName}</h2>
         <p role="status" data-testid="call-status">
           {status}

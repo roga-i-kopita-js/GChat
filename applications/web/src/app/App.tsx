@@ -12,6 +12,7 @@ import { DeviceCallCameraHost, useDevice, useDevicePresentation } from '../share
 import { BootstrapProvider } from '../shared/dialogs/BootstrapProvider';
 import { retainFrontendUpdate } from '../shared/frontend-update-lease';
 import { NavigationProtectionRoot } from '../shared/navigation-protection';
+import { WinterWeather } from '../shared/ui';
 import type { ApplicationLoaderData } from './loaders';
 import { PwaUpdate } from './PwaUpdate';
 
@@ -141,6 +142,7 @@ export function App(): JSX.Element {
         <BootstrapProvider>
           <CallsProvider>
             <div data-gchat-surface>
+              <WinterWeather />
               <PwaUpdate />
 
               <Outlet />

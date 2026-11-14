@@ -72,9 +72,27 @@ for (const server of [false, true]) {
     const manifest = await request.get(base + 'site.webmanifest');
 
     const { json: manifestJson } = manifest;
-    const { start_url: resultStartUrl } = await manifestJson.bind(manifest)();
+    const {
+      start_url: resultStartUrl,
+      theme_color: themeColor,
+      background_color: backgroundColor,
+    } = await manifestJson.bind(manifest)();
+    const systemBarColor = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--ui-system-bar-color').trim(),
+    );
 
     expect(resultStartUrl).toBe(server ? '/apps/client/calls' : '/calls');
+    expect(systemBarColor).toBe('#ddeaeb');
+    expect(themeColor).toBe(systemBarColor);
+    expect(backgroundColor).toBe(systemBarColor);
+    await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute(
+      'content',
+      systemBarColor,
+    );
+    await expect(page.locator('meta[name="msapplication-TileColor"]')).toHaveAttribute(
+      'content',
+      systemBarColor,
+    );
     const keys = await page.evaluate(async (): Promise<string[]> => {
       const result: string[] = [];
 
@@ -187,16 +205,16 @@ for (const server of [false, true]) {
 
       expect(design).toEqual({
         radius: '14px',
-        surface: 'rgb(255, 255, 255)',
-        backdrop: 'rgba(0, 0, 0, 0.4)',
+        surface: 'rgb(244, 249, 252)',
+        backdrop: expect.stringMatching(/^rgba\(52, 69, 90, 0\.14/),
         padding: '20px 20px 18px',
         titleSize: 18,
         titleWeight: '600',
-        textSize: '14px',
-        textColor: 'rgb(101, 101, 107)',
+        textSize: '15px',
+        textColor: 'rgb(97, 119, 133)',
         buttons: [
-          { color: 'rgb(0, 122, 255)', weight: '400', height: 48 },
-          { color: 'rgb(0, 122, 255)', weight: '600', height: 48 },
+          { color: 'rgb(36, 119, 173)', weight: '400', height: 48 },
+          { color: 'rgb(36, 119, 173)', weight: '600', height: 48 },
         ],
       });
 

@@ -30,10 +30,10 @@
 }
 .call-lock-button.ui-button {
   margin-left: auto;
-  color: var(--ui-on-accent);
+  color: var(--ui-accent);
   background: transparent;
   font-size: var(--ui-font-caption);
 }
 .call-lock-button.ui-button:hover:not(:disabled) {
-  background: var(--ui-secondary-text);
+  background: var(--ui-accent-surface);
 }

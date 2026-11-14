@@ -8,7 +8,7 @@ export function UserCard({
   userId,
   displayName,
   subtitle,
-  multiline = false,
+  multiline = true,
 }: {
   userId: string;
   displayName: string;

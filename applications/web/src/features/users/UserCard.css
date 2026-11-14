@@ -8,10 +8,10 @@
   line-height: var(--ui-leading-body);
 }
 .user-card > .avatar {
-  width: var(--ui-control-height);
-  height: var(--ui-control-height);
+  width: var(--ui-avatar-size);
+  height: var(--ui-avatar-size);
   flex: none;
-  font-size: var(--ui-font-label);
+  font-size: var(--ui-avatar-font-size);
 }
 .user-card-copy {
   flex: 1;
@@ -25,12 +25,12 @@
   white-space: nowrap;
 }
 .user-card-name {
-  font-size: var(--ui-font-body);
+  font-size: var(--ui-list-title-size);
   font-weight: var(--ui-weight-semibold);
 }
 .user-card-subtitle {
   margin-top: var(--ui-space-0-5);
-  font-size: var(--ui-font-caption);
+  font-size: var(--ui-list-subtitle-size);
   color: var(--ui-muted);
 }
 .user-card-multiline .user-card-name,

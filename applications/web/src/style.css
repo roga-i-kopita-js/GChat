@@ -4,13 +4,15 @@
   --control-height: var(--ui-control-height);
   --modal-padding: var(--ui-space-5);
   --section-title-size: var(--ui-font-size-18);
+  color-scheme: light;
   font-size: 100%;
   line-height: var(--ui-leading-body);
   font-family: var(--ui-font-family);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   color: var(--ui-text);
-  background: var(--ui-canvas);
+  background: var(--ui-canvas-background);
+  background-attachment: fixed;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -44,7 +46,7 @@ button:disabled {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible {
-  outline: var(--ui-size-3) solid #75b8ff;
+  outline: var(--ui-size-3) solid var(--ui-focus);
   outline-offset: var(--ui-size-3);
 }
 button {
@@ -83,10 +85,10 @@ button svg {
   justify-content: center;
   width: var(--ui-size-43);
   height: var(--ui-size-43);
-  background: #087cf0;
+  background: var(--ui-accent);
   border-radius: var(--ui-radius-16);
-  color: white;
-  box-shadow: 0 var(--ui-size-5) var(--ui-size-13) #007aff20;
+  color: var(--ui-on-accent);
+  box-shadow: 0 var(--ui-size-5) var(--ui-size-13) var(--ui-shadow-color);
 }
 .brand-mark {
   overflow: hidden;
@@ -101,14 +103,14 @@ button svg {
   font-size: var(--ui-font-size-10);
   letter-spacing: var(--ui-tracking-caps);
   font-weight: var(--ui-weight-semibold);
-  color: #8a97a9;
+  color: var(--ui-muted);
   align-self: flex-start;
   margin-top: var(--ui-space-2);
 }
 .eyebrow {
   font-size: var(--ui-font-size-10);
   letter-spacing: var(--ui-tracking-caps);
-  color: #8490a0;
+  color: var(--ui-muted);
   font-weight: var(--ui-weight-bold);
 }
 .primary,
@@ -124,27 +126,27 @@ button svg {
   font-size: var(--ui-font-body);
   font-weight: var(--ui-weight-semibold);
   transition:
-    background 0.15s,
-    transform 0.15s;
+    background-color var(--ui-duration-fast),
+    transform var(--ui-duration-fast);
 }
 .primary {
-  background: #087cf0;
-  color: white;
+  background: var(--ui-accent);
+  color: var(--ui-on-accent);
   box-shadow: none;
 }
 .primary:hover:not(:disabled) {
-  background: #006bd8;
+  background: var(--ui-accent-hover);
 }
 .secondary {
-  background: #f0f4f8;
-  color: #33465d;
+  background: var(--ui-secondary-surface);
+  color: var(--ui-text);
 }
 .secondary:hover {
-  background: #e6edf5;
+  background: var(--ui-secondary-surface);
 }
 .danger-button {
-  background: #fff0ee;
-  color: #ce4037;
+  background: var(--ui-danger-surface);
+  color: var(--ui-danger);
   width: 100%;
 }
 .icon {
@@ -163,7 +165,7 @@ button svg {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: radial-gradient(ellipse at 15% 65%, #e8f1fc 0, transparent 55%), #f7f9fc;
+  background: transparent;
 }
 .login-layout {
   display: grid;
@@ -181,25 +183,25 @@ button svg {
   margin: var(--ui-space-6) 0;
 }
 .login-copy h1 span {
-  color: #697e99;
+  color: var(--ui-muted);
 }
 .login-copy > p {
-  color: #718096;
+  color: var(--ui-muted);
   line-height: var(--ui-leading-prose);
   font-size: var(--ui-font-label);
 }
 .login-card {
-  background: white;
-  border: var(--ui-size-1) solid #e6ecf3;
+  background: var(--ui-surface);
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-24);
   padding: var(--ui-space-9);
-  box-shadow: 0 var(--ui-size-16) var(--ui-size-55) #36485f0a;
+  box-shadow: 0 var(--ui-size-16) var(--ui-size-55) var(--ui-shadow-color);
 }
 .mini-icon {
   width: var(--ui-size-48);
   height: var(--ui-size-48);
-  background: #eaf3ff;
-  color: #087cf0;
+  background: var(--ui-accent-surface);
+  color: var(--ui-accent);
   border-radius: var(--ui-radius-16);
   display: grid;
   place-items: center;
@@ -212,7 +214,7 @@ button svg {
 .login-card > p {
   margin: var(--ui-space-2-5) 0 var(--ui-space-7);
   font-size: var(--ui-font-caption);
-  color: #7a8797;
+  color: var(--ui-muted);
 }
 .login-card form {
   display: flex;
@@ -227,16 +229,16 @@ button svg {
   gap: var(--ui-space-2);
 }
 .login-card input {
-  border: var(--ui-size-1) solid #dfe6ee;
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-10);
   padding: var(--ui-space-3-5);
-  background: #fbfcfe;
-  color: #192738;
+  background: var(--ui-surface);
+  color: var(--ui-text);
   font-size: var(--ui-font-body);
   width: 100%;
 }
 .login-card input::placeholder {
-  color: #a1acb9;
+  color: var(--ui-muted);
 }
 .login-card .primary {
   margin-top: var(--ui-space-1-5);
@@ -246,8 +248,8 @@ button svg {
   gap: var(--ui-space-2-5);
   font-size: var(--ui-font-size-11);
   line-height: var(--ui-leading-loose);
-  color: #6f7f92;
-  border-top: var(--ui-size-1) solid #eff2f6;
+  color: var(--ui-muted);
+  border-top: var(--ui-size-1) solid var(--ui-surface);
   padding-top: var(--ui-space-6);
   margin-top: var(--ui-space-7);
 }
@@ -257,7 +259,7 @@ button svg {
 }
 .login-page footer {
   font-size: var(--ui-font-size-11);
-  color: #99a3b1;
+  color: var(--ui-muted);
   text-align: center;
   letter-spacing: var(--ui-tracking-wide);
 }
@@ -275,15 +277,15 @@ button svg {
   display: grid;
   place-items: center;
   border-radius: var(--ui-radius-32);
-  color: #087cf0;
-  background: white;
-  box-shadow: 0 var(--ui-size-13) var(--ui-size-40) #497db21a;
+  color: var(--ui-accent);
+  background: var(--ui-surface);
+  box-shadow: 0 var(--ui-size-13) var(--ui-size-40) var(--ui-shadow-color);
   transform: rotate(-10deg);
   position: relative;
 }
 .orbit {
   position: absolute;
-  border: var(--ui-size-1) solid #dce7f3;
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-full);
   width: var(--ui-size-170);
   height: var(--ui-size-170);
@@ -305,26 +307,26 @@ button svg {
   position: absolute;
   left: var(--ui-size-150);
   bottom: var(--ui-size-19);
-  background: #fff;
+  background: var(--ui-surface);
   padding: var(--ui-space-3) var(--ui-space-4);
   border-radius: var(--ui-radius-20);
-  box-shadow: 0 var(--ui-size-5) var(--ui-size-24) #344c660c;
-  color: #667b91;
+  box-shadow: 0 var(--ui-size-5) var(--ui-size-24) var(--ui-shadow-color);
+  color: var(--ui-muted);
 }
 .art-badge svg {
-  color: #087cf0;
+  color: var(--ui-accent);
 }
 .app-shell {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: var(--ui-canvas);
+  background: transparent;
 }
 .workspace-label {
   font-size: var(--ui-font-size-9);
   letter-spacing: var(--ui-tracking-caps);
   font-weight: var(--ui-weight-semibold);
-  color: #718092;
+  color: var(--ui-muted);
   padding: 0 var(--ui-space-4);
   margin-bottom: var(--ui-space-4);
 }
@@ -338,8 +340,8 @@ button svg {
   padding: var(--ui-space-3-5);
 }
 .nav-item.active {
-  background: #edf5ff;
-  color: #087cf0;
+  background: var(--ui-accent-surface);
+  color: var(--ui-accent);
 }
 .group-button {
   display: flex;
@@ -351,7 +353,7 @@ button svg {
   background: transparent;
   text-align: left;
   font-size: var(--ui-font-size-12);
-  color: #68788b;
+  color: var(--ui-muted);
 }
 .group-button > span:nth-child(2) {
   flex: 1;
@@ -364,12 +366,12 @@ button svg {
 }
 .group-button:hover,
 .group-button.selected {
-  background: #f5f7fb;
-  color: #203b59;
+  background: var(--ui-surface);
+  color: var(--ui-text);
 }
 .group-button.selected > svg {
   opacity: 1;
-  color: #087cf0;
+  color: var(--ui-accent);
 }
 .group-icon {
   width: var(--ui-size-31);
@@ -377,20 +379,20 @@ button svg {
   border-radius: var(--ui-radius-10);
   display: grid;
   place-items: center;
-  background: #f0f4fa;
-  color: #7790ad;
+  background: var(--ui-accent-surface);
+  color: var(--ui-muted);
   flex-shrink: 0;
 }
 .selected .group-icon {
-  background: #e5effc;
-  color: #087cf0;
+  background: var(--ui-accent-surface);
+  color: var(--ui-accent);
 }
 .privacy-note {
   display: flex;
   gap: var(--ui-space-2-5);
   align-items: center;
   padding: var(--ui-space-4) var(--ui-space-3-5) var(--ui-space-6);
-  color: #9eabba;
+  color: var(--ui-muted);
 }
 .privacy-note p {
   font-size: var(--ui-font-size-11);
@@ -398,14 +400,14 @@ button svg {
 }
 .privacy-note strong {
   font-weight: var(--ui-weight-regular);
-  color: #7d8b9b;
+  color: var(--ui-muted);
 }
 .profile {
   display: flex;
   align-items: center;
   gap: var(--ui-space-2-5);
   background: transparent;
-  border-top: var(--ui-size-1) solid #ecf0f5;
+  border-top: var(--ui-size-1) solid var(--ui-border);
   padding: var(--ui-space-5) var(--ui-space-1-5);
   width: 100%;
   text-align: left;
@@ -427,31 +429,11 @@ button svg {
 }
 .profile small {
   font-size: var(--ui-font-size-10);
-  color: #94a0af;
+  color: var(--ui-muted);
   margin-top: var(--ui-space-1);
 }
 .profile > svg {
-  color: #9eabba;
-}
-.avatar {
-  width: var(--ui-control-height);
-  height: var(--ui-control-height);
-  border-radius: var(--ui-radius-full);
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #456584;
-  font-weight: var(--ui-weight-semibold);
-  font-size: var(--ui-font-body);
-  letter-spacing: var(--ui-tracking-wide);
-}
-.avatar.large {
-  width: var(--ui-size-100);
-  height: var(--ui-size-100);
-  font-size: var(--ui-font-size-32);
-  font-weight: var(--ui-weight-semibold);
-  letter-spacing: 0;
+  color: var(--ui-muted);
 }
 .topbar {
   display: flex;
@@ -471,30 +453,30 @@ button svg {
   align-items: center;
   gap: var(--ui-space-2);
   font-size: var(--ui-font-size-11);
-  border: var(--ui-size-1) solid #e1e8f1;
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-20);
-  background: #fafbfd;
+  background: var(--ui-surface);
   padding: var(--ui-space-2) var(--ui-space-3);
-  color: #8c99a8;
+  color: var(--ui-muted);
 }
 .connection.online {
-  color: #3a8d73;
-  background: #f0f9f5;
-  border-color: #e4f0e9;
+  color: var(--ui-success);
+  background: var(--ui-success-surface);
+  border-color: var(--ui-border);
 }
 .connection.connecting {
-  color: #a37f3d;
+  color: var(--ui-warning);
 }
 .content-grid {
   display: flex;
   grid-template-columns: minmax(var(--ui-size-280), 0.92fr) minmax(var(--ui-size-310), 1.08fr);
-  background: white;
+  background: var(--ui-surface);
   overflow: hidden;
   min-height: 0;
   flex: 1;
 }
 .contact-panel {
-  border-right: var(--ui-size-1) solid #e9edf3;
+  border-right: var(--ui-size-1) solid var(--ui-border);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -511,16 +493,16 @@ button svg {
   width: 100%;
   padding: var(--ui-space-4-5) var(--ui-space-6);
   text-align: left;
-  background: white;
-  transition: background 0.15s;
+  background: var(--ui-surface);
+  transition: background-color var(--ui-duration-fast);
   border-left: var(--ui-size-3) solid transparent;
 }
 .contact-row:hover {
-  background: #f8faff;
+  background: var(--ui-surface);
 }
 .contact-row.chosen {
-  background: #f0f6ff;
-  border-left-color: #087cf0;
+  background: var(--ui-accent-surface);
+  border-left-color: var(--ui-accent);
 }
 .contact-person {
   display: flex;
@@ -541,14 +523,14 @@ button svg {
   height: var(--ui-size-40);
   border-radius: var(--ui-radius-full);
   background: transparent;
-  color: #718ca9;
+  color: var(--ui-muted);
 }
 .contact-call:hover:not(:disabled) {
-  background: #e4efff;
+  background: var(--ui-accent-surface);
 }
 .contact-row.chosen .contact-call,
 .contact-row:hover .contact-call {
-  color: #087cf0;
+  color: var(--ui-accent);
 }
 .detail-panel {
   padding: var(--ui-space-4-5);
@@ -573,17 +555,17 @@ button svg {
   height: var(--ui-size-180);
   display: grid;
   place-items: center;
-  border: var(--ui-size-1) solid #e6edf6;
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-full);
   position: relative;
   margin-bottom: var(--ui-space-4-5);
-  background: radial-gradient(#f1f7fe, transparent 70%);
+  background: radial-gradient(var(--ui-accent-surface), transparent 70%);
 }
 .welcome-orbit:before {
   content: '';
   position: absolute;
   inset: var(--ui-size-20);
-  border: var(--ui-size-1) solid #e0ebf8;
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-full);
 }
 .welcome-orbit > span {
@@ -592,9 +574,9 @@ button svg {
   display: grid;
   place-items: center;
   border-radius: var(--ui-radius-24);
-  background: #edf5ff;
-  color: #087cf0;
-  box-shadow: 0 var(--ui-size-10) var(--ui-size-30) #276cc30b;
+  background: var(--ui-accent-surface);
+  color: var(--ui-accent);
+  box-shadow: 0 var(--ui-size-10) var(--ui-size-30) var(--ui-shadow-color);
   transform: rotate(-9deg);
 }
 .welcome-panel h2 {
@@ -606,7 +588,7 @@ button svg {
 .person-preview > p {
   font-size: var(--ui-font-size-12);
   line-height: var(--ui-leading-prose);
-  color: #718092;
+  color: var(--ui-muted);
   margin-top: var(--ui-space-3-5);
 }
 .welcome-features {
@@ -614,7 +596,7 @@ button svg {
   justify-content: center;
   gap: var(--ui-space-5);
   margin-top: var(--ui-space-10);
-  color: #9aa8ba;
+  color: var(--ui-muted);
   font-size: var(--ui-font-size-10);
 }
 .welcome-features span {
@@ -651,7 +633,7 @@ button svg {
   align-items: center;
   gap: var(--ui-space-2);
   font-size: var(--ui-font-size-10);
-  color: #718092;
+  color: var(--ui-muted);
   margin-top: var(--ui-space-5);
 }
 .workspace-footer {
@@ -660,21 +642,21 @@ button svg {
   justify-content: space-between;
   padding: var(--ui-space-5) var(--ui-space-0-5);
   font-size: var(--ui-font-size-10);
-  color: #768596;
+  color: var(--ui-muted);
 }
 .workspace-footer button {
   display: flex;
   gap: var(--ui-space-1-5);
   align-items: center;
   background: transparent;
-  color: #6f8094;
+  color: var(--ui-muted);
   font-size: var(--ui-font-size-10);
 }
 .call-card {
-  background: radial-gradient(ellipse at 40% 10%, #294a6e, #142d49 75%);
+  background: var(--ui-canvas-background);
   border-radius: var(--ui-radius-12);
   flex: 1;
-  color: #fff;
+  color: var(--ui-text);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -686,7 +668,7 @@ button svg {
   align-items: center;
   gap: var(--ui-space-2);
   font-size: var(--ui-font-size-10);
-  color: #a8bfd7;
+  color: var(--ui-muted);
   letter-spacing: var(--ui-tracking-wide);
 }
 .call-person {
@@ -697,9 +679,6 @@ button svg {
   text-align: center;
 }
 .call-person .avatar {
-  box-shadow:
-    0 0 0 var(--ui-size-10) #ffffff06,
-    0 0 0 var(--ui-size-22) #ffffff03;
   margin: var(--ui-space-8) 0;
 }
 .call-person h2 {
@@ -707,7 +686,7 @@ button svg {
   letter-spacing: var(--ui-tracking-tight);
 }
 .call-person p {
-  color: #b0c6df;
+  color: var(--ui-muted);
   margin-top: var(--ui-space-3-5);
   font-size: var(--ui-font-size-12);
 }
@@ -726,7 +705,7 @@ button svg {
 }
 .round-action {
   background: transparent;
-  color: #d1deed;
+  color: var(--ui-muted);
   font-size: var(--ui-font-size-10);
   display: flex;
   align-items: center;
@@ -741,30 +720,32 @@ button svg {
   border-radius: var(--ui-radius-full);
   display: grid;
   place-items: center;
-  background: #ffffff16;
-  color: #fff;
+  background: var(--ui-accent-surface);
+  color: var(--ui-accent);
 }
 .round-action.decline > span {
-  background: #f45353;
+  color: var(--ui-on-accent);
+  background: var(--ui-danger);
 }
 .round-action.accept > span {
-  background: #2bbd85;
+  color: var(--ui-on-accent);
+  background: var(--ui-success);
 }
 .round-action.muted > span {
-  background: #fff;
-  color: #172f49;
+  background: var(--ui-accent);
+  color: var(--ui-on-accent);
 }
 .call-bottom {
   display: flex;
   align-items: center;
   gap: var(--ui-space-1-5);
-  color: #819fbe;
+  color: var(--ui-muted);
   font-size: var(--ui-font-size-9);
   margin-top: var(--ui-space-9);
 }
 .call-hint {
   font-size: var(--ui-font-size-12);
-  color: #b3c9dd;
+  color: var(--ui-muted);
   text-align: center;
   margin: var(--ui-space-3-5);
 }
@@ -779,8 +760,8 @@ button svg {
   width: var(--ui-size-3);
   height: var(--ui-size-8);
   border-radius: var(--ui-radius-4);
-  background: #5fa9f6;
-  animation: wave 1s ease-in-out infinite alternate;
+  background: var(--ui-accent);
+  animation: wave var(--ui-duration-wave) ease-in-out infinite alternate;
 }
 .sound-wave i:nth-child(3n) {
   height: var(--ui-size-22);
@@ -806,13 +787,13 @@ button svg {
   padding: 0;
   border: 0;
   border-radius: var(--ui-radius-14);
-  background: #fff;
-  color: #111;
+  background: var(--ui-surface);
+  color: var(--ui-text);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 .pwa-update-dialog::backdrop {
-  background: rgb(0 0 0 / 40%);
+  background: var(--ui-overlay);
 }
 .pwa-update-copy {
   padding: var(--ui-space-5) var(--ui-space-5) var(--ui-space-4-5);
@@ -823,19 +804,19 @@ button svg {
   font-size: var(--ui-font-heading);
   font-weight: var(--ui-weight-semibold);
   line-height: var(--ui-leading-compact);
-  color: #111;
+  color: var(--ui-text);
 }
 .pwa-update-copy p {
   margin: var(--ui-space-2) 0 0;
   font-size: var(--ui-font-body);
   font-weight: var(--ui-weight-regular);
   line-height: var(--ui-leading-body);
-  color: #65656b;
+  color: var(--ui-muted);
 }
 .pwa-update-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: var(--ui-size-1) solid #d1d1d6;
+  border-top: var(--ui-size-1) solid var(--ui-border);
 }
 .pwa-update-actions button {
   min-height: var(--ui-size-48);
@@ -843,25 +824,25 @@ button svg {
   overflow-wrap: anywhere;
   border-radius: 0;
   background: transparent;
-  color: #007aff;
+  color: var(--ui-accent);
   font-size: var(--ui-font-label);
   font-weight: var(--ui-weight-regular);
   line-height: var(--ui-leading-relaxed);
 }
 .pwa-update-actions button + button {
-  border-left: var(--ui-size-1) solid #d1d1d6;
+  border-left: var(--ui-size-1) solid var(--ui-border);
   font-weight: var(--ui-weight-semibold);
 }
 .pwa-update-actions button:hover,
 .pwa-update-actions button:active {
-  background: #f2f2f7;
+  background: var(--ui-surface);
 }
 .pwa-update-actions button:focus-visible {
-  outline: var(--ui-size-2) solid #007aff;
+  outline: var(--ui-size-2) solid var(--ui-accent);
   outline-offset: calc(-1 * var(--ui-size-4));
 }
 .modal {
-  border: var(--ui-size-1) solid #e4eaf2;
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-16);
   padding: var(--modal-padding);
   max-width: var(--ui-size-420);
@@ -869,8 +850,9 @@ button svg {
   max-height: calc(100dvh - var(--ui-size-24));
   overflow-y: auto;
   overscroll-behavior: contain;
-  box-shadow: 0 var(--ui-size-25) var(--ui-size-100) #182b4d25;
-  color: #192738;
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-modal);
+  color: var(--ui-text);
 }
 .incoming-call-modal {
   border: 0;
@@ -878,22 +860,22 @@ button svg {
   border-radius: var(--ui-radius-12);
   width: min(var(--ui-size-440), calc(100vw - var(--ui-size-24)));
   max-height: calc(100dvh - var(--ui-size-24));
-  background: #142d49;
-  box-shadow: 0 var(--ui-size-25) var(--ui-size-100) #182b4d55;
+  background: var(--ui-surface);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-modal);
 }
 .incoming-call-modal .call-card {
   min-height: min(var(--ui-size-460), calc(100dvh - var(--ui-size-24)));
 }
 .modal::backdrop,
 .incoming-call-modal::backdrop {
-  background: #1527386b;
-  backdrop-filter: blur(var(--ui-size-4));
+  background: var(--ui-overlay);
 }
 .modal .close {
   position: absolute;
   right: var(--ui-size-16);
   top: var(--ui-size-15);
-  color: #9aa5b5;
+  color: var(--ui-muted);
 }
 .modal h2 {
   font-size: var(--ui-font-title);
@@ -904,7 +886,7 @@ button svg {
 .modal > p {
   font-size: var(--ui-font-caption);
   line-height: var(--ui-leading-loose);
-  color: #8995a5;
+  color: var(--ui-muted);
 }
 .confirm-person {
   display: flex;
@@ -920,7 +902,7 @@ button svg {
   gap: var(--ui-space-3);
   margin-top: var(--ui-space-5);
   padding-top: var(--ui-space-5);
-  border-top: var(--ui-size-1) solid #edf0f5;
+  border-top: var(--ui-size-1) solid var(--ui-border);
 }
 .modal .modal-actions > button {
   width: 100%;
@@ -945,7 +927,7 @@ button svg {
 }
 .account-person p {
   font-size: var(--ui-font-size-12);
-  color: #98a3b2;
+  color: var(--ui-muted);
 }
 .account-person .avatar {
   width: var(--ui-size-80);
@@ -963,7 +945,7 @@ button svg {
   line-height: var(--ui-leading-relaxed);
 }
 .diagnostics dt {
-  color: #8a97a6;
+  color: var(--ui-muted);
 }
 .diagnostics dd {
   margin: 0;
@@ -981,26 +963,26 @@ button svg {
   padding: var(--ui-space-3) var(--ui-space-4);
   border-radius: var(--ui-radius-10);
   margin-bottom: var(--ui-space-4);
-  background: #fff2ed;
-  color: #a4543c;
-  border: var(--ui-size-1) solid #f5dfd5;
+  background: var(--ui-danger-surface);
+  color: var(--ui-danger);
+  border: var(--ui-size-1) solid var(--ui-danger-surface);
 }
 .tab-banner {
-  background: #edf4ff;
-  border-color: #dce8fb;
-  color: #51749c;
+  background: var(--ui-accent-surface);
+  border-color: var(--ui-border);
+  color: var(--ui-muted);
 }
 .tab-banner button {
   font-size: var(--ui-font-size-11);
-  color: #087cf0;
+  color: var(--ui-accent);
   background: transparent;
   white-space: nowrap;
 }
 .form-error {
   font-size: var(--ui-font-size-12);
-  color: #c34c48;
+  color: var(--ui-danger);
   line-height: var(--ui-leading-loose);
-  background: #fff4f2;
+  background: var(--ui-danger-surface);
   border-radius: var(--ui-radius-8);
   padding: var(--ui-space-2-5);
 }
@@ -1012,12 +994,12 @@ button svg {
   text-align: center;
   flex-direction: column;
   padding: var(--ui-space-9) var(--ui-space-6);
-  color: #a5b1c0;
+  color: var(--ui-muted);
   gap: var(--ui-space-3-5);
 }
 .list-empty h3 {
   font-size: var(--ui-font-body);
-  color: #61748c;
+  color: var(--ui-muted);
 }
 .list-empty p {
   font-size: var(--ui-font-size-12);
@@ -1030,7 +1012,7 @@ button svg {
 }
 .side-message {
   font-size: var(--ui-font-size-12);
-  color: #9aa5b3;
+  color: var(--ui-muted);
   padding: var(--ui-space-2-5);
 }
 .skeleton-row {
@@ -1060,7 +1042,7 @@ button svg {
   margin-bottom: var(--ui-space-5);
 }
 .unsupported p {
-  color: #718096;
+  color: var(--ui-muted);
   line-height: var(--ui-leading-prose);
 }
 @media (min-width: 1400px) {
@@ -1121,7 +1103,7 @@ button svg {
 }
 .admin-detail > p {
   margin-top: var(--ui-space-2);
-  color: #66768a;
+  color: var(--ui-muted);
   font-size: var(--ui-font-body);
 }
 .admin-toolbar {
@@ -1134,9 +1116,9 @@ button svg {
   gap: var(--ui-space-2-5);
   flex: 1;
   min-width: var(--ui-size-180);
-  background: white;
+  background: var(--ui-surface);
   padding: 0 var(--ui-space-3-5);
-  border: var(--ui-size-1) solid #dce3ec;
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-10);
 }
 .admin-search input {
@@ -1158,9 +1140,9 @@ button svg {
   -webkit-appearance: none;
   min-height: var(--control-height);
   width: auto;
-  border: var(--ui-size-1) solid #dce3ec;
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-10);
-  background: white;
+  background: var(--ui-surface);
   color: inherit;
 }
 .ui-select > svg {
@@ -1169,10 +1151,10 @@ button svg {
   right: var(--ui-size-14);
   transform: translateY(-50%);
   pointer-events: none;
-  color: #66768a;
+  color: var(--ui-muted);
 }
 .ui-select select:focus-visible {
-  outline: var(--ui-size-3) solid #75b8ff;
+  outline: var(--ui-size-3) solid var(--ui-focus);
   outline-offset: var(--ui-size-3);
 }
 .admin-status-filter {
@@ -1189,16 +1171,16 @@ button svg {
 }
 .admin-list,
 .admin-detail {
-  background: white;
-  border: var(--ui-size-1) solid #e3e8ef;
+  background: var(--ui-surface);
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-16);
   overflow: hidden;
 }
 .admin-list-caption {
   padding: var(--ui-space-4);
   font-size: var(--ui-font-size-12);
-  color: #66768a;
-  border-bottom: var(--ui-size-1) solid #edf0f5;
+  color: var(--ui-muted);
+  border-bottom: var(--ui-size-1) solid var(--ui-border);
 }
 .admin-row {
   display: flex;
@@ -1206,14 +1188,14 @@ button svg {
   gap: var(--ui-space-3);
   padding: var(--ui-space-4-5) var(--ui-space-4);
   width: 100%;
-  background: white;
+  background: var(--ui-surface);
   text-align: left;
   color: inherit;
-  border-bottom: var(--ui-size-1) solid #edf0f5;
+  border-bottom: var(--ui-size-1) solid var(--ui-border);
 }
 .admin-row:hover,
 .admin-row.selected {
-  background: #f0f6ff;
+  background: var(--ui-accent-surface);
 }
 .admin-row-info {
   flex: 1;
@@ -1227,7 +1209,7 @@ button svg {
 .admin-row-info small {
   margin-top: var(--ui-space-1-5);
   font-size: var(--ui-font-size-12);
-  color: #66768a;
+  color: var(--ui-muted);
 }
 .admin-status {
   display: inline-block;
@@ -1238,12 +1220,12 @@ button svg {
   white-space: nowrap;
 }
 .admin-status.active {
-  color: #24744c;
-  background: #eaf7ef;
+  color: var(--ui-success);
+  background: var(--ui-success-surface);
 }
 .admin-status.disabled {
-  color: #9c4f46;
-  background: #fff0ed;
+  color: var(--ui-danger);
+  background: var(--ui-danger-surface);
 }
 .admin-pagination {
   padding: var(--ui-space-3-5) var(--ui-space-4);
@@ -1274,7 +1256,7 @@ button svg {
   font-size: var(--ui-font-body);
 }
 .admin-facts dt {
-  color: #66768a;
+  color: var(--ui-muted);
   margin-top: var(--ui-space-4);
   font-size: var(--ui-font-size-12);
 }
@@ -1298,20 +1280,20 @@ button svg {
 }
 .admin-form input {
   padding: var(--ui-space-3);
-  border: var(--ui-size-1) solid #dce3ec;
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-10);
   width: 100%;
   min-width: 0;
 }
 .admin-hint {
-  color: #66768a;
+  color: var(--ui-muted);
   font-size: var(--ui-font-size-12);
   line-height: var(--ui-leading-loose);
 }
 .admin-notice {
   padding: var(--ui-space-3) var(--ui-space-4);
-  background: #eaf7ef;
-  color: #24744c;
+  background: var(--ui-success-surface);
+  color: var(--ui-success);
   border-radius: var(--ui-radius-10);
   margin-bottom: var(--ui-space-4);
 }
@@ -1319,7 +1301,7 @@ button svg {
   font-family: var(--ui-font-mono);
   user-select: all;
   padding: var(--ui-space-3);
-  background: #f4f6f9;
+  background: var(--ui-surface);
   border-radius: var(--ui-radius-8);
 }
 @media (max-width: 1200px) {
@@ -1392,85 +1374,47 @@ body:has(.app-shell) {
   inset: 0;
 }
 .app-shell > .bottom-navigation {
-  position: static;
-  flex: none;
-}
-.admin-active > .ui-page-surface {
-  padding: var(--ui-space-3);
-}
-.ongoing-call-banner {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 30;
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ui-space-2);
-  height: var(--ui-banner-height);
-  padding: var(--ui-space-2) max(var(--ui-space-3), env(safe-area-inset-right, 0)) var(--ui-space-2)
-    max(var(--ui-space-3), env(safe-area-inset-left, 0));
-  background: #21834c;
-  color: white;
-  font-size: var(--ui-font-body);
-  font-weight: var(--ui-weight-semibold);
-}
-.ongoing-call-banner > svg {
-  flex: none;
-}
-.ongoing-call-banner > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bottom-navigation {
-  position: fixed;
-  z-index: 30;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  min-height: calc(
-    var(--tabs-height) - var(--ui-space-1) + max(var(--ui-space-1), var(--app-safe-area-bottom))
-  );
   display: flex;
   flex-wrap: wrap;
+  flex: none;
   container-type: inline-size;
   align-items: stretch;
   justify-content: center;
-  gap: var(--ui-space-3);
-  row-gap: var(--ui-space-1);
-  font-size: var(--ui-font-navigation);
-  padding: var(--ui-space-1) max(var(--ui-space-3), env(safe-area-inset-right, 0))
-    max(var(--ui-space-1), var(--app-safe-area-bottom))
-    max(var(--ui-space-3), env(safe-area-inset-left, 0));
-  border-top: var(--ui-size-1) solid #e4eaf1;
+  gap: var(--ui-space-1);
+  margin: 0 max(var(--ui-navigation-gutter), env(safe-area-inset-right, 0px))
+    max(var(--ui-navigation-gutter), var(--app-safe-area-bottom))
+    max(var(--ui-navigation-gutter), env(safe-area-inset-left, 0px));
+  padding: var(--ui-navigation-padding);
+  border: var(--ui-border-width) solid var(--ui-border);
+  border-radius: var(--ui-navigation-radius);
   background: var(--ui-surface);
 }
 .bottom-tab {
   flex: 1 1 var(--ui-navigation-item-width);
-  max-width: var(--ui-size-180);
   min-width: 0;
-  min-height: var(--ui-size-52);
+  min-height: var(--ui-control-height);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--ui-space-1-5);
-  padding: var(--ui-space-1) var(--ui-space-1-5);
-  border-radius: var(--ui-radius-10);
-  color: #778596;
+  gap: var(--ui-space-1);
+  padding: var(--ui-space-1-5) var(--ui-space-0-5);
+  border-radius: var(--ui-navigation-item-radius);
+  color: var(--ui-muted);
   font-size: var(--ui-font-navigation);
   line-height: var(--ui-leading-heading);
-  font-weight: var(--ui-weight-semibold);
+  font-weight: var(--ui-weight-regular);
   text-align: center;
+  transition:
+    color var(--ui-navigation-duration) ease,
+    background-color var(--ui-navigation-duration) ease;
 }
-.bottom-tab:hover {
-  background: #f2f6fc;
-}
+.bottom-tab:hover,
 .bottom-tab.active {
-  color: #087cf0;
-  background: transparent;
+  color: var(--ui-accent);
+  background: var(--ui-accent-surface);
 }
 
 .password-control {
@@ -1499,20 +1443,14 @@ body:has(.app-shell) {
   place-items: center;
   border-radius: var(--ui-radius-8);
   background: transparent;
-  color: #66768a;
+  color: var(--ui-muted);
 }
 .password-action:hover {
-  background: #edf5ff;
-  color: #087cf0;
+  background: var(--ui-accent-surface);
+  color: var(--ui-accent);
 }
 
 /* Mobile is the default layout. Desktop expands spacing and adds a second call pane. */
-.bottom-tab {
-  gap: var(--ui-space-1);
-  padding: var(--ui-space-0-5) var(--ui-space-1-5);
-  font-size: var(--ui-font-navigation);
-  font-weight: var(--ui-weight-medium);
-}
 .bottom-tab > svg {
   width: var(--ui-size-22);
   height: var(--ui-size-22);
@@ -1594,9 +1532,9 @@ body:has(.app-shell) {
   padding: var(--ui-space-2-5) var(--ui-space-3);
 }
 .admin-row > .avatar {
-  width: var(--ui-size-36);
-  height: var(--ui-size-36);
-  font-size: var(--ui-font-size-12);
+  width: var(--ui-avatar-size);
+  height: var(--ui-avatar-size);
+  font-size: var(--ui-avatar-font-size);
 }
 .admin-row-info strong,
 .admin-row-info small {
@@ -1755,7 +1693,7 @@ body:has(.app-shell) {
   min-height: var(--ui-control-height);
   padding: var(--ui-space-2) var(--ui-space-1);
   align-self: flex-start;
-  color: #617b99;
+  color: var(--ui-muted);
   background: transparent;
   font-size: var(--ui-font-caption);
 }
@@ -1883,7 +1821,7 @@ body:has(.app-shell) {
     min-height: var(--ui-size-420);
   }
   .contact-panel {
-    border-right: var(--ui-size-1) solid #e9edf3;
+    border-right: var(--ui-size-1) solid var(--ui-border);
   }
   .mobile-hidden {
     display: flex;
@@ -1921,7 +1859,7 @@ body:has(.app-shell) {
   line-height: var(--ui-leading-tight);
 }
 .admin-search input::placeholder {
-  color: #7b8796;
+  color: var(--ui-muted);
   opacity: 1;
   font-weight: var(--ui-weight-regular);
 }
@@ -1934,7 +1872,7 @@ body:has(.app-shell) {
 .push-settings {
   margin-block: var(--ui-space-5);
   padding-block: var(--ui-space-4);
-  border-block: var(--ui-size-1) solid var(--border, #dce3ed);
+  border-block: var(--ui-size-1) solid var(--border, var(--ui-border));
 }
 .push-settings p {
   margin-block: var(--ui-space-2-5);
@@ -1947,7 +1885,7 @@ body:has(.app-shell) {
   width: min(var(--ui-size-120), 30vw);
   aspect-ratio: 9 / 16;
   z-index: 20;
-  border: var(--ui-size-1) solid #dce3ed;
+  border: var(--ui-size-1) solid var(--ui-border);
   border-radius: var(--ui-radius-12);
   overflow: hidden;
 }
@@ -1962,7 +1900,7 @@ body:has(.app-shell) {
   inset: auto 0 0;
   margin: 0;
   padding: var(--ui-space-2);
-  background: #fff;
+  background: var(--ui-surface);
   font-size: var(--ui-font-size-12);
 }
 
@@ -1974,7 +1912,7 @@ body:has(.app-shell) {
   background: transparent;
 }
 .native-camera-surface-visible [data-gchat-surface] {
-  background: #f4f6f9;
+  background: var(--ui-canvas-background);
   clip-path: var(--native-camera-clip, none);
 }
 
@@ -1986,4 +1924,84 @@ body:has(.app-shell) {
   flex: none;
   min-width: 0;
   padding: var(--ui-space-2) var(--ui-space-3);
+}
+
+/* React owns the snapshots. Keep persistent controls outside the captured root. */
+:root {
+  view-transition-name: none;
+}
+::view-transition {
+  pointer-events: none;
+}
+::view-transition-group(*) {
+  animation-duration: var(--ui-view-transition-duration);
+  animation-timing-function: var(--ui-view-transition-easing);
+}
+::view-transition-group(.route-slide-forward),
+::view-transition-group(.route-slide-backward) {
+  animation-name: none;
+  overflow: clip;
+}
+::view-transition-old(.route-slide-forward),
+::view-transition-new(.route-slide-forward),
+::view-transition-old(.route-slide-backward),
+::view-transition-new(.route-slide-backward) {
+  animation-duration: var(--ui-view-transition-duration);
+  animation-timing-function: var(--ui-view-transition-easing);
+  animation-fill-mode: both;
+  mix-blend-mode: normal;
+}
+::view-transition-old(.route-slide-forward) {
+  animation-name: route-leave-left;
+}
+::view-transition-new(.route-slide-forward) {
+  animation-name: route-enter-right;
+}
+::view-transition-old(.route-slide-backward) {
+  animation-name: route-leave-right;
+}
+::view-transition-new(.route-slide-backward) {
+  animation-name: route-enter-left;
+}
+@keyframes route-enter-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0%);
+  }
+}
+@keyframes route-enter-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0%);
+  }
+}
+@keyframes route-leave-left {
+  from {
+    transform: translateX(0%);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes route-leave-right {
+  from {
+    transform: translateX(0%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+:root:has(dialog[open])::view-transition {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }

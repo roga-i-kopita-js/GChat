@@ -21,3 +21,5 @@ export { Select } from './Select';
 export { Skeleton, type SkeletonProps } from './Skeleton';
 
 export { Text, type TextProps } from './Text';
+
+export { WinterWeather } from './WinterWeather';

@@ -131,9 +131,38 @@ describe('PWA worker', (): void => {
     f.fetch.mockResolvedValue(
       new Response('SPA fallback', { headers: { 'Content-Type': 'text/html' } }),
     );
-    await expect(f.dispatch('install')).rejects.toThrow('Incomplete frontend deployment');
+    await expect(f.dispatch('install')).rejects.toThrow(
+      'Incomplete frontend deployment: /apps/static/main.js (HTML returned instead of asset)',
+    );
     expect(f.caches.delete).toHaveBeenCalledWith(f.config.cacheName);
   });
+  it('reports the missing asset and HTTP status without activating a partial shell', async (): Promise<void> => {
+    const f = fixture();
+
+    f.fetch.mockResolvedValue(new Response('missing', { status: 404 }));
+    await expect(f.dispatch('install')).rejects.toThrow(
+      'Incomplete frontend deployment: /apps/static/main.js (HTTP 404)',
+    );
+    expect(f.caches.delete).toHaveBeenCalledExactlyOnceWith(f.config.cacheName);
+    expect(f.self.skipWaiting).not.toHaveBeenCalled();
+  });
+  it.each(['Network request failed', 'QuotaExceededError'])(
+    'keeps the asset path when installation fails: %s',
+    async (message): Promise<void> => {
+      const f = fixture();
+
+      if (message === 'QuotaExceededError') {
+        f.cache.put.mockRejectedValue(new Error(message));
+      } else {
+        f.fetch.mockRejectedValue(new Error(message));
+      }
+
+      await expect(f.dispatch('install')).rejects.toThrow(
+        new RegExp('/apps/static/main\\.js.*' + message),
+      );
+      expect(f.caches.delete).toHaveBeenCalledWith(f.config.cacheName);
+    },
+  );
   it.each([true, false])(
     'caches frontend navigation but never API, cross-origin or non-GET requests (%s)',
     async (server): Promise<void> => {

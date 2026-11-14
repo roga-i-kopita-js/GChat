@@ -108,6 +108,7 @@ export function LoginPage(): JSX.Element {
           <h2>Вход в GChat</h2>
           <p>Рады вас видеть. Войдите в свой аккаунт.</p>
           <form
+            method="post"
             onSubmit={(event): void => {
               void (async () => {
                 try {

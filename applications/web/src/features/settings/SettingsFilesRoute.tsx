@@ -103,11 +103,7 @@ export function SettingsFilesRoute(): JSX.Element {
 
             return (
               <div key={entry.id}>
-                <Row
-                  icon={entry.kind === 'directory' ? Folder : File}
-                  color="#30b0c7"
-                  title={entry.name}
-                >
+                <Row icon={entry.kind === 'directory' ? Folder : File} title={entry.name}>
                   <small>{accessDescription}</small>
                 </Row>
                 <div className="settings-file-actions">

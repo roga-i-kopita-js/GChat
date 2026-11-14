@@ -5,8 +5,8 @@
   gap: var(--ui-header-gap);
   min-height: var(--ui-header-height);
   padding: var(--ui-header-padding-block) var(--ui-header-padding-inline);
-  border-bottom: var(--ui-border-width) solid var(--ui-border);
-  background: var(--ui-surface);
+  border-bottom: 0;
+  background: transparent;
   color: var(--ui-text);
 }
 .ui-page-header h1,
@@ -17,4 +17,25 @@
   font-weight: var(--ui-weight-semibold);
   line-height: var(--ui-leading-heading);
   overflow-wrap: anywhere;
+}
+
+.ui-page-header-section {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: var(--ui-section-padding-top) var(--ui-section-padding-inline)
+    var(--ui-section-padding-bottom);
+  border-bottom: 0;
+}
+.ui-page-header-section h1,
+.ui-page-header-section h2 {
+  flex: 1;
+  font-size: var(--ui-section-font-size);
+  line-height: var(--ui-section-leading);
+  letter-spacing: var(--ui-section-tracking);
+}
+.ui-page-header-motif {
+  flex: none;
+  width: var(--ui-size-24);
+  height: var(--ui-size-24);
+  color: var(--ui-accent);
 }
