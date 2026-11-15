@@ -141,6 +141,13 @@ test('a stationary long press opens the normal menu and its release does not rep
     .filter({ hasText: 'Встречаемся завтра в 18:00?' });
 
   await expect(source).toBeVisible();
+  await source.tap();
+  const actions = source.locator('..').getByRole('button', { name: 'Действия сообщения' });
+
+  await expect(actions).toHaveCount(1);
+  expect(await actions.evaluate((node) => getComputedStyle(node).opacity)).toBe('0');
+  expect(await actions.evaluate((node) => getComputedStyle(node).pointerEvents)).toBe('none');
+  expect(await source.evaluate((node) => getComputedStyle(node).userSelect)).toBe('none');
   const { finish } = await touch(page, source);
 
   try {
@@ -150,6 +157,7 @@ test('a stationary long press opens the normal menu and its release does not rep
   }
 
   await expect(page.getByRole('menu')).toBeVisible();
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('');
   await expect(page.getByLabel('Ответ на сообщение', { exact: true })).toHaveCount(0);
   await page.getByRole('menu').press('Escape');
   await expect(source).toBeVisible();
@@ -188,10 +196,15 @@ test('interactive controls and selected text do not start the gesture', async ({
   await reset(source);
   await expect(page.getByLabel('Ответ на сообщение', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('alert')).toHaveCount(0);
-  await source.evaluate((element) => {
+  await page.evaluate(() => {
+    // Touch messages are no longer selectable in the feed. A selection in
+    // another browser surface must still prevent a new reply gesture.
+    const text = document.createElement('p');
     const range = document.createRange();
 
-    range.selectNodeContents(element.querySelector('.dialog-message-text')!);
+    text.textContent = 'Выбранный текст вне сообщения';
+    document.body.append(text);
+    range.selectNodeContents(text);
     window.getSelection()!.removeAllRanges();
     window.getSelection()!.addRange(range);
   });

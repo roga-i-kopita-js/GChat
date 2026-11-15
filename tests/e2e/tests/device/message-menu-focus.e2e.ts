@@ -68,6 +68,7 @@ test('focus preview keeps the existing palette and restores the source without m
       '',
       'Ответить',
       'Копировать текст',
+      'Выделить текст',
       'Переслать',
       'Редактировать',
       'Копировать ссылку',
@@ -284,6 +285,9 @@ test('sticker, forwarded, readonly and long messages keep a usable preview', asy
       await expect(
         menu.getByRole('menuitem', { name: 'Копировать текст', exact: true }),
       ).toHaveCount(0);
+      await expect(menu.getByRole('menuitem', { name: 'Выделить текст', exact: true })).toHaveCount(
+        0,
+      );
     }
 
     if (query.includes('forward')) {
@@ -310,6 +314,50 @@ test('sticker, forwarded, readonly and long messages keep a usable preview', asy
     await menu.press('Escape');
     await expect(page.locator('article')).toBeVisible();
   }
+});
+
+test('text selection shows the full message and leaves fragment selection to the browser', async ({
+  page,
+}, testInfo) => {
+  await openExample(page, 'message=long&readonly&peer');
+  await page.getByRole('menuitem', { name: 'Выделить текст', exact: true }).tap();
+  const dialog = page.getByRole('dialog', { name: 'Выделить текст', exact: true });
+  const text = dialog.getByRole('document', { name: 'Текст для выделения' });
+  const full = 'Очень длинное сообщение с переносами и деталями встречи.\n'.repeat(80);
+
+  await expect(text).toBeFocused();
+  expect(await text.textContent()).toBe(full);
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('');
+  await expect(dialog.getByRole('textbox')).toHaveCount(0);
+  await expect(dialog.getByRole('note')).toHaveCount(0);
+  expect(await text.evaluate((node) => getComputedStyle(node).userSelect)).toBe('text');
+
+  const body = dialog.locator('.dialog-message-menu-body');
+
+  expect(await body.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('text-selection-390.png') });
+  const { x, y } = (await text.boundingBox())!;
+
+  await page.mouse.dblclick(x + 24, y + 22);
+  const fragment = await page.evaluate(() => window.getSelection()?.toString());
+
+  expect(fragment).not.toBe('');
+  expect(fragment).not.toBe(full);
+  expect(full).toContain(fragment);
+  // Arrow keys must not be redirected to the menu's command navigation.
+  await text.press('ArrowDown');
+  await expect(text).toBeFocused();
+  await text.press('Escape');
+  const menu = page.getByRole('menu');
+
+  await expect(menu.getByRole('menuitem', { name: 'Выделить текст', exact: true })).toBeFocused();
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toBe('');
+  await menu.getByRole('menuitem', { name: 'Выделить текст', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Назад к действиям' }).click();
+  await menu.getByRole('menuitem', { name: 'Выделить текст', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Готово', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator('article')).toBeFocused();
 });
 
 test.describe('desktop', () => {

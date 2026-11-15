@@ -730,6 +730,36 @@
     pointer-events: auto;
   }
 }
+@media (hover: none), (pointer: coarse) {
+  .dialog-message-row .dialog-message-container .dialog-message-actions {
+    clip-path: inset(50%);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .dialog-message-row .dialog-message-container .dialog-message-actions:focus-visible {
+    clip-path: none;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .dialog-message-row .dialog-message[aria-haspopup='menu'],
+  .dialog-message-menu-preview {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+.dialog-selectable-text {
+  padding: var(--ui-space-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+.dialog-selectable-text:focus-visible {
+  outline: var(--ui-focus-width) solid var(--ui-focus);
+  outline-offset: calc(-1 * var(--ui-focus-width));
+}
 @media (min-width: 801px) {
   .dialog-edit-preview {
     padding-inline: var(--ui-space-4);

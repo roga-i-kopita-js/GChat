@@ -7,6 +7,7 @@ import {
   Link as LinkIcon,
   Pencil,
   Reply,
+  TextSelect,
 } from 'lucide-react';
 import type { JSX } from 'react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
@@ -43,6 +44,7 @@ export function MessageMenu({
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const [choosingLink, setChoosingLink] = useState(false);
+  const [selectingText, setSelectingText] = useState(false);
   const [status, setStatus] = useState('');
   const [manual, setManual] = useState<string | null>(null);
   const [pending, setPending] = useState<string[]>([]);
@@ -50,6 +52,7 @@ export function MessageMenu({
   const lifetime = useRef(0);
   const source = useRef<HTMLElement | null>(null);
   const body = useRef<HTMLDivElement>(null);
+  const selectable = useRef<HTMLDivElement>(null);
   const shade = useRef<HTMLDivElement>(null);
   const pointerActivation = useRef(false);
   const dismiss = useCallback(
@@ -117,6 +120,7 @@ export function MessageMenu({
   }
   const menu = useRef<HTMLDivElement>(null);
   const returnToReactions = useRef(false);
+  const returnToSelection = useRef(false);
   const reposition = useRef<(() => void) | null>(null);
 
   function showReactions(): void {
@@ -130,7 +134,9 @@ export function MessageMenu({
 
   function back(): void {
     returnToReactions.current = expanded;
+    returnToSelection.current = selectingText;
     setExpanded(false);
+    setSelectingText(false);
     setChoosingLink(false);
     setManual(null);
     setStatus('');
@@ -315,19 +321,39 @@ export function MessageMenu({
 
     if (manual !== null) {
       target = menu.current?.querySelector('textarea');
+    } else if (selectingText) {
+      target = selectable.current;
     } else if (choosingLink) {
       target = menu.current?.querySelector('button');
     } else if (expanded) {
       target = menu.current?.querySelector('.dialog-reaction-picker button');
     } else {
-      target = returnToReactions.current
-        ? menu.current?.querySelector('[data-expand]')
-        : menu.current?.querySelector('.dialog-message-menu-actions button');
+      if (returnToReactions.current) {
+        target = menu.current?.querySelector('[data-expand]');
+      } else if (returnToSelection.current) {
+        target = menu.current?.querySelector('[data-select-text]');
+      } else {
+        target = menu.current?.querySelector('.dialog-message-menu-actions button');
+      }
+
       returnToReactions.current = false;
+      returnToSelection.current = false;
     }
 
     target?.focus({ preventScroll: true });
-  }, [expanded, choosingLink, manual]);
+  }, [expanded, choosingLink, manual, selectingText]);
+
+  useLayoutEffect(() => {
+    const node = selectable.current;
+
+    return () => {
+      const selection = window.getSelection();
+
+      if (node && selection?.anchorNode && node.contains(selection.anchorNode)) {
+        selection.removeAllRanges();
+      }
+    };
+  }, [selectingText]);
 
   return createPortal(
     <div
@@ -335,8 +361,8 @@ export function MessageMenu({
       // A long press opens while the pointer is still down outside this node.
       // Native auto light-dismiss would treat its release as an outside gesture.
       popover="manual"
-      role="menu"
-      aria-label="Действия сообщения"
+      role={selectingText ? 'dialog' : 'menu'}
+      aria-label={selectingText ? 'Выделить текст' : 'Действия сообщения'}
       className="dialog-message-menu"
       data-expanded={expanded || undefined}
       data-focused={!!message || undefined}
@@ -361,7 +387,7 @@ export function MessageMenu({
           event.preventDefault();
           event.stopPropagation();
 
-          if (expanded || choosingLink || manual !== null) {
+          if (expanded || choosingLink || manual !== null || selectingText) {
             back();
           } else {
             dismiss(true);
@@ -370,7 +396,10 @@ export function MessageMenu({
           return;
         }
 
-        if (event.target instanceof HTMLTextAreaElement) {
+        if (
+          event.target instanceof HTMLTextAreaElement ||
+          (event.target instanceof Node && selectable.current?.contains(event.target))
+        ) {
           return;
         }
 
@@ -418,13 +447,22 @@ export function MessageMenu({
       }}
     >
       {message && <div ref={shade} className="dialog-message-menu-shade" aria-hidden="true" />}
-      {expanded ? (
+      {selectingText || expanded ? (
         <div className="dialog-message-menu-heading">
-          <button type="button" role="menuitem" aria-label="Назад к действиям" onClick={back}>
+          <button
+            type="button"
+            role={selectingText ? undefined : 'menuitem'}
+            aria-label="Назад к действиям"
+            onClick={back}
+          >
             <ArrowLeft aria-hidden="true" />
           </button>
-          <span>Реакции</span>
-          <button type="button" role="menuitem" onClick={() => dismiss(true)}>
+          <span>{selectingText ? 'Выделить текст' : 'Реакции'}</span>
+          <button
+            type="button"
+            role={selectingText ? undefined : 'menuitem'}
+            onClick={() => dismiss(true)}
+          >
             Готово
           </button>
         </div>
@@ -466,8 +504,19 @@ export function MessageMenu({
           </div>
         )
       )}
-      {message && <MessageMenuPreview message={message} own={own} read={read} />}
+      {message && !selectingText && <MessageMenuPreview message={message} own={own} read={read} />}
       <div ref={body} className="dialog-message-menu-body">
+        {selectingText && message?.content.kind === 'text' && (
+          <div
+            ref={selectable}
+            className="dialog-selectable-text"
+            role="document"
+            aria-label="Текст для выделения"
+            tabIndex={0}
+          >
+            {message.content.text}
+          </div>
+        )}
         {manual !== null && (
           <div className="dialog-copy-fallback dialog-message-menu-actions">
             <button type="button" role="menuitem" onClick={back}>
@@ -516,56 +565,73 @@ export function MessageMenu({
             ))}
           </div>
         )}
-        {manual === null && !choosingLink && !(expanded && message && canReact) && (
-          <div className="dialog-message-menu-actions">
-            {reply && (
-              <button type="button" role="menuitem" onClick={reply}>
-                <span>Ответить</span>
-                <Reply size={20} aria-hidden="true" />
-              </button>
-            )}
-            {message?.content.kind === 'text' && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  if (message.content.kind === 'text') {
-                    copy(message.content.text);
-                  }
-                }}
-              >
-                <span>Копировать текст</span>
-                <Copy size={20} aria-hidden="true" />
-              </button>
-            )}
-            {forward && (
-              <button type="button" role="menuitem" onClick={forward}>
-                <span>Переслать</span>
-                <Forward size={20} aria-hidden="true" />
-              </button>
-            )}
-            {(edit || links.length > 0) &&
-              (reply || forward || message?.content.kind === 'text') && (
-                <hr className="dialog-message-menu-divider" />
+        {manual === null &&
+          !selectingText &&
+          !choosingLink &&
+          !(expanded && message && canReact) && (
+            <div className="dialog-message-menu-actions">
+              {reply && (
+                <button type="button" role="menuitem" onClick={reply}>
+                  <span>Ответить</span>
+                  <Reply size={20} aria-hidden="true" />
+                </button>
               )}
-            {edit && (
-              <button type="button" role="menuitem" onClick={edit}>
-                <span>Редактировать</span>
-                <Pencil size={20} aria-hidden="true" />
-              </button>
-            )}
-            {links.length > 0 && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => (links.length === 1 ? copy(links[0]!) : setChoosingLink(true))}
-              >
-                <span>Копировать ссылку</span>
-                <LinkIcon size={20} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-        )}
+              {message?.content.kind === 'text' && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    if (message.content.kind === 'text') {
+                      copy(message.content.text);
+                    }
+                  }}
+                >
+                  <span>Копировать текст</span>
+                  <Copy size={20} aria-hidden="true" />
+                </button>
+              )}
+              {message?.content.kind === 'text' && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-select-text
+                  onClick={() => {
+                    setStatus('');
+                    setSelectingText(true);
+                  }}
+                >
+                  <span>Выделить текст</span>
+                  <TextSelect size={20} aria-hidden="true" />
+                </button>
+              )}
+              {forward && (
+                <button type="button" role="menuitem" onClick={forward}>
+                  <span>Переслать</span>
+                  <Forward size={20} aria-hidden="true" />
+                </button>
+              )}
+              {(edit || links.length > 0) &&
+                (reply || forward || message?.content.kind === 'text') && (
+                  <hr className="dialog-message-menu-divider" />
+                )}
+              {edit && (
+                <button type="button" role="menuitem" onClick={edit}>
+                  <span>Редактировать</span>
+                  <Pencil size={20} aria-hidden="true" />
+                </button>
+              )}
+              {links.length > 0 && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => (links.length === 1 ? copy(links[0]!) : setChoosingLink(true))}
+                >
+                  <span>Копировать ссылку</span>
+                  <LinkIcon size={20} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+          )}
       </div>
       {status && <p role="alert">{status}</p>}
     </div>,
