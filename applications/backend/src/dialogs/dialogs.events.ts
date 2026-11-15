@@ -4,6 +4,10 @@ import type { MessageDto } from './dialogs.dto.js';
 
 export type DialogEvent =
   | {
+      type: 'dialog.message_reactions_available';
+      payload: { dialog_id: string; last_reaction_sequence: number };
+    }
+  | {
       type: 'dialog.message_edits_available';
       payload: { dialog_id: string; last_edit_sequence: number };
     }

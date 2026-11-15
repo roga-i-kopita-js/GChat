@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -37,13 +38,16 @@ import {
   DialogListResponseDto,
   DialogResponseDto,
   EditMessageDto,
+  ForwardMessageDto,
   HistoryResponseDto,
   MessageEditsResponseDto,
+  MessageReactionsResponseDto,
   MessageResponseDto,
   PermissionsResponseDto,
   ReadDialogDto,
   ReadResponseDto,
   SendMessageDto,
+  SetReactionDto,
 } from './dialogs.dto.js';
 import { DialogsService } from './dialogs.service.js';
 import { contentValue, queryInteger } from './dialogs.validation.js';
@@ -155,6 +159,12 @@ export class DialogsController {
     const content = contentValue(input.content, this.error);
     const result = await this.dialogs.send(req.user, id.toLowerCase(), {
       client_message_id: input.client_message_id.toLowerCase(),
+      reply_to: input.reply_to
+        ? {
+            message_id: input.reply_to.message_id.toLowerCase(),
+            expected_version: input.reply_to.expected_version,
+          }
+        : null,
       content,
     });
 
@@ -266,6 +276,92 @@ export class DialogsController {
       req.user,
       id.toLowerCase(),
       queryInteger(query.after_edit_sequence, 'after_edit_sequence', 0, this.error)!,
+      this.limit(query.limit),
+    );
+  }
+
+  @Post(':dialog_id/forwards')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'dialogsMessageForward' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiCreatedResponse({ type: MessageResponseDto })
+  @ApiResponse({ status: 409, type: ErrorResponseDto })
+  @ApiResponse({ status: 413, type: ErrorResponseDto })
+  async forward(
+    @Req() req: Request,
+    @Param('dialog_id', new ParseUUIDPipe()) id: string,
+    @Body() input: ForwardMessageDto,
+    @Res({ passthrough: true }) res: StatusResponse,
+  ): Promise<MessageResponseDto> {
+    const { message, created } = await this.dialogs.forward(req.user, id.toLowerCase(), {
+      ...input,
+      client_message_id: input.client_message_id.toLowerCase(),
+      source_dialog_id: input.source_dialog_id.toLowerCase(),
+      source_message_id: input.source_message_id.toLowerCase(),
+    });
+
+    res.status(created ? 201 : 200);
+
+    return { message };
+  }
+
+  @Get(':dialog_id/messages/by-client-id/:client_message_id')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'dialogsMessageGetByClientId' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  byClient(
+    @Req() req: Request,
+    @Param('dialog_id', new ParseUUIDPipe()) id: string,
+    @Param('client_message_id', new ParseUUIDPipe()) clientId: string,
+  ): Promise<MessageResponseDto> {
+    return this.dialogs.messageGetByClientId(req.user, id.toLowerCase(), clientId.toLowerCase());
+  }
+
+  @Put(':dialog_id/messages/:message_id/reactions')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'dialogsMessageReactionSet' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiResponse({ status: 409, type: ErrorResponseDto })
+  @ApiResponse({ status: 413, type: ErrorResponseDto })
+  setReaction(
+    @Req() req: Request,
+    @Param('dialog_id', new ParseUUIDPipe()) id: string,
+    @Param('message_id', new ParseUUIDPipe()) messageId: string,
+    @Body() input: SetReactionDto,
+  ): Promise<MessageResponseDto> {
+    return this.dialogs.setReaction(req.user, id.toLowerCase(), messageId.toLowerCase(), {
+      ...input,
+      client_reaction_id: input.client_reaction_id.toLowerCase(),
+    });
+  }
+
+  @Get(':dialog_id/message-reactions')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ operationId: 'dialogsMessageReactions' })
+  @ApiOkResponse({ type: MessageReactionsResponseDto })
+  @ApiQuery({
+    name: 'after_reaction_sequence',
+    required: false,
+    schema: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER, default: 0 },
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 30 },
+  })
+  reactions(
+    @Req() req: Request,
+    @Param('dialog_id', new ParseUUIDPipe()) id: string,
+    @Query() query: Record<string, unknown>,
+  ): Promise<MessageReactionsResponseDto> {
+    if (Object.keys(query).some((key) => !['after_reaction_sequence', 'limit'].includes(key))) {
+      throw this.error.validation();
+    }
+
+    return this.dialogs.reactions(
+      req.user,
+      id.toLowerCase(),
+      queryInteger(query.after_reaction_sequence, 'after_reaction_sequence', 0, this.error)!,
       this.limit(query.limit),
     );
   }

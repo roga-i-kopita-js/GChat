@@ -29,6 +29,7 @@ export const dialogs = pgTable(
       .references((): AnyPgColumn => users.id, { onDelete: 'restrict' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     lastEditSequence: bigint('last_edit_sequence', { mode: 'number' }).notNull().default(0),
+    lastReactionSequence: bigint('last_reaction_sequence', { mode: 'number' }).notNull().default(0),
     lastSequence: bigint('last_sequence', { mode: 'number' }).notNull().default(0),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }),
     lowRead: bigint('participant_low_last_read_sequence', { mode: 'number' }).notNull().default(0),
@@ -40,6 +41,10 @@ export const dialogs = pgTable(
     unique('gchat_dialog_pair').on(t.participantLowId, t.participantHighId),
     check('gchat_dialog_pair_order', sql`${t.participantLowId} < ${t.participantHighId}`),
     check('gchat_dialog_edit_sequence', sql`${t.lastEditSequence} between 0 and 9007199254740991`),
+    check(
+      'gchat_dialog_reaction_sequence',
+      sql`${t.lastReactionSequence} between 0 and 9007199254740991`,
+    ),
     check('gchat_dialog_sequence', sql`${t.lastSequence} between 0 and 9007199254740991`),
     check(
       'gchat_dialog_empty',
@@ -78,6 +83,8 @@ export const dialogMessages = pgTable(
     editSequence: bigint('edit_sequence', { mode: 'number' }).notNull().default(0),
     editedAt: timestamp('edited_at', { withTimezone: true }),
     lastEditId: uuid('last_edit_id'),
+    reactionVersion: bigint('reaction_version', { mode: 'number' }).notNull().default(0),
+    reactionSequence: bigint('reaction_sequence', { mode: 'number' }).notNull().default(0),
     encryptionVersion: integer('encryption_version').notNull(),
     encryptionKeyId: text('encryption_key_id').notNull(),
     iv: bytea('iv').notNull(),
@@ -91,8 +98,15 @@ export const dialogMessages = pgTable(
     check('gchat_dialog_message_sequence_range', sql`${t.sequence} between 1 and 9007199254740991`),
     check(
       'gchat_dialog_message_version',
-      sql`${t.encryptionVersion} in (1,2) and (${t.encryptionVersion} <> 1 or ${t.version} = 1)`,
+      sql`${t.encryptionVersion} in (1,2,3,4) and (${t.encryptionVersion} <> 1 or ${t.version} = 1)`,
     ),
+    check(
+      'gchat_dialog_message_reaction_state',
+      sql`${t.reactionVersion} between 0 and 9007199254740991 and ${t.reactionSequence} between 0 and 9007199254740991 and ((${t.reactionVersion}=0 and ${t.reactionSequence}=0) or (${t.reactionVersion}>0 and ${t.reactionSequence}>0)) and (${t.encryptionVersion} in (3,4) or ${t.reactionVersion}=0)`,
+    ),
+    uniqueIndex('gchat_dialog_message_reaction_position')
+      .on(t.dialogId, t.reactionSequence)
+      .where(sql`${t.reactionSequence}>0`),
     check(
       'gchat_dialog_message_edit_range',
       sql`${t.version} between 1 and 9007199254740991 and ${t.editSequence} between 0 and 9007199254740991`,

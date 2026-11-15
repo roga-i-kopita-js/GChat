@@ -34,6 +34,8 @@ function setup(): {
     editSequence: 0,
     editedAt: null,
     lastEditId: null,
+    reactionVersion: 0,
+    reactionSequence: 0,
     encryptionVersion: 1,
     encryptionKeyId: 'one',
   };
@@ -173,5 +175,94 @@ describe('edited message authentication', (): void => {
         expect.objectContaining({ code: 'INTERNAL_ERROR' }),
       );
     }
+  });
+});
+
+describe('message actions encryption v3', () => {
+  it('authenticates encrypted attribution and independent reaction metadata', () => {
+    const { crypto, row } = setup();
+    const metadata = { ...row, encryptionVersion: 3, reactionVersion: 1, reactionSequence: 9 };
+    const payload = {
+      content: { kind: 'text' as const, text: 'snapshot' },
+      forward: { author: { id: randomUUID(), display_name: 'Original author' } },
+      reaction_state: [
+        {
+          user_id: row.senderId,
+          emoji: '👍',
+          selected: true,
+          version: 1,
+          last_operation_id: randomUUID(),
+        },
+      ],
+    };
+    const encrypted = crypto.encrypt(metadata, payload.content, payload);
+
+    expect(crypto.decryptEnvelope({ ...metadata, ...encrypted })).toEqual({
+      ...payload,
+      reply: null,
+    });
+    expect(encrypted.ciphertext.includes(Buffer.from(payload.forward.author.id))).toBe(false);
+
+    for (const patch of [
+      { reactionVersion: 2 },
+      { reactionSequence: 10 },
+      { version: 2 },
+      { senderId: randomUUID() },
+    ]) {
+      expect(() => crypto.decryptEnvelope({ ...metadata, ...encrypted, ...patch })).toThrow(
+        expect.objectContaining({ code: 'INTERNAL_ERROR' }),
+      );
+    }
+
+    const invalid = crypto.encrypt(metadata, payload.content, { ...payload, reaction_state: [] });
+
+    expect(() => crypto.decryptEnvelope({ ...metadata, ...invalid })).toThrow(
+      expect.objectContaining({ code: 'INTERNAL_ERROR' }),
+    );
+  });
+});
+
+describe('reply encryption v4', () => {
+  it('authenticates the quote and rejects invalid source positions and AAD tampering', () => {
+    const { crypto, row } = setup();
+    const metadata = { ...row, sequence: 2, encryptionVersion: 4 };
+    const reply = {
+      message_id: randomUUID(),
+      sequence: 1,
+      version: 1,
+      sender_id: randomUUID(),
+      sender_display_name: 'Peer',
+      content: { kind: 'text' as const, text: 'quoted secret' },
+    };
+    const payload = {
+      content: { kind: 'text' as const, text: 'answer' },
+      forward: null,
+      reply,
+      reaction_state: [],
+    };
+    const encrypted = crypto.encrypt(metadata, payload.content, payload);
+
+    expect(crypto.decryptEnvelope({ ...metadata, ...encrypted })).toEqual(payload);
+    expect(encrypted.ciphertext.includes(Buffer.from(reply.content.text))).toBe(false);
+
+    for (const patch of [
+      { reactionVersion: 1 },
+      { reactionSequence: 1 },
+      { sequence: 3 },
+      { encryptionVersion: 3 },
+    ]) {
+      expect(() => crypto.decryptEnvelope({ ...metadata, ...encrypted, ...patch })).toThrow(
+        expect.objectContaining({ code: 'INTERNAL_ERROR' }),
+      );
+    }
+
+    const invalid = crypto.encrypt(metadata, payload.content, {
+      ...payload,
+      reply: { ...reply, sequence: 2 },
+    });
+
+    expect(() => crypto.decryptEnvelope({ ...metadata, ...invalid })).toThrow(
+      expect.objectContaining({ code: 'INTERNAL_ERROR' }),
+    );
   });
 });

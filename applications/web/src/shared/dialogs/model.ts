@@ -25,26 +25,85 @@ const sendContentSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
-export type DialogMessage = Omit<MessageDto, 'content'> & {
+export type DialogMessage = Omit<MessageDto, 'content' | 'reply'> & {
+  reply: ReplyInfo | null;
   content: z.infer<typeof contentSchema>;
+  actions_verified: boolean;
 };
 
 const sequence = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 
-export const messageSchema = z.object({
+export const replySchema = z.strictObject({
   message_id: z.string().uuid(),
-  dialog_id: z.string().uuid(),
-  client_message_id: z.string().uuid(),
-  sender_id: z.string().uuid(),
   sequence: sequence.min(1),
-  created_at: z.string(),
+  version: sequence.min(1),
+  sender_id: z.string().uuid(),
+  sender_display_name: z.string().min(1),
   content: contentSchema,
-  status: z.enum(['sent', 'read']),
-  version: sequence.min(1).default(1),
-  edited_at: z.string().nullable().default(null),
-  edit_sequence: sequence.default(0),
-  last_edit_id: z.string().uuid().nullable().default(null),
 });
+
+export type ReplyInfo = z.infer<typeof replySchema>;
+
+export const messageSchema = z
+  .object({
+    reply: replySchema.nullable().optional(),
+    actions_verified: z.boolean().default(false),
+    forward: z
+      .object({ author: z.object({ id: z.string().uuid(), display_name: z.string() }).nullable() })
+      .nullable()
+      .default(null),
+    reaction_version: sequence.default(0),
+    reaction_sequence: sequence.default(0),
+    reactions: z
+      .array(z.object({ emoji: z.string(), user_ids: z.array(z.string().uuid()).min(1).max(2) }))
+      .default([]),
+    own_reaction_states: z
+      .array(
+        z.object({
+          emoji: z.string(),
+          selected: z.boolean(),
+          version: sequence.min(1),
+          last_operation_id: z.string().uuid(),
+        }),
+      )
+      .default([]),
+    message_id: z.string().uuid(),
+    dialog_id: z.string().uuid(),
+    client_message_id: z.string().uuid(),
+    sender_id: z.string().uuid(),
+    sequence: sequence.min(1),
+    created_at: z.string(),
+    content: contentSchema,
+    status: z.enum(['sent', 'read']),
+    version: sequence.min(1).default(1),
+    edited_at: z.string().nullable().default(null),
+    edit_sequence: sequence.default(0),
+    last_edit_id: z.string().uuid().nullable().default(null),
+  })
+  .transform((message) => ({
+    ...message,
+    reply: message.reply ?? null,
+    actions_verified: message.reply === undefined ? false : message.actions_verified,
+  }));
+
+export function networkMessage(value: unknown): DialogMessage {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    ![
+      'reply',
+      'forward',
+      'reaction_version',
+      'reaction_sequence',
+      'reactions',
+      'own_reaction_states',
+    ].every((key) => key in value)
+  ) {
+    throw new StorageError('INVALID_PAGE');
+  }
+
+  return messageSchema.parse({ ...value, actions_verified: true });
+}
 
 export const dialogSchema = z.object({
   dialog_id: z.string().uuid(),
@@ -65,6 +124,10 @@ export type DialogSummary = Omit<DialogDto, 'last_message'> & {
 
 export const eventSchema = z.discriminatedUnion('type', [
   z.object({
+    type: z.literal('dialog.message_reactions_available'),
+    payload: z.object({ dialog_id: z.string().uuid(), last_reaction_sequence: sequence }),
+  }),
+  z.object({
     type: z.literal('dialog.message_edits_available'),
     payload: z.object({ dialog_id: z.string().uuid(), last_edit_sequence: sequence }),
   }),
@@ -83,6 +146,12 @@ export const eventSchema = z.discriminatedUnion('type', [
 ]);
 
 export const outboxSchema = z.object({
+  reply: replySchema.nullable().default(null),
+  reply_conflict: z.boolean().optional(),
+  operation: z.enum(['send', 'forward']).default('send'),
+  source_dialog_id: z.string().uuid().optional(),
+  source_message_id: z.string().uuid().optional(),
+  expected_source_version: sequence.min(1).optional(),
   client_message_id: z.string().uuid(),
   content: sendContentSchema,
   created_at: z.string(),
@@ -99,10 +168,15 @@ export const recordSchema = z.object({
   initialized: z.boolean(),
   sync_sequence: sequence,
   edit_sync_sequence: sequence.default(0),
+  reaction_sync_sequence: sequence.default(0),
   ranges: z.array(z.tuple([sequence, sequence])),
   before_sequence: sequence.nullable(),
   has_older: z.boolean(),
-  draft: z.object({ text: z.string(), revision: sequence }),
+  draft: z.object({
+    text: z.string(),
+    revision: sequence,
+    reply_to: replySchema.nullable().default(null),
+  }),
   outbox: z.array(outboxSchema),
   read: sequence,
   peer_read: sequence,
@@ -135,10 +209,11 @@ export function emptyRecord(): DialogRecord {
     initialized: false,
     sync_sequence: 0,
     edit_sync_sequence: 0,
+    reaction_sync_sequence: 0,
     ranges: [],
     before_sequence: null,
     has_older: false,
-    draft: { text: '', revision: 0 },
+    draft: { text: '', revision: 0, reply_to: null },
     outbox: [],
     read: 0,
     peer_read: 0,
@@ -205,8 +280,44 @@ export function mergeMessages(
       throw new StorageError('INVALID_MESSAGE_VERSION');
     }
 
+    if (
+      previous?.actions_verified &&
+      message.actions_verified &&
+      JSON.stringify([previous.forward, previous.reply]) !==
+        JSON.stringify([message.forward, message.reply])
+    ) {
+      throw new StorageError('INVALID_MESSAGE_VERSION');
+    }
+
+    if (
+      previous?.actions_verified &&
+      message.actions_verified &&
+      previous.reaction_version === message.reaction_version &&
+      JSON.stringify([
+        previous.reaction_sequence,
+        previous.reactions,
+        previous.own_reaction_states,
+      ]) !==
+        JSON.stringify([message.reaction_sequence, message.reactions, message.own_reaction_states])
+    ) {
+      throw new StorageError('INVALID_REACTION_VERSION');
+    }
+
+    const actions =
+      previous?.actions_verified &&
+      (!message.actions_verified || previous.reaction_version > message.reaction_version)
+        ? previous
+        : message;
+
     messages.set(message.message_id, {
       ...(previous && previous.version > message.version ? previous : message),
+      forward: previous?.actions_verified ? previous.forward : message.forward,
+      reply: previous?.actions_verified ? previous.reply : message.reply,
+      actions_verified: !!(previous?.actions_verified || message.actions_verified),
+      reaction_version: actions.reaction_version,
+      reaction_sequence: actions.reaction_sequence,
+      reactions: actions.reactions,
+      own_reaction_states: actions.own_reaction_states,
       status: previous?.status === 'read' ? 'read' : message.status,
     });
   }
@@ -381,4 +492,37 @@ export function visibleMessages(value: StoredDialog): DialogMessage[] {
       ([first, last]): boolean => message.sequence >= first && message.sequence <= last,
     ),
   );
+}
+
+export interface ReactionPage extends Page {
+  next_reaction_sequence: number;
+}
+
+export function commitReactions(value: StoredDialog, page: ReactionPage, cursor?: number): void {
+  if (cursor !== undefined) {
+    if (value.record.reaction_sync_sequence !== cursor) {
+      throw new StorageError('STORAGE_CONFLICT');
+    }
+
+    if (
+      !Number.isSafeInteger(page.next_reaction_sequence) ||
+      page.next_reaction_sequence < cursor ||
+      (page.has_more && (!page.messages.length || page.next_reaction_sequence <= cursor)) ||
+      page.messages.some(
+        (message, index) =>
+          message.reaction_sequence <= cursor ||
+          message.reaction_sequence > page.next_reaction_sequence ||
+          (index > 0 && page.messages[index - 1]!.reaction_sequence >= message.reaction_sequence),
+      ) ||
+      (page.has_more && page.messages.at(-1)?.reaction_sequence !== page.next_reaction_sequence)
+    ) {
+      throw new StorageError('INVALID_PAGE');
+    }
+  }
+
+  commitEdits(value, { messages: page.messages, next_edit_sequence: 0, has_more: false });
+
+  if (cursor !== undefined) {
+    value.record.reaction_sync_sequence = page.next_reaction_sequence;
+  }
 }

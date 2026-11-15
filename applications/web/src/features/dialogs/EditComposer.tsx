@@ -14,12 +14,14 @@ export function EditComposer({
   message,
   close,
   canSend,
+  onDirtyChange,
 }: {
   runtime: DialogRuntime;
   id: string;
   message: DialogMessage;
   close(): void;
   canSend: boolean;
+  onDirtyChange?(dirty: boolean): void;
 }): JSX.Element {
   const initial = message.content.kind === 'text' ? message.content.text : '';
   const [text, setText] = useState(initial);
@@ -64,6 +66,12 @@ export function EditComposer({
     textarea.style.height =
       Math.min(Number.parseFloat(style.maxHeight), textarea.scrollHeight + border) + 'px';
   }, [text]);
+
+  useEffect(() => {
+    onDirtyChange?.(
+      busy || unknown || text !== (base.content.kind === 'text' ? base.content.text : initial),
+    );
+  }, [busy, unknown, text, base, onDirtyChange]);
 
   function finish(): void {
     if (!active()) {

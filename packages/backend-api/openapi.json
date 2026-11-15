@@ -2055,6 +2055,526 @@
         ]
       }
     },
+    "/dialogs/{dialog_id}/forwards": {
+      "post": {
+        "operationId": "dialogsMessageForward",
+        "parameters": [
+          {
+            "name": "dialog_id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForwardMessageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponseDto"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "",
+        "tags": [
+          "Dialogs"
+        ]
+      }
+    },
+    "/dialogs/{dialog_id}/messages/by-client-id/{client_message_id}": {
+      "get": {
+        "operationId": "dialogsMessageGetByClientId",
+        "parameters": [
+          {
+            "name": "dialog_id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_message_id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "",
+        "tags": [
+          "Dialogs"
+        ]
+      }
+    },
+    "/dialogs/{dialog_id}/messages/{message_id}/reactions": {
+      "put": {
+        "operationId": "dialogsMessageReactionSet",
+        "parameters": [
+          {
+            "name": "dialog_id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "message_id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetReactionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "",
+        "tags": [
+          "Dialogs"
+        ]
+      }
+    },
+    "/dialogs/{dialog_id}/message-reactions": {
+      "get": {
+        "operationId": "dialogsMessageReactions",
+        "parameters": [
+          {
+            "name": "dialog_id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          },
+          {
+            "name": "after_reaction_sequence",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageReactionsResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "",
+        "tags": [
+          "Dialogs"
+        ]
+      }
+    },
     "/dialogs/{dialog_id}/read": {
       "post": {
         "operationId": "dialogsRead",
@@ -2958,9 +3478,158 @@
           "sticker_id"
         ]
       },
+      "ReplyInfoDto": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "sender_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sender_display_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "content": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TextContentDto"
+              },
+              {
+                "$ref": "#/components/schemas/StickerContentDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "message_id",
+          "sequence",
+          "version",
+          "sender_id",
+          "sender_display_name",
+          "content"
+        ]
+      },
+      "ForwardAuthorDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ]
+      },
+      "ForwardInfoDto": {
+        "type": "object",
+        "properties": {
+          "author": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ForwardAuthorDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "author"
+        ]
+      },
+      "ReactionDto": {
+        "type": "object",
+        "properties": {
+          "emoji": {
+            "type": "string"
+          },
+          "user_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "emoji",
+          "user_ids"
+        ]
+      },
+      "OwnReactionStateDto": {
+        "type": "object",
+        "properties": {
+          "emoji": {
+            "type": "string"
+          },
+          "selected": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "number"
+          },
+          "last_operation_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "emoji",
+          "selected",
+          "version",
+          "last_operation_id"
+        ]
+      },
       "MessageDto": {
         "type": "object",
         "properties": {
+          "reply": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReplyInfoDto"
+              }
+            ]
+          },
+          "forward": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ForwardInfoDto"
+              }
+            ]
+          },
+          "reactions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReactionDto"
+            }
+          },
+          "own_reaction_states": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OwnReactionStateDto"
+            }
+          },
           "sequence": {
             "type": "integer",
             "minimum": 1,
@@ -3001,6 +3670,12 @@
             ],
             "type": "string"
           },
+          "reaction_version": {
+            "type": "number"
+          },
+          "reaction_sequence": {
+            "type": "number"
+          },
           "message_id": {
             "type": "string"
           },
@@ -3018,6 +3693,10 @@
           }
         },
         "required": [
+          "reply",
+          "forward",
+          "reactions",
+          "own_reaction_states",
           "sequence",
           "version",
           "edit_sequence",
@@ -3025,6 +3704,8 @@
           "last_edit_id",
           "content",
           "status",
+          "reaction_version",
+          "reaction_sequence",
           "message_id",
           "dialog_id",
           "client_message_id",
@@ -3147,9 +3828,36 @@
           "dialogs"
         ]
       },
+      "ReplyToDto": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_version": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "message_id",
+          "expected_version"
+        ]
+      },
       "SendMessageDto": {
         "type": "object",
         "properties": {
+          "reply_to": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReplyToDto"
+              }
+            ]
+          },
           "content": {
             "oneOf": [
               {
@@ -3242,6 +3950,157 @@
         "required": [
           "messages",
           "next_edit_sequence",
+          "has_more"
+        ]
+      },
+      "ForwardMessageDto": {
+        "type": "object",
+        "properties": {
+          "client_message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source_dialog_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source_message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_source_version": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "client_message_id",
+          "source_dialog_id",
+          "source_message_id",
+          "expected_source_version"
+        ]
+      },
+      "SetReactionDto": {
+        "type": "object",
+        "properties": {
+          "emoji": {
+            "type": "string",
+            "enum": [
+              "👍",
+              "👎",
+              "❤",
+              "🔥",
+              "🥰",
+              "👏",
+              "😁",
+              "🤔",
+              "🤯",
+              "😱",
+              "🤬",
+              "😢",
+              "🎉",
+              "🤩",
+              "🤮",
+              "💩",
+              "🙏",
+              "👌",
+              "🕊",
+              "🤡",
+              "🥱",
+              "🥴",
+              "😍",
+              "🐳",
+              "❤‍🔥",
+              "🌚",
+              "🌭",
+              "💯",
+              "🤣",
+              "⚡",
+              "🍌",
+              "🏆",
+              "💔",
+              "🤨",
+              "😐",
+              "🍓",
+              "🍾",
+              "💋",
+              "🖕",
+              "😈",
+              "😴",
+              "😭",
+              "🤓",
+              "👻",
+              "👨‍💻",
+              "👀",
+              "🎃",
+              "🙈",
+              "😇",
+              "😨",
+              "🤝",
+              "✍",
+              "🤗",
+              "🫡",
+              "🎅",
+              "🎄",
+              "☃",
+              "💅",
+              "🤪",
+              "🗿",
+              "🆒",
+              "💘",
+              "🙉",
+              "🦄",
+              "😘",
+              "💊",
+              "🙊",
+              "😎",
+              "👾",
+              "🤷‍♂",
+              "🤷",
+              "🤷‍♀",
+              "😡"
+            ]
+          },
+          "client_reaction_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "selected": {
+            "type": "boolean"
+          },
+          "expected_version": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "emoji",
+          "client_reaction_id",
+          "selected",
+          "expected_version"
+        ]
+      },
+      "MessageReactionsResponseDto": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageDto"
+            }
+          },
+          "next_reaction_sequence": {
+            "type": "number"
+          },
+          "has_more": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "messages",
+          "next_reaction_sequence",
           "has_more"
         ]
       },

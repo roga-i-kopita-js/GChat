@@ -122,12 +122,14 @@ describe('dialog storage versions', (): void => {
   it('exports legacy native data before choosing IndexedDB and normalizes edit fields', async (): Promise<void> => {
     const f = setup(1);
 
-    f.saved.record.draft = { text: 'keep draft', revision: 3 };
+    f.saved.record.draft = { text: 'keep draft', revision: 3, reply_to: null };
     f.saved.record.outbox = [
       {
         client_message_id: uuid(6),
         content: { kind: 'text', text: 'pending' },
         created_at: '2026-11-14T00:00:00Z',
+        operation: 'send',
+        reply: null,
         state: 'unknown',
         error: null,
       },
@@ -145,7 +147,7 @@ describe('dialog storage versions', (): void => {
     expect(f.calls.every((call): boolean => call.version === 1)).toBe(true);
     expect(f.saved.record).toMatchObject({
       edit_sync_sequence: 0,
-      draft: { text: 'keep draft', revision: 3 },
+      draft: { text: 'keep draft', revision: 3, reply_to: null },
     });
     expect(f.saved.record.outbox[0]?.content).toEqual({ kind: 'text', text: 'pending' });
     storageClose2.bind(storage)();
@@ -161,11 +163,12 @@ describe('dialog storage versions', (): void => {
 
       return original(envelope);
     });
+
     await expect(openNativeDialogs()).rejects.toMatchObject({ code: 'STORAGE_UNAVAILABLE' });
     expect(f.calls.some((call): boolean => call.command === 'selectIndexedDb')).toBe(false);
     expect(f.staging.close).toHaveBeenCalledOnce();
   });
-  it('splits a large native commit and advances its cursor only after all messages are durable', async (): Promise<void> => {
+  it('moves legacy v2 storage to IndexedDB before committing new snapshots', async (): Promise<void> => {
     const f = setup(2);
 
     f.saved.record.ranges = [[1, 40]];
@@ -182,8 +185,17 @@ describe('dialog storage versions', (): void => {
       edited_at: null,
       edit_sequence: 0,
       last_edit_id: null,
+      forward: null,
+      reply: null,
+      reaction_version: 0,
+      reaction_sequence: 0,
+      reactions: [],
+      own_reaction_states: [],
+      actions_verified: true,
     }));
     const storage = await openNativeDialogs();
+    const { adapter: storageAdapter130 } = storage;
+
     const { change: storageChange3, close: storageClose4 } = storage;
 
     await storageChange3.bind(storage)(id, 'commitEdits', (value): void => {
@@ -196,18 +208,10 @@ describe('dialog storage versions', (): void => {
       }));
       value.record.edit_sync_sequence = 40;
     });
-    const writes = f.calls.filter((call): boolean => call.command === 'commitEdits');
-
-    expect(writes.length).toBeGreaterThan(1);
-    expect(
-      writes.slice(0, -1).every((call): boolean => call.args.record.edit_sync_sequence === 0),
-    ).toBe(true);
-    expect(writes.at(-1).args.record.edit_sync_sequence).toBe(40);
-    expect(
-      writes.every(
-        (call): boolean => new TextEncoder().encode(JSON.stringify(call)).length <= 524288,
-      ),
-    ).toBe(true);
+    expect(f.calls.some((call) => call.command === 'selectIndexedDb')).toBe(true);
+    expect(f.calls.some((call) => call.command === 'commitEdits')).toBe(false);
+    expect(storageAdapter130).toBe('indexeddb');
+    expect(f.saved.record.edit_sync_sequence).toBe(40);
     expect(f.saved.messages.every((message): boolean => message.version === 2)).toBe(true);
     storageClose4.bind(storage)();
   });

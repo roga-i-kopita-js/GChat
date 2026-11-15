@@ -71,7 +71,7 @@ function completed(tx: IDBTransaction): Promise<void> {
   });
 }
 async function database(): Promise<IDBDatabase> {
-  const request = indexedDB.open(databaseName, 2);
+  const request = indexedDB.open(databaseName, 4);
 
   request.onupgradeneeded = (event): void => {
     const db = request.result;
@@ -97,8 +97,13 @@ async function database(): Promise<IDBDatabase> {
 
           if (name === 'records') {
             value.record = recordSchema.parse(value.record);
+
+            if (value.record.dialog?.last_message) {
+              value.record.dialog.last_message.actions_verified = false;
+            }
           } else {
             value.message = messageSchema.parse(value.message);
+            value.message.actions_verified = false;
           }
 
           row.update(value);
@@ -150,6 +155,7 @@ export async function purgeAccount(
         const tx = dbTransaction.bind(db)(['control', 'records', 'messages'], 'readwrite');
         const done = completed(tx);
         const key = accountKey(scope);
+
         const control: Control | undefined = await result(tx.objectStore('control').get(key));
 
         const { epoch: controlEpoch } = control ?? {};
@@ -158,6 +164,7 @@ export async function purgeAccount(
 
         for (const name of ['records', 'messages']) {
           const store = tx.objectStore(name);
+
           const keys = await result(store.index('account').getAllKeys(key));
 
           for (const id of keys) {
@@ -206,6 +213,7 @@ export class IndexedDialogStorage implements DialogStorage {
           const tx = dbTransaction2.bind(db)(['control', 'records', 'messages'], 'readwrite');
           const done = completed(tx);
           const key = accountKey(scope);
+
           let control: Control | undefined = await result(tx.objectStore('control').get(key));
 
           // A new authenticated session cannot reopen cache left behind by a revoked one.
@@ -264,6 +272,7 @@ export class IndexedDialogStorage implements DialogStorage {
     const row: Row | undefined = await result(
       tx.objectStore('records').get(this.namespace + ':' + id),
     );
+
     const history: HistoryRow[] = await result(
       tx.objectStore('messages').index('dialog').getAll([this.namespace, id]),
     );
@@ -296,6 +305,7 @@ export class IndexedDialogStorage implements DialogStorage {
     const done = completed(tx);
 
     await this.check(tx);
+
     const rows: Row[] = await result(
       tx.objectStore('records').index('namespace').getAll(this.namespace),
     );
@@ -334,9 +344,8 @@ export class IndexedDialogStorage implements DialogStorage {
           const { record: valueRecord } = value;
 
           valueRecord.revision++;
-          const { record: valueRecord2 } = value;
 
-          recordSchema.parse(valueRecord2);
+          recordSchema.parse(valueRecord);
           const common = {
             namespace: this.namespace,
             account: accountKey(this.scope),
@@ -344,12 +353,10 @@ export class IndexedDialogStorage implements DialogStorage {
             epoch: this.epoch,
           };
 
-          const { record: valueRecord3 } = value;
-
           tx.objectStore('records').put({
             ...common,
             key: this.namespace + ':' + id,
-            record: valueRecord3,
+            record: valueRecord,
           });
 
           const { messages: valueMessages } = value;
@@ -399,6 +406,7 @@ export async function readDeadline(storage: DialogStorage, next?: number): Promi
     const tx = dbTransaction3.bind(db)('control', next === undefined ? 'readonly' : 'readwrite');
     const done = completed(tx);
     const key = accountKey(storage.scope);
+
     const control: Control | undefined = await result(tx.objectStore('control').get(key));
 
     const { epoch: controlEpoch3, sessionId: controlSessionId2 } = control ?? {};

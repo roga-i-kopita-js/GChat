@@ -1,20 +1,25 @@
+import type { SetReactionDto } from '@gchat/backend-api';
 import { ApiError, type ApiResult, type BackendApi } from '@gchat/backend-api';
+import { normalizeReaction } from '@gchat/dialog-assets';
 import { z } from 'zod';
 
 import { retryAfter } from '../api/client';
 import { prepareUpdate, updateChannel, updateLock, updateRequested } from '../pwa-update';
 import { DialogModels } from './live-models';
-import type { DialogMessage } from './model';
+import type { DialogMessage, DialogRecord, ReplyInfo } from './model';
 import {
   commitEdits,
   commitPage,
+  commitReactions,
   dialogSchema,
   type DialogSummary,
   eventSchema,
+  isStickerId,
   mergeMessages,
   mergeMetadata,
   type MessageInput,
-  messageSchema,
+  networkMessage,
+  outboxSchema,
   type PendingMessage,
   type Scope,
   StorageError,
@@ -22,6 +27,10 @@ import {
   visibleMessages,
 } from './model';
 import { type DialogStorage, readDeadline } from './storage';
+
+function isReactionEmoji(value: string): value is SetReactionDto['emoji'] {
+  return normalizeReaction(value) === value;
+}
 
 export interface DialogSnapshot {
   revision: number;
@@ -33,6 +42,16 @@ export interface DialogSnapshot {
 export interface DialogView extends StoredDialog {
   error: string | null;
   syncing: boolean;
+}
+
+export class ForwardFailure extends Error {
+  constructor(
+    readonly targetId: string,
+    readonly clientId: string,
+    readonly reason: unknown,
+  ) {
+    super('FORWARD_PENDING');
+  }
 }
 
 type Request = <T>(operation: (api: BackendApi) => Promise<ApiResult<T>>) => Promise<T>;
@@ -57,6 +76,14 @@ export function dialogError(error: unknown): string {
   }
 
   if (error instanceof ApiError) {
+    if (error.code === 'REACTION_VERSION_CONFLICT') {
+      return 'Эта реакция уже изменена на другом устройстве. Проверьте её и нажмите снова.';
+    }
+
+    if (error.code === 'MESSAGE_OPERATION_CONFLICT') {
+      return 'Этот идентификатор уже использован другой отправкой.';
+    }
+
     if (error.code === 'MESSAGE_VERSION_CONFLICT') {
       return 'Сообщение уже изменено на другом устройстве.';
     }
@@ -665,7 +692,7 @@ export class DialogRuntime {
           const { dialogs: pageDialogs } = page;
 
           for (const input of pageDialogs) {
-            const dialog = dialogSchema.parse(input);
+            const dialog = this.networkDialog(input);
 
             await this.storeMetadata(dialog, versions.get(dialog.dialog_id) ?? 0);
           }
@@ -673,9 +700,8 @@ export class DialogRuntime {
           const { has_more: pageHasMore } = page;
 
           this.listHasMore = pageHasMore;
-          const { dialogs: pageDialogs2 } = page;
 
-          this.listOffset = offset + pageDialogs2.length;
+          this.listOffset = offset + pageDialogs.length;
           this.changed(null);
           this.publish();
         });
@@ -713,7 +739,7 @@ export class DialogRuntime {
       api.dialogsGet({ path: { dialog_id: id }, signal: this.networkSignal }),
     );
 
-    await this.storeMetadata(dialogSchema.parse(resultDialog), version);
+    await this.storeMetadata(this.networkDialog(resultDialog), version);
     this.publish(id);
   }
 
@@ -813,9 +839,7 @@ export class DialogRuntime {
 
               const editPage = {
                 ...edits,
-                messages: editsMessages2.map((message): DialogMessage =>
-                  messageSchema.parse(message),
-                ),
+                messages: editsMessages2.map((message): DialogMessage => networkMessage(message)),
               };
 
               if (editPage.messages.some((message): boolean => message.dialog_id !== id)) {
@@ -826,7 +850,33 @@ export class DialogRuntime {
                 commitEdits(value, editPage, editCursor),
               );
               this.publish(id);
-              const pageHasMore2 = pageHas_more3 || editPage.has_more;
+              const { record: reactionRecord } = await this.storage.read(id);
+              const reactions = await this.get((api) =>
+                api.dialogsMessageReactions({
+                  path: { dialog_id: id },
+                  query: {
+                    after_reaction_sequence: reactionRecord.reaction_sync_sequence,
+                    limit: 30,
+                  },
+                  signal: this.networkSignal,
+                }),
+              );
+              const { messages: reactionsMessages136 } = reactions;
+
+              const reactionPage = {
+                ...reactions,
+                messages: reactionsMessages136.map(networkMessage),
+              };
+
+              if (reactionPage.messages.some((message) => message.dialog_id !== id)) {
+                throw new StorageError('INVALID_PAGE');
+              }
+
+              await this.storage.change(id, 'commitReactions', (value) =>
+                commitReactions(value, reactionPage, reactionRecord.reaction_sync_sequence),
+              );
+              this.publish(id);
+              const pageHasMore2 = pageHas_more3 || editPage.has_more || reactionPage.has_more;
 
               if (this.updating || (!pageHasMore2 && !this.dirty.has(id))) {
                 break;
@@ -880,7 +930,7 @@ export class DialogRuntime {
     );
 
     return {
-      messages: pageMessages.map((message): DialogMessage => messageSchema.parse(message)),
+      messages: pageMessages.map((message): DialogMessage => networkMessage(message)),
       has_more: pageHasMore3,
     };
   }
@@ -921,8 +971,6 @@ export class DialogRuntime {
       const { record: valueRecord3 } = value;
       const page = await this.history(id, { before_sequence: valueRecord2.before_sequence });
 
-      const { record: valueRecord4 } = value;
-
       await this.savePage(id, page, 'before', valueRecord2.before_sequence);
     });
   }
@@ -944,7 +992,7 @@ export class DialogRuntime {
           (api): ReturnType<typeof api.dialogsCreate> =>
             api.dialogsCreate({ body: { peer_id: peer }, signal: this.networkSignal }),
         );
-        const dialog = dialogSchema.parse(resultDialog2);
+        const dialog = this.networkDialog(resultDialog2);
 
         await this.storeMetadata(dialog, 0);
         this.publish();
@@ -978,7 +1026,7 @@ export class DialogRuntime {
           throw new StorageError('STORAGE_CONFLICT');
         }
 
-        record.draft = { text, revision: expectedRevision + 1 };
+        record.draft = { ...record.draft, text, revision: expectedRevision + 1 };
       });
 
     this.signal.throwIfAborted();
@@ -992,6 +1040,102 @@ export class DialogRuntime {
     return valueRecord5.draft.revision;
   }
 
+  async chooseReply(
+    id: string,
+    reply: DialogRecord['draft']['reply_to'],
+    expectedRevision?: number,
+  ): Promise<void> {
+    await this.tracked(async () => {
+      for (const flush of this.draftFlushers.keys()) {
+        await flush();
+      }
+
+      const { record: savedRecord } = await this.storage.read(id);
+      const expected = expectedRevision ?? savedRecord.draft.revision;
+
+      await this.storage.change(id, 'chooseReply', ({ record }) => {
+        if (!record.permissions?.can_send || record.draft.revision !== expected) {
+          throw new StorageError('STORAGE_CONFLICT');
+        }
+
+        record.draft = { ...record.draft, reply_to: reply, revision: record.draft.revision + 1 };
+      });
+      this.publish(id);
+    });
+  }
+
+  async revealMessage(id: string, messageId: string): Promise<DialogMessage> {
+    return this.tracked(async () => {
+      const source = await this.messageGet(id, messageId);
+      const { sequence: sourceSequence } = source;
+      const { messages: pageMessages, has_more: pageHasMore } = await this.history(id, {
+        before_sequence: sourceSequence + 1,
+      });
+
+      await this.storage.change(id, 'revealMessage', (value) => {
+        value.messages = mergeMessages(value.messages, pageMessages);
+        const first = pageMessages.length
+          ? Math.min(...pageMessages.map((message) => message.sequence))
+          : undefined;
+
+        if (first) {
+          value.record.ranges.push([first, sourceSequence]);
+
+          if (value.record.before_sequence === null || first < value.record.before_sequence) {
+            value.record.before_sequence = first;
+            value.record.has_older = pageHasMore;
+          }
+        }
+      });
+      this.publish(id);
+
+      return source;
+    });
+  }
+
+  async replaceRejectedReply(
+    id: string,
+    clientId: string,
+    reply: ReplyInfo,
+    onPrepared?: (clientId: string) => void,
+  ): Promise<void> {
+    return this.tracked(async () => {
+      const { record: savedRecord } = await this.storage.read(id);
+      const previous = savedRecord.outbox.find((item) => item.client_message_id === clientId);
+
+      if (!previous?.reply || previous.state !== 'rejected' || !previous.reply_conflict) {
+        throw new StorageError('STORAGE_CONFLICT');
+      }
+
+      if (await this.resolveForward(id, previous)) {
+        return;
+      }
+
+      const pending = {
+        ...previous,
+        reply,
+        client_message_id: crypto.randomUUID(),
+        state: 'prepared' as const,
+        error: null,
+        reply_conflict: false,
+      };
+
+      await this.storage.change(id, 'replaceRejectedReply', ({ record }) => {
+        const current = record.outbox.find((item) => item.client_message_id === clientId);
+
+        if (JSON.stringify(current) !== JSON.stringify(previous) || !record.permissions?.can_send) {
+          throw new StorageError('STORAGE_CONFLICT');
+        }
+
+        record.outbox = record.outbox.filter((item) => item.client_message_id !== clientId);
+        record.outbox.push(pending);
+      });
+      this.publish(id);
+      this.sendPrepared(pending.client_message_id, onPrepared);
+      await this.attempt(id, pending);
+    });
+  }
+
   async send(
     id: string,
     content: MessageInput,
@@ -1001,6 +1145,8 @@ export class DialogRuntime {
     await this.tracked(async (): Promise<void> => {
       const pending: PendingMessage = {
         client_message_id: crypto.randomUUID(),
+        operation: 'send',
+        reply: null,
         content,
         state: 'prepared',
         error: null,
@@ -1024,12 +1170,18 @@ export class DialogRuntime {
           throw new Error('FORBIDDEN');
         }
 
-        if (content.kind === 'text') {
-          if (record.draft.revision !== draftRevision) {
+        pending.reply = record.draft.reply_to;
+
+        if (content.kind === 'text' || pending.reply) {
+          if (draftRevision !== undefined && record.draft.revision !== draftRevision) {
             throw new StorageError('STORAGE_CONFLICT');
           }
 
-          record.draft = { text: '', revision: record.draft.revision + 1 };
+          record.draft = {
+            text: content.kind === 'text' ? '' : record.draft.text,
+            revision: record.draft.revision + 1,
+            reply_to: null,
+          };
         }
 
         record.outbox.push(pending);
@@ -1050,6 +1202,14 @@ export class DialogRuntime {
       const pending = record.outbox.find((value): boolean => value.client_message_id === clientId);
 
       if (pending) {
+        if ((pending.operation === 'forward' || pending.reply) && pending.state === 'unknown') {
+          const resolved = await this.resolveForward(id, pending);
+
+          if (resolved) {
+            return;
+          }
+        }
+
         this.sendPrepared(clientId, onPrepared);
         await this.attempt(id, pending);
       }
@@ -1078,7 +1238,7 @@ export class DialogRuntime {
       );
       const { message: resultMessage4 } = result;
 
-      const message = messageSchema.parse(resultMessage4);
+      const message = networkMessage(resultMessage4);
 
       if (message.dialog_id !== id || message.message_id !== messageId) {
         throw new StorageError('INVALID_PAGE');
@@ -1091,6 +1251,208 @@ export class DialogRuntime {
 
       return message;
     });
+  }
+
+  private networkDialog(value: unknown): DialogSummary {
+    const dialog = dialogSchema.parse(value);
+
+    if (dialog.last_message && value && typeof value === 'object' && 'last_message' in value) {
+      dialog.last_message = networkMessage(value.last_message);
+    }
+
+    return dialog;
+  }
+
+  private verifying = new Map<string, Promise<DialogMessage>>();
+
+  verifyMessage(id: string, messageId: string): Promise<DialogMessage> {
+    const key = id + ':' + messageId;
+    const current = this.verifying.get(key);
+
+    if (current) {
+      return current;
+    }
+
+    const work = this.messageGet(id, messageId);
+
+    this.verifying.set(key, work);
+    void (async () => {
+      try {
+        await work;
+      } catch {
+        /* The caller owns the error. */
+      } finally {
+        this.verifying.delete(key);
+      }
+    })();
+
+    return work;
+  }
+
+  async forward(id: string, message: DialogMessage, peerId: string): Promise<string> {
+    return this.tracked(async () => {
+      const verified = await this.messageGet(id, message.message_id);
+      const { version: verifiedVersion137 } = verified;
+
+      if (verifiedVersion137 !== message.version) {
+        throw new Error('SOURCE_CHANGED');
+      }
+
+      if (message.content.kind === 'sticker' && !isStickerId(message.content.sticker_id)) {
+        throw new StorageError('INVALID_PAGE');
+      }
+
+      const target = await this.openPeer(peerId);
+      const pending = outboxSchema.parse({
+        operation: 'forward',
+        client_message_id: crypto.randomUUID(),
+        source_dialog_id: id,
+        source_message_id: message.message_id,
+        expected_source_version: message.version,
+        content: message.content,
+        created_at: new Date().toISOString(),
+        state: 'prepared',
+        error: null,
+      });
+
+      await this.storage.change(target, 'prepareForward', ({ record }) => {
+        record.outbox.push(pending);
+      });
+      this.publish(target);
+
+      try {
+        await this.attempt(target, pending);
+      } catch (error) {
+        throw new ForwardFailure(target, pending.client_message_id, error);
+      }
+
+      return target;
+    });
+  }
+
+  async discardRejectedForward(id: string, clientId: string): Promise<void> {
+    await this.storage.change(id, 'discardForward', ({ record }) => {
+      const pending = record.outbox.find((item) => item.client_message_id === clientId);
+
+      if (pending && pending.state !== 'rejected') {
+        throw new StorageError('STORAGE_CONFLICT');
+      }
+
+      record.outbox = record.outbox.filter((item) => item.client_message_id !== clientId);
+    });
+    this.publish(id);
+  }
+
+  private async resolveForward(id: string, pending: PendingMessage): Promise<boolean> {
+    try {
+      const { message: input } = await this.get((api) =>
+        api.dialogsMessageGetByClientId({
+          path: { dialog_id: id, client_message_id: pending.client_message_id },
+          signal: this.networkSignal,
+        }),
+      );
+      const message = networkMessage(input);
+
+      if (
+        message.dialog_id !== id ||
+        message.sender_id !== this.scope.accountId ||
+        message.client_message_id !== pending.client_message_id
+      ) {
+        throw new StorageError('INVALID_PAGE');
+      }
+
+      await this.storage.change(id, 'commitSent', (value) => {
+        value.messages = mergeMessages(value.messages, [message]);
+        value.record.ranges.push([message.sequence, message.sequence]);
+        value.record.outbox = value.record.outbox.filter(
+          (item) => item.client_message_id !== pending.client_message_id,
+        );
+      });
+      this.publish(id);
+
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
+  private reacting = new Set<string>();
+
+  async setReaction(id: string, message: DialogMessage, emoji: string): Promise<void> {
+    const normalized = normalizeReaction(emoji);
+
+    if (!normalized || !isReactionEmoji(normalized)) {
+      throw new StorageError('INVALID_REACTION');
+    }
+
+    const emojiKey = normalized;
+
+    emoji = emojiKey;
+    const key = id + ':' + message.message_id + ':' + emoji;
+
+    if (this.reacting.has(key)) {
+      return;
+    }
+
+    this.reacting.add(key);
+
+    try {
+      await this.tracked(async () => {
+        const own = message.own_reaction_states.find((cell) => cell.emoji === emoji);
+        const operationId = crypto.randomUUID();
+        const selected = !(own?.selected ?? false);
+
+        try {
+          const { message: result } = await this.request((api) =>
+            api.dialogsMessageReactionSet({
+              path: { dialog_id: id, message_id: message.message_id },
+              body: {
+                client_reaction_id: operationId,
+                emoji: emojiKey,
+                selected,
+                expected_version: own?.version ?? 0,
+              },
+              signal: this.networkSignal,
+            }),
+          );
+          const updated = networkMessage(result);
+
+          if (updated.dialog_id !== id || updated.message_id !== message.message_id) {
+            throw new StorageError('INVALID_PAGE');
+          }
+
+          await this.storage.change(id, 'commitReactions', (value) =>
+            commitReactions(value, {
+              messages: [updated],
+              next_reaction_sequence: 0,
+              has_more: false,
+            }),
+          );
+          this.publish(id);
+        } catch (error) {
+          try {
+            const fresh = await this.messageGet(id, message.message_id);
+            const { own_reaction_states: freshOwn_reaction_states138 } = fresh;
+
+            const cell = freshOwn_reaction_states138.find((value) => value.emoji === emoji);
+
+            if (cell?.last_operation_id === operationId || (cell?.selected ?? false) === selected) {
+              return;
+            }
+          } catch {
+            /* Preserve the mutation error if reconciliation is unavailable. */
+          }
+
+          throw error;
+        }
+      });
+    } finally {
+      this.reacting.delete(key);
+    }
   }
 
   async edit(
@@ -1118,7 +1480,7 @@ export class DialogRuntime {
         );
         const { message: resultMessage5 } = result;
 
-        const updated = messageSchema.parse(resultMessage5);
+        const updated = networkMessage(resultMessage5);
 
         if (updated.dialog_id !== id || updated.message_id !== message.message_id) {
           throw new StorageError('INVALID_PAGE');
@@ -1165,15 +1527,37 @@ export class DialogRuntime {
         stored.error = null;
       });
       this.publish(id);
-      const { message: resultMessage } = await this.request(
-        (api): ReturnType<typeof api.dialogsSendMessage> =>
-          api.dialogsSendMessage({
-            path: { dialog_id: id },
-            body: { client_message_id: pending.client_message_id, content: pending.content },
-            signal: this.networkSignal,
-          }),
-      );
-      const message = messageSchema.parse(resultMessage);
+      const { message: resultMessage } =
+        pending.operation === 'forward'
+          ? await this.request((api) =>
+              api.dialogsMessageForward({
+                path: { dialog_id: id },
+                body: {
+                  client_message_id: pending.client_message_id,
+                  source_dialog_id: pending.source_dialog_id!,
+                  source_message_id: pending.source_message_id!,
+                  expected_source_version: pending.expected_source_version!,
+                },
+                signal: this.networkSignal,
+              }),
+            )
+          : await this.request((api): ReturnType<typeof api.dialogsSendMessage> =>
+              api.dialogsSendMessage({
+                path: { dialog_id: id },
+                body: {
+                  client_message_id: pending.client_message_id,
+                  content: pending.content,
+                  reply_to: pending.reply
+                    ? {
+                        message_id: pending.reply.message_id,
+                        expected_version: pending.reply.version,
+                      }
+                    : null,
+                },
+                signal: this.networkSignal,
+              }),
+            );
+      const message = networkMessage(resultMessage);
 
       await this.storage.change(id, 'commitSent', (value): void => {
         value.messages = mergeMessages(value.messages, [message]);
@@ -1201,6 +1585,10 @@ export class DialogRuntime {
               stored.state =
                 error instanceof ApiError && error.status < 500 ? 'rejected' : 'unknown';
               stored.error = dialogError(error);
+              stored.reply_conflict =
+                error instanceof ApiError &&
+                error.code === 'MESSAGE_VERSION_CONFLICT' &&
+                !!stored.reply;
             }
           });
         } catch (cause) {}
@@ -1273,15 +1661,14 @@ export class DialogRuntime {
               }),
             );
 
-            await this.storage.change(selected.id, 'confirmRead', ({ record: next }): void => {
-              const { last_read_sequence: resultLastReadSequence } = result;
+            const { last_read_sequence: resultLastReadSequence } = result;
 
+            await this.storage.change(selected.id, 'confirmRead', ({ record: next }): void => {
               next.read = Math.max(next.read, resultLastReadSequence);
             });
             selected.openRead = false;
-            const { last_read_sequence: resultLastReadSequence2 } = result;
 
-            confirmed = resultLastReadSequence2;
+            confirmed = resultLastReadSequence;
             this.metadataVersions.set(
               selected.id,
               (this.metadataVersions.get(selected.id) ?? 0) + 1,

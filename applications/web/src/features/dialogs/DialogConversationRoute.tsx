@@ -1,14 +1,6 @@
 import './dialogs.css';
 
-import {
-  ArrowDown,
-  ArrowLeft,
-  Check,
-  CheckCheck,
-  Ellipsis,
-  MessageCircle,
-  Phone,
-} from 'lucide-react';
+import { ArrowDown, ArrowLeft, Ellipsis, MessageCircle, Phone, Reply } from 'lucide-react';
 import type { JSX } from 'react';
 import {
   useCallback,
@@ -25,20 +17,44 @@ import { VList, type VListHandle } from 'virtua';
 import type { DeviceCore } from '../../shared/device';
 import { deviceErrorMessage } from '../../shared/device/messages';
 import { DialogModelEvent } from '../../shared/dialogs/live-models';
-import { type DialogMessage, isStickerId, type PendingMessage } from '../../shared/dialogs/model';
+import {
+  type DialogMessage,
+  isStickerId,
+  type PendingMessage,
+  type ReplyInfo,
+} from '../../shared/dialogs/model';
 import { dialogError, type DialogRuntime, type DialogView } from '../../shared/dialogs/runtime';
 import { Avatar, Button, Modal, PageHeader, Skeleton, Text } from '../../shared/ui';
 import { useCalls } from '../calls/CallsProvider';
 import { Composer } from './Composer';
 import { EditComposer } from './EditComposer';
 import { time } from './format';
+import { ForwardMessage } from './ForwardMessage';
 import type { DialogsData } from './loaders';
+import { type MessageDeliveryState, MessageDeliveryStatus } from './MessageDeliveryStatus';
 import { MessageMenu } from './MessageMenu';
+import { MessageReactions } from './MessageReactions';
+import { ReplyQuote } from './ReplyQuote';
 import { stickers } from './stickers';
+import { useMessageGestures } from './useMessageGestures';
 
 interface SendScrollRequest {
   clientId: string;
   sequence: number;
+}
+
+function hasHistoryGap(ranges: readonly [number, number][]): boolean {
+  let previousEnd: number | null = null;
+
+  for (const [start, end] of ranges.toSorted((a, b) => a[0] - b[0])) {
+    if (previousEnd !== null && start > previousEnd + 1) {
+      return true;
+    }
+
+    previousEnd = Math.max(previousEnd ?? end, end);
+  }
+
+  return false;
 }
 
 function Content({ content }: { content: DialogMessage['content'] }): JSX.Element {
@@ -55,6 +71,66 @@ function Content({ content }: { content: DialogMessage['content'] }): JSX.Elemen
     />
   ) : (
     <span>Стикер</span>
+  );
+}
+function SavedContent({
+  message,
+  runtime,
+}: {
+  message: DialogMessage;
+  runtime: DialogRuntime;
+}): JSX.Element {
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    if (message.actions_verified) {
+      return;
+    }
+
+    let active = true;
+
+    void (async () => {
+      try {
+        await runtime.verifyMessage(message.dialog_id, message.message_id);
+      } catch {
+        if (active) {
+          setFailed(true);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [runtime, message.message_id, message.actions_verified, retry]);
+
+  return (
+    <>
+      {message.forward && (
+        <div className="dialog-forward-label">
+          Переслано{message.forward.author ? ' от ' + message.forward.author.display_name : ''}
+        </div>
+      )}
+      {!message.actions_verified && (
+        <small role="status">
+          {failed ? (
+            <button
+              type="button"
+              onClick={() => {
+                setFailed(false);
+                setRetry((value) => value + 1);
+              }}
+            >
+              Повторить обновление сведений
+            </button>
+          ) : (
+            'Обновляем сведения сообщения…'
+          )}
+        </small>
+      )}
+      <Content content={message.content} />
+    </>
   );
 }
 function Room({
@@ -80,6 +156,9 @@ function Room({
   const result = useSyncExternalStore(subscribe, model.getSnapshot);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<DialogMessage | null>(null);
+  const [editDirty, setEditDirty] = useState(false);
+  const refreshingReply = useRef<string | null>(null);
+  const [pendingReply, setPendingReply] = useState<DialogMessage | null>(null);
   const [confirmCall, setConfirmCall] = useState(false);
   const [preparingCall, setPreparingCall] = useState(false);
   const calling = useRef(false);
@@ -114,6 +193,71 @@ function Room({
   }, [runtime, id]);
   const data = result.view;
   const loadingPeer = !data?.record.dialog && result.status !== 'error' && !data?.error;
+
+  async function replyTo(message: DialogMessage, confirmed = false): Promise<void> {
+    if (editing && editDirty && !confirmed) {
+      setPendingReply(message);
+
+      return;
+    }
+
+    setPendingReply(null);
+    setEditing(null);
+
+    try {
+      await runtime.chooseReply(id, {
+        message_id: message.message_id,
+        sequence: message.sequence,
+        version: message.version,
+        sender_id: message.sender_id,
+        sender_display_name:
+          message.sender_id === runtime.scope.accountId
+            ? 'Вы'
+            : (data?.record.dialog?.peer_display_name ?? 'Собеседник'),
+        content: message.content,
+      });
+    } catch (cause) {
+      if (!runtime.signal.aborted) {
+        setError(dialogError(cause));
+      }
+    }
+  }
+
+  useEffect(() => {
+    const selected = data?.record.draft.reply_to;
+    const source =
+      selected && data?.messages.find((message) => message.message_id === selected.message_id);
+
+    if (
+      selected &&
+      source?.actions_verified &&
+      source.version > selected.version &&
+      data?.record.permissions?.can_send
+    ) {
+      const key = source.message_id + ':' + source.version;
+
+      if (refreshingReply.current === key) {
+        return;
+      }
+
+      refreshingReply.current = key;
+      void (async () => {
+        try {
+          await runtime.chooseReply(id, {
+            ...selected,
+            version: source.version,
+            content: source.content,
+          });
+        } catch (cause) {
+          if (!runtime.signal.aborted) {
+            setError(dialogError(cause));
+          }
+        } finally {
+          refreshingReply.current = null;
+        }
+      })();
+    }
+  }, [data?.record.draft.reply_to, data?.messages, runtime, id]);
 
   async function dial(): Promise<void> {
     const dialog = data?.record.dialog;
@@ -193,6 +337,7 @@ function Room({
             id={id}
             data={data}
             report={setError}
+            reply={(message) => void replyTo(message)}
             sendScrollRequest={sendScrollRequest}
             onPrepared={sentLocally}
             edit={(message): void => {
@@ -221,7 +366,9 @@ function Room({
                   const last = data.messages.findLast(
                     (message): boolean =>
                       message.sender_id === runtime.scope.accountId &&
-                      message.content.kind === 'text',
+                      message.content.kind === 'text' &&
+                      message.forward === null &&
+                      message.actions_verified,
                   );
 
                   if (!last || editing) {
@@ -241,6 +388,7 @@ function Room({
                 id={id}
                 message={editing}
                 canSend={!!data.record.permissions?.can_send}
+                onDirtyChange={setEditDirty}
                 close={(): void => setEditing(null)}
               />
             )}
@@ -337,6 +485,17 @@ function Room({
           {error}
         </p>
       )}
+      {pendingReply && (
+        <Modal title="Отменить редактирование и ответить?" close={() => setPendingReply(null)}>
+          <p>Несохранённая правка будет отменена. Обычный черновик сохранится.</p>
+          <div className="modal-actions">
+            <Button variant="secondary" onClick={() => setPendingReply(null)}>
+              Продолжить редактирование
+            </Button>
+            <Button onClick={() => void replyTo(pendingReply, true)}>Ответить</Button>
+          </div>
+        </Modal>
+      )}
       {conversationContent}
     </section>
   );
@@ -347,6 +506,7 @@ function Feed({
   data,
   report,
   edit,
+  reply,
   sendScrollRequest,
   onPrepared,
 }: {
@@ -355,6 +515,7 @@ function Feed({
   data: DialogView;
   report(value: string): void;
   edit(message: DialogMessage): void;
+  reply(message: DialogMessage): void;
   sendScrollRequest: SendScrollRequest | null;
   onPrepared(clientId: string): void;
 }): JSX.Element {
@@ -362,28 +523,64 @@ function Feed({
     message: DialogMessage;
     anchor: HTMLElement;
   } | null>(null);
+  const [copyNotice, setCopyNotice] = useState<{ dialogId: string } | null>(null);
+
+  useEffect(() => {
+    if (!copyNotice) {
+      return;
+    }
+
+    const timer = setTimeout(() => setCopyNotice(null), 3_000);
+
+    return () => clearTimeout(timer);
+  }, [copyNotice]);
+  const [forwarding, setForwarding] = useState<{
+    message: DialogMessage;
+    anchor: HTMLElement;
+  } | null>(null);
+  const [jumpRequest, setJumpRequest] = useState<{ messageId: string; nonce: number } | null>(null);
+  const [replyRetry, setReplyRetry] = useState<{
+    pending: PendingMessage;
+    reply: ReplyInfo;
+  } | null>(null);
+  const [replyRetryBusy, setReplyRetryBusy] = useState(false);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+  const appliedJump = useRef(0);
+  const selectedAction = actionMessage
+    ? (data.messages.find((message) => message.message_id === actionMessage.message.message_id) ??
+      actionMessage.message)
+    : null;
   const closeActions = useCallback(
     (restoreFocus: boolean): void => {
-      if (restoreFocus && actionMessage?.anchor.isConnected) {
-        actionMessage.anchor.focus({ preventScroll: true });
+      if (restoreFocus && actionMessage) {
+        let target: HTMLElement | null = actionMessage.anchor;
+
+        if (!target.isConnected) {
+          target = document.getElementById('dialog-message-' + actionMessage.message.message_id);
+        }
+
+        target?.classList.remove('dialog-message-menu-source');
+        target?.focus({ preventScroll: true });
       }
 
       setActionMessage(null);
     },
     [actionMessage],
   );
-  const pressPoint = useRef<{ x: number; y: number } | null>(null);
-  const press = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const canSwipeReply = !!data.record.permissions?.can_read && !!data.record.permissions.can_send;
+  const gestures = useMessageGestures({
+    canRead: !!data.record.permissions?.can_read,
+    canReply: canSwipeReply,
+    blocked: !!actionMessage || !!forwarding || !!replyRetry,
+    openMenu: (message, anchor) => setActionMessage({ message, anchor }),
+    reply: (message) => {
+      const current = data.messages.find((item) => item.message_id === message.message_id);
 
-  function cancelPress(): void {
-    if (press.current) {
-      clearTimeout(press.current);
-    }
-
-    press.current = null;
-    pressPoint.current = null;
-  }
-  useEffect((): (() => void) => cancelPress, []);
+      if (canSwipeReply && current?.actions_verified) {
+        reply(current);
+      }
+    },
+  });
   const list = useRef<VListHandle>(null);
   const sticky = useRef(true);
   const followingOwnSend = useRef(false);
@@ -514,6 +711,57 @@ function Feed({
     },
     [runtime, id],
   );
+  async function jumpTo(messageId: string): Promise<void> {
+    stopFollowing();
+
+    try {
+      if (!data.messages.some((message) => message.message_id === messageId)) {
+        await runtime.revealMessage(id, messageId);
+      }
+
+      if (!runtime.signal.aborted) {
+        setJumpRequest((previous) => ({ messageId, nonce: (previous?.nonce ?? 0) + 1 }));
+      }
+    } catch (cause) {
+      if (!runtime.signal.aborted) {
+        report(dialogError(cause));
+      }
+    }
+  }
+  useLayoutEffect(() => {
+    if (!jumpRequest || appliedJump.current === jumpRequest.nonce) {
+      return;
+    }
+
+    const index = items.findIndex(
+      (item) => 'message_id' in item && item.message_id === jumpRequest.messageId,
+    );
+
+    if (index < 0) {
+      return;
+    }
+
+    appliedJump.current = jumpRequest.nonce;
+    list.current?.scrollToIndex(index, { align: 'center' });
+    setHighlighted(jumpRequest.messageId);
+    const frame = requestAnimationFrame(() =>
+      document
+        .getElementById('dialog-message-' + jumpRequest.messageId)
+        ?.focus({ preventScroll: true }),
+    );
+
+    return () => cancelAnimationFrame(frame);
+  }, [jumpRequest, data.messages]);
+  useEffect(() => {
+    if (!highlighted) {
+      return;
+    }
+
+    const timer = setTimeout(() => setHighlighted(null), 2000);
+
+    return () => clearTimeout(timer);
+  }, [highlighted, jumpRequest]);
+
   async function loadOlder(): Promise<void> {
     if (loading.current || !data.record.has_older || !data.record.permissions?.can_read) {
       return;
@@ -535,14 +783,120 @@ function Feed({
 
   return (
     <div className="dialog-feed-wrapper">
-      {actionMessage && (
+      {copyNotice?.dialogId === id && (
+        <p className="dialog-action-notice" role="status">
+          Скопировано
+        </p>
+      )}
+      {forwarding && (
+        <ForwardMessage
+          message={forwarding.message}
+          runtime={runtime}
+          close={() => {
+            if (forwarding.anchor.isConnected) {
+              forwarding.anchor.focus({ preventScroll: true });
+            }
+
+            setForwarding(null);
+          }}
+        />
+      )}
+      {replyRetry && (
+        <Modal
+          title="Исходное сообщение изменилось"
+          close={() => {
+            if (!replyRetryBusy) {
+              setReplyRetry(null);
+            }
+          }}
+        >
+          <p>Проверьте обновлённую цитату перед повторной отправкой.</p>
+          <ReplyQuote reply={replyRetry.reply} />
+          <p>
+            {replyRetry.pending.content.kind === 'text'
+              ? replyRetry.pending.content.text
+              : 'Стикер'}
+          </p>
+          <div className="modal-actions">
+            <Button
+              variant="secondary"
+              disabled={replyRetryBusy}
+              onClick={() => setReplyRetry(null)}
+            >
+              Отмена
+            </Button>
+            <Button
+              disabled={replyRetryBusy}
+              onClick={() => {
+                setReplyRetryBusy(true);
+                void (async () => {
+                  try {
+                    await runtime.replaceRejectedReply(
+                      id,
+                      replyRetry.pending.client_message_id,
+                      replyRetry.reply,
+                      onPrepared,
+                    );
+                    setReplyRetry(null);
+                  } catch (cause) {
+                    if (!runtime.signal.aborted) {
+                      report(dialogError(cause));
+                      setReplyRetry(null);
+                    }
+                  } finally {
+                    setReplyRetryBusy(false);
+                  }
+                })();
+              }}
+            >
+              Отправить с обновлённой цитатой
+            </Button>
+          </div>
+        </Modal>
+      )}
+      {actionMessage && selectedAction && (
         <MessageMenu
           anchor={actionMessage.anchor}
           close={closeActions}
-          edit={(): void => {
-            edit(actionMessage.message);
-            setActionMessage(null);
+          message={selectedAction}
+          own={selectedAction.sender_id === runtime.scope.accountId}
+          read={
+            selectedAction.status === 'read' || selectedAction.sequence <= data.record.peer_read
+          }
+          copied={() => setCopyNotice({ dialogId: id })}
+          reply={
+            data.record.permissions?.can_send && selectedAction.actions_verified
+              ? () => {
+                  reply(selectedAction);
+                  setActionMessage(null);
+                }
+              : undefined
+          }
+          canReact={!!data.record.permissions?.can_send && selectedAction.actions_verified}
+          forward={
+            selectedAction.actions_verified
+              ? () => {
+                  setForwarding({ message: selectedAction, anchor: actionMessage.anchor });
+                  setActionMessage(null);
+                }
+              : undefined
+          }
+          react={async (emoji) => {
+            await runtime.setReaction(id, selectedAction, emoji);
+            report('');
           }}
+          edit={
+            selectedAction.sender_id === runtime.scope.accountId &&
+            selectedAction.content.kind === 'text' &&
+            selectedAction.forward === null &&
+            selectedAction.actions_verified &&
+            data.record.permissions?.can_send
+              ? () => {
+                  edit(selectedAction);
+                  setActionMessage(null);
+                }
+              : undefined
+          }
         />
       )}
       {data.record.has_older && data.record.permissions?.can_read && (
@@ -556,7 +910,7 @@ function Feed({
           {older ? 'Загружаем…' : 'Предыдущие сообщения'}
         </button>
       )}
-      {data.record.ranges.length > 1 && (
+      {hasHistoryGap(data.record.ranges) && (
         <button
           className="dialog-gap"
           onClick={(): void => {
@@ -645,46 +999,55 @@ function Feed({
           const read =
             saved && (item.status === 'read' || (own && item.sequence <= data.record.peer_read));
 
-          let deliveryStatus;
+          const sending = !saved && (item.state === 'prepared' || item.state === 'sending');
+          const swipeable =
+            saved &&
+            canSwipeReply &&
+            item.actions_verified &&
+            !actionMessage &&
+            !forwarding &&
+            !replyRetry;
+          let deliveryState: MessageDeliveryState;
 
-          if (!saved && item.state === 'sending') {
-            deliveryStatus = 'Результат ожидается';
+          if (saved) {
+            deliveryState = read ? 'read' : 'sent';
+          } else if (sending) {
+            deliveryState = 'sending';
           } else if (!saved && item.state === 'rejected') {
-            deliveryStatus = 'Отклонено';
+            deliveryState = 'rejected';
           } else {
-            deliveryStatus = 'Результат неизвестен';
+            deliveryState = 'unknown';
           }
 
           return (
             <div
-              key={saved ? item.message_id : item.client_message_id}
+              key={
+                (saved ? item.sender_id : runtime.scope.accountId) + ':' + item.client_message_id
+              }
               className={'dialog-message-row' + (own ? ' own' : '')}
             >
-              <div className="dialog-message-container">
+              <div className="dialog-message-container" data-swipe-enabled={swipeable || undefined}>
+                {swipeable && (
+                  <span className="dialog-message-swipe-hint" aria-hidden="true">
+                    <Reply />
+                  </span>
+                )}
                 <article
-                  className={'dialog-message' + (item.content.kind === 'sticker' ? ' sticker' : '')}
-                  tabIndex={
-                    saved &&
-                    own &&
-                    item.content.kind === 'text' &&
-                    data.record.permissions?.can_send
-                      ? 0
-                      : undefined
+                  id={saved ? 'dialog-message-' + item.message_id : undefined}
+                  className={
+                    'dialog-message' +
+                    (item.content.kind === 'sticker' ? ' sticker' : '') +
+                    (saved && item.message_id === actionMessage?.message.message_id
+                      ? ' dialog-message-menu-source'
+                      : '') +
+                    (saved && item.message_id === highlighted ? ' reply-target' : '')
                   }
-                  aria-haspopup={
-                    saved &&
-                    own &&
-                    item.content.kind === 'text' &&
-                    data.record.permissions?.can_send
-                      ? 'menu'
-                      : undefined
-                  }
+                  tabIndex={saved && data.record.permissions?.can_read ? 0 : undefined}
+                  aria-haspopup={saved && data.record.permissions?.can_read ? 'menu' : undefined}
                   onKeyDown={(event): void => {
                     if (
                       saved &&
-                      own &&
-                      item.content.kind === 'text' &&
-                      data.record.permissions?.can_send &&
+                      data.record.permissions?.can_read &&
                       (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))
                     ) {
                       event.preventDefault();
@@ -693,101 +1056,106 @@ function Feed({
                   }}
 
                   onContextMenu={(event): void => {
-                    if (
-                      saved &&
-                      own &&
-                      item.content.kind === 'text' &&
-                      data.record.permissions?.can_send
-                    ) {
+                    if (saved && data.record.permissions?.can_read) {
                       event.preventDefault();
+                      gestures.cancel();
                       setActionMessage({ message: item, anchor: event.currentTarget });
                     }
                   }}
                   onPointerDown={(event): void => {
-                    if (
-                      event.pointerType !== 'touch' ||
-                      !saved ||
-                      !own ||
-                      item.content.kind !== 'text' ||
-                      !data.record.permissions?.can_send
-                    ) {
-                      return;
-                    }
-
-                    cancelPress();
-                    const anchor = event.currentTarget;
-
-                    pressPoint.current = { x: event.clientX, y: event.clientY };
-                    press.current = setTimeout((): void => {
-                      if (!window.getSelection()?.toString() && anchor.isConnected) {
-                        setActionMessage({ message: item, anchor });
-                      }
-                    }, 500);
-                  }}
-                  onPointerUp={cancelPress}
-                  onPointerMove={(event): void => {
-                    const start = pressPoint.current;
-
-                    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
-                      cancelPress();
+                    if (saved) {
+                      gestures.start(event, item);
                     }
                   }}
-                  onPointerCancel={cancelPress}
+                  onClickCapture={gestures.click}
                 >
-                  <Content content={item.content} />
+                  {item.reply && (
+                    <ReplyQuote
+                      reply={item.reply}
+                      jump={
+                        saved && data.record.permissions?.can_read
+                          ? () => void jumpTo(item.reply!.message_id)
+                          : undefined
+                      }
+                    />
+                  )}
+                  {saved ? (
+                    <SavedContent message={item} runtime={runtime} />
+                  ) : (
+                    <>
+                      {item.operation === 'forward' && (
+                        <div className="dialog-forward-label">Пересылаем…</div>
+                      )}
+                      <Content content={item.content} />
+                    </>
+                  )}
+                  {saved && (
+                    <MessageReactions
+                      message={item}
+                      runtime={runtime}
+                      canSend={!!data.record.permissions?.can_send}
+                      peerName={data.record.dialog?.peer_display_name ?? 'Собеседник'}
+                      report={report}
+                    />
+                  )}
                   <div className="dialog-message-meta">
                     {saved && item.edited_at && (
                       <span aria-label="Сообщение изменено">изменено</span>
                     )}
                     <time dateTime={item.created_at}>{time(item.created_at)}</time>
-                    {own &&
-                      (saved ? (
-                        <span aria-label={read ? 'Прочитано' : 'Отправлено'}>
-                          {read ? <CheckCheck size={15} /> : <Check size={15} />}
-                        </span>
-                      ) : (
-                        <span>{deliveryStatus}</span>
-                      ))}
+                    {own && <MessageDeliveryStatus state={deliveryState} />}
                   </div>
-                  {!saved && (
+                  {!saved && !sending && (
                     <div className="dialog-retry">
-                      {item.error && <span>{item.error}</span>}
+                      <span>
+                        {item.state === 'rejected' ? 'Отклонено' : 'Результат неизвестен'}
+                        {item.error ? ': ' + item.error : ''}
+                      </span>
                       <button
                         onClick={(): void => {
                           void (async () => {
                             try {
-                              return await runtime.resend(id, item.client_message_id, onPrepared);
+                              if (item.reply && item.reply_conflict && item.state === 'rejected') {
+                                const { version: sourceVersion, content: sourceContent } =
+                                  await runtime.messageGet(id, item.reply.message_id);
+
+                                if (!runtime.signal.aborted) {
+                                  setReplyRetry({
+                                    pending: item,
+                                    reply: {
+                                      ...item.reply,
+                                      version: sourceVersion,
+                                      content: sourceContent,
+                                    },
+                                  });
+                                }
+                              } else {
+                                await runtime.resend(id, item.client_message_id, onPrepared);
+                              }
                             } catch (cause) {
                               return report(dialogError(cause));
                             }
                           })();
                         }}
                       >
-                        Повторить
+                        {item.reply_conflict ? 'Обновить цитату и повторить' : 'Повторить'}
                       </button>
                     </div>
                   )}
                 </article>
-                {saved &&
-                  own &&
-                  item.content.kind === 'text' &&
-                  data.record.permissions?.can_send && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="dialog-message-actions"
-                      aria-label="Действия сообщения"
-                      onClick={(event): void => {
-                        const anchor = event.currentTarget.parentElement?.querySelector('article');
-
-                        if (anchor) {
-                          setActionMessage({ message: item, anchor });
-                        }
-                      }}
-                    >
-                      <Ellipsis size={16} />
-                    </Button>
-                  )}
+                {saved && data.record.permissions?.can_read && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="dialog-message-actions"
+                    aria-label="Действия сообщения"
+                    onClick={(event): void => {
+                      setActionMessage({ message: item, anchor: event.currentTarget });
+                    }}
+                  >
+                    <Ellipsis size={16} />
+                  </Button>
+                )}
               </div>
             </div>
           );

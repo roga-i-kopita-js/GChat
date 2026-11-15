@@ -31,6 +31,13 @@ function message(sequence: number, sender_id = actor): DialogMessage {
     edited_at: null,
     edit_sequence: 0,
     last_edit_id: null,
+    forward: null,
+    reply: null,
+    reaction_version: 0,
+    reaction_sequence: 0,
+    reactions: [],
+    own_reaction_states: [],
+    actions_verified: true,
   };
 }
 describe('dialog history invariants', (): void => {
@@ -162,6 +169,8 @@ describe('dialog history invariants', (): void => {
         client_message_id: 'c1',
         content: { kind: 'text', text: 'own' },
         created_at: '',
+        operation: 'send',
+        reply: null,
         state: 'unknown',
         error: null,
       },
@@ -247,6 +256,13 @@ describe('message edit convergence', (): void => {
         edited_at: null,
         edit_sequence: 0,
         last_edit_id: null,
+        forward: null,
+        reply: null,
+        reaction_version: 0,
+        reaction_sequence: 0,
+        reactions: [],
+        own_reaction_states: [],
+        actions_verified: true,
         content: original.content,
       },
     });
@@ -293,4 +309,72 @@ it('rejects stale edit cursors and impossible continuations without advancing', 
   expect(value.record.edit_sync_sequence).toBe(0);
   commitEdits(value, { messages: [], next_edit_sequence: 3, has_more: false }, 0);
   expect(value.record.edit_sync_sequence).toBe(3);
+});
+
+describe('independent action snapshots', () => {
+  it('keeps newer content and reactions independently, including removed reactions', () => {
+    const base = message(1);
+    const reacted = {
+      ...base,
+      reaction_version: 1,
+      reaction_sequence: 1,
+      reactions: [{ emoji: '👍', user_ids: [actor] }],
+      own_reaction_states: [{ emoji: '👍', selected: true, version: 1, last_operation_id: 'op1' }],
+    };
+    const edited = {
+      ...base,
+      version: 2,
+      edited_at: '2026-11-14T00:00:00Z',
+      edit_sequence: 1,
+      last_edit_id: 'edit',
+      content: { kind: 'text' as const, text: 'edited' },
+    };
+    const mixed = mergeMessages([reacted], [edited])[0]!;
+
+    expect(mixed.content).toEqual(edited.content);
+    expect(mixed.reactions).toEqual(reacted.reactions);
+    const removed = {
+      ...reacted,
+      reaction_version: 2,
+      reaction_sequence: 2,
+      reactions: [],
+      own_reaction_states: [{ emoji: '👍', selected: false, version: 2, last_operation_id: 'op2' }],
+    };
+    const final = mergeMessages([mixed], [removed])[0]!;
+
+    expect(final.content).toEqual(edited.content);
+    expect(final.reactions).toEqual([]);
+    expect(mergeMessages([final], [reacted])[0]!.reactions).toEqual([]);
+  });
+  it('replaces unverified legacy origin even at the same content version', () => {
+    const legacy = { ...message(1), actions_verified: false };
+    const forwarded = { ...message(1), forward: { author: { id: actor, display_name: 'Author' } } };
+
+    expect(mergeMessages([legacy], [forwarded])[0]!.forward).toEqual(forwarded.forward);
+    expect(() => mergeMessages([forwarded], [message(1)])).toThrow('INVALID_MESSAGE_VERSION');
+  });
+});
+
+it('restores a previously unverified quote and rejects conflicting verified snapshots', () => {
+  const source = message(1);
+  const answer = message(2);
+  const reply = {
+    message_id: source.message_id,
+    sequence: 1,
+    version: 1,
+    sender_id: peer,
+    sender_display_name: 'Peer',
+    content: source.content,
+  };
+  const verified = { ...answer, reply };
+
+  expect(mergeMessages([{ ...answer, actions_verified: false }], [verified])[0].reply).toEqual(
+    reply,
+  );
+  expect(() => mergeMessages([verified], [{ ...answer, reply: { ...reply, version: 2 } }])).toThrow(
+    'INVALID_MESSAGE_VERSION',
+  );
+  const edited = { ...verified, version: 2, content: { kind: 'text' as const, text: 'edited' } };
+
+  expect(mergeMessages([edited], [verified])[0].reply).toEqual(reply);
 });

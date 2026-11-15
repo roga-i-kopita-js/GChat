@@ -6,6 +6,10 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 export function setupDialogBodyLimit(app: NestExpressApplication): void {
   const messages = (req: IncomingMessage): boolean =>
     (req.method === 'POST' &&
+      /^\/dialogs\/[^/]+\/forwards\/?$/i.test((req.url ?? '').split('?')[0]!)) ||
+    (req.method === 'PUT' &&
+      /^\/dialogs\/[^/]+\/messages\/[^/]+\/reactions\/?$/i.test((req.url ?? '').split('?')[0]!)) ||
+    (req.method === 'POST' &&
       /^\/dialogs\/[^/]+\/messages\/?$/i.test((req.url ?? '').split('?')[0]!)) ||
     (req.method === 'PATCH' &&
       /^\/dialogs\/[^/]+\/messages\/[^/]+\/?$/i.test((req.url ?? '').split('?')[0]!));

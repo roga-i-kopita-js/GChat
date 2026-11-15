@@ -112,6 +112,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       error,
       events,
     );
+
     const module = await Test.createTestingModule({
       imports: [LoggerModule.forRoot(), ErrorModule],
       controllers: [DialogsController],
@@ -272,6 +273,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const { dialog: getResultDialog5 } = await service.get(a!, dialog.dialog_id);
 
     expect(getResultDialog5.peer_display_name).toBe('Renamed');
+
     await expect(service.get(outsider!, dialog.dialog_id)).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
@@ -335,9 +337,8 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
         last_message_at: null,
       }),
     );
-    const { [0]: resultsFirst2 } = results;
 
-    expect(Object.keys(resultsFirst2.dialog)).not.toContain('can_send');
+    expect(Object.keys(resultsFirst.dialog)).not.toContain('can_send');
   });
   it('serializes sends, deduplicates across devices, preserves original content and emits after commit only once', async (): Promise<void> => {
     const id = await dialog();
@@ -437,6 +438,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const { messages: historyResultMessages4 } = await service.history(actors[0], id, 30);
 
     expect(historyResultMessages4.every((m): boolean => m.status === 'read')).toBe(true);
+
     await expect(service.read(actors[1], id, 5)).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
       fields: [{ field: 'sequence', code: 'INVALID' }],
@@ -462,14 +464,18 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     expect(await service.permissions(actors[1], id)).toEqual({
       dialogs: { can_read: false, can_send: false },
     });
+
     await expect(service.history(actors[1], id, 30)).rejects.toMatchObject({
       code: 'DIALOG_NOT_ALLOWED',
     });
+
     await expect(service.send(actors[1], id, input())).rejects.toMatchObject({
       code: 'DIALOG_NOT_ALLOWED',
     });
     await pool.query("UPDATE gchat_users SET role='admin' WHERE id=$1", [actors[2].userId]);
+
     await expect(service.get(actors[2], id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+
     await expect(service.get(actors[2], randomUUID())).rejects.toMatchObject({ code: 'NOT_FOUND' });
     await pool.query("UPDATE gchat_users SET role='admin' WHERE id=$1", [actors[0].userId]);
     expect(await service.permissions(actors[1], id)).toEqual({
@@ -486,6 +492,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
 
     expect(historyResultMessages5).toHaveLength(1);
     await pool.query('UPDATE gchat_users SET disabled_at=now() WHERE id=$1', [actors[0].userId]);
+
     await expect(service.history(actors[1], id, 30)).rejects.toMatchObject({
       code: 'DIALOG_NOT_ALLOWED',
     });
@@ -493,6 +500,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const { messages: historyResultMessages6 } = await service.history(actors[1], id, 30);
 
     expect(historyResultMessages6).toHaveLength(1);
+
     await expect(service.send(actors[1], id, input())).rejects.toMatchObject({
       code: 'DIALOG_NOT_ALLOWED',
     });
@@ -506,6 +514,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       actors[0].sessionId,
     ]);
     await pool.query('DELETE FROM gchat_devices WHERE id=$1', [actors[0].deviceId]);
+
     await expect(service.get(actors[0], id)).rejects.toMatchObject({ code: 'FORBIDDEN' });
     await devices.bind(actors[0].userId, actors[0].sessionId, null);
     const { created: sendResultCreated2 } = await service.send(actors[0], id, body);
@@ -515,6 +524,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
 
     expect(historyResultMessages7).toHaveLength(1);
     await pool.query('DELETE FROM gchat_auth_sessions WHERE id=$1', [actors[0].sessionId]);
+
     await expect(service.get(actors[0], id)).rejects.toMatchObject({ code: 'SESSION_INVALID' });
   });
   it('rolls back sequence and activity on encryption failure but consumes its separately committed budget', async (): Promise<void> => {
@@ -549,6 +559,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const { message: firstMessage2 } = first;
 
     expect(sendResultMessage2).toEqual(firstMessage2);
+
     await expect(service.send(actors[0], id, input())).rejects.toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
     });
@@ -566,10 +577,13 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       "UPDATE gchat_dialog_messages SET auth_tag=decode(repeat('00',16),'hex') WHERE id=$1",
       [secondMessage3.message_id],
     );
+
     await expect(service.history(actors[0], id, 30, 0)).rejects.toMatchObject({
       code: 'INTERNAL_ERROR',
     });
+
     await expect(service.get(actors[0], id)).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
+
     await expect(service.list(actors[0], 30, 0)).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
     await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[0].userId]);
     const { dialog: deniedMetadata } = await service.get(actors[0], id);
@@ -612,6 +626,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
 
       expect(resultDialog.dialog_id).toBe(id);
       await deletion;
+
       await expect(service.get(actors[0], id)).rejects.toMatchObject({ code: 'SESSION_INVALID' });
     } finally {
       release();
@@ -651,15 +666,15 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
 
     expect(boundedHasMore).toBe(true);
     const { messages: boundedMessages } = bounded;
+
     const { messages: restMessages } = await service.history(
       actors[1],
       id,
       100,
       boundedMessages.at(-1)!.sequence,
     );
-    const { messages: boundedMessages2 } = bounded;
 
-    expect(restMessages.length + boundedMessages2.length).toBe(38);
+    expect(restMessages.length + boundedMessages.length).toBe(38);
   });
   it('enforces shared atomic Redis buckets and closed failure behavior', async (): Promise<void> => {
     const results = await Promise.allSettled(
@@ -673,12 +688,14 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const rejected = resultsFind.bind(results)((r): boolean => r.status === 'rejected');
 
     expect(rejected).toMatchObject({ reason: { code: 'RATE_LIMITED', retryAfterSeconds: 1 } });
+
     await expect(limits.check(actors[0].userId, 'read')).resolves.toBeUndefined();
     const ttl = await redis.ttl(prefix + 'dialogs:rate:' + actors[0].userId + ':send');
 
     expect(ttl).toBeGreaterThan(0);
     expect(ttl).toBeLessThanOrEqual(60);
     await redis.set(prefix + 'dialogs:rate:' + actors[1].userId + ':get', 'corrupt');
+
     await expect(service.list(actors[1], 30, 0)).rejects.toMatchObject({
       code: 'SERVICE_UNAVAILABLE',
     });
@@ -798,13 +815,13 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const { message: lastMessage } = last;
 
     expect(lastMessage.sequence).toBe(Number.MAX_SAFE_INTEGER);
+
     await expect(service.send(actors[0], id, input())).rejects.toMatchObject({
       code: 'INTERNAL_ERROR',
     });
     const { message: sendResultMessage3 } = await service.send(actors[0], id, body);
-    const { message: lastMessage2 } = last;
 
-    expect(sendResultMessage3).toEqual(lastMessage2);
+    expect(sendResultMessage3).toEqual(lastMessage);
   });
 
   it('stores ordinary APNs separately and leaves its version intact on an identical registration', async (): Promise<void> => {
@@ -833,6 +850,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
   it('serves HTTP status, strict DTO/query errors, 413, no-store and Retry-After through the shared filter', async (): Promise<void> => {
     const agent = request(app.getHttpServer());
     const authorization = 'Bearer ' + actors[0].token;
+
     const created = await agent
       .post('/dialogs')
       .set('Authorization', authorization)
@@ -847,7 +865,9 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const { status: sendResultStatus } = await agent
       .post('/dialogs')
       .set('Authorization', authorization)
-      .send({ peer_id: actors[1].userId });
+      .send({
+        peer_id: actors[1].userId,
+      });
 
     expect(sendResultStatus).toBe(200);
 
@@ -871,10 +891,14 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     const { body: invalidBody } = await agent
       .post('/dialogs/' + id + '/messages')
       .set('Authorization', authorization)
-      .send({ ...input(), content: { kind: 'text', text: 'valid', extra: true } });
+      .send({
+        ...input(),
+        content: { kind: 'text', text: 'valid', extra: true },
+      });
 
     expect(invalidBody.error.code).toBe('VALIDATION_ERROR');
     const huge = JSON.stringify(input('secret'.repeat(12000)));
+
     const tooLarge = await agent
       .post('/dialogs/' + id + '/messages')
       .set('Authorization', authorization)
@@ -889,6 +913,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     expect(tooLargeBody).toEqual({
       error: { code: 'PAYLOAD_TOO_LARGE', message: expect.any(String) },
     });
+
     const { status: compressedStatus } = await agent
       .post('/dialogs/' + id + '/messages')
       .set('Authorization', authorization)
@@ -898,6 +923,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       .send(gzipSync(huge));
 
     expect(compressedStatus).toBe(413);
+
     const sent = await agent
       .post('/dialogs/' + id + '/messages')
       .set('Authorization', authorization)
@@ -914,6 +940,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       credit_ms: '0',
       updated_at_ms: String(Date.now() + 10000),
     });
+
     const limited = await agent.get('/dialogs').set('Authorization', authorization);
 
     const { status: limitedStatus } = limited;
@@ -942,6 +969,7 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       expected_version: 1,
       content: { kind: 'text' as const, text: '  corrected 👩‍💻\n' },
     };
+
     const updated = await request(app.getHttpServer())
       .patch(`/dialogs/${id}/messages/${first.message_id}`)
       .set('Authorization', 'Bearer ' + actors[0].token)
@@ -1006,10 +1034,12 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       next_edit_sequence: 2,
     });
     await resetRates();
+
     await expect(service.edit(actors[0], id, first.message_id, patch)).rejects.toMatchObject({
       status: 409,
       code: 'MESSAGE_VERSION_CONFLICT',
     });
+
     await expect(service.edits(actors[0], id, 3, 30)).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
@@ -1048,12 +1078,15 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
     expect(
       resultsFilter10.bind(results)((result): boolean => result.status === 'rejected'),
     ).toMatchObject([{ reason: { code: 'MESSAGE_VERSION_CONFLICT' } }]);
+
     await expect(
       service.edit(actors[1], id, original.message_id, make('peer')),
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+
     await expect(service.messageGet(actors[2], id, original.message_id)).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
+
     await expect(service.messageGet(actors[0], id, randomUUID())).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
@@ -1087,16 +1120,417 @@ integration('Dialogs with isolated PostgreSQL, Redis and real HTTP guard', (): v
       .set('Authorization', 'Bearer ' + actors[0].token)
       .send({ ...make('valid'), padding: 'a'.repeat(65536) })
       .expect(413);
+
     await request(app.getHttpServer())
       .get(`/dialogs/${id}/message-edits?unknown=1`)
       .set('Authorization', 'Bearer ' + actors[0].token)
       .expect(400);
     await pool.query('DELETE FROM gchat_group_members WHERE user_id=$1', [actors[0].userId]);
+
     await expect(
       service.edit(actors[0], id, original.message_id, {
         ...make('lost access'),
         expected_version: 2,
       }),
     ).rejects.toMatchObject({ code: 'DIALOG_NOT_ALLOWED' });
+  });
+  it('forwards server snapshots once, filters original authors by group and keeps anonymous chains anonymous', async (): Promise<void> => {
+    const [author, sender, recipient] = actors;
+    const source = await service.create(author, sender.userId);
+    const { dialog: sourceDialog94 } = source;
+
+    const target = await service.create(sender, recipient.userId);
+    const { dialog: targetDialog4 } = target;
+
+    const { message: original } = await service.send(author, sourceDialog94.dialog_id, {
+      client_message_id: randomUUID(),
+      content: { kind: 'text', text: 'original snapshot' },
+    });
+    const input = {
+      client_message_id: randomUUID(),
+      source_dialog_id: original.dialog_id,
+      source_message_id: original.message_id,
+      expected_source_version: 1,
+    };
+    const forwarded = await Promise.all([
+      service.forward(sender, targetDialog4.dialog_id, input),
+      service.forward(sender, targetDialog4.dialog_id, input),
+    ]);
+    const { 0: forwardedItem01 } = forwarded;
+
+    const { filter: forwardedFilter97 } = forwarded;
+
+    expect(forwardedFilter97.bind(forwarded)((value) => value.created)).toHaveLength(1);
+    expect(forwardedItem01.message.forward).toEqual({
+      author: { id: author.userId, display_name: author.displayName },
+    });
+    expect(forwardedItem01.message.sender_id).toBe(sender.userId);
+    expect(forwardedItem01.message.reactions).toEqual([]);
+
+    await expect(
+      service.edit(sender, targetDialog4.dialog_id, forwardedItem01.message.message_id, {
+        client_edit_id: randomUUID(),
+        expected_version: 1,
+        content: { kind: 'text', text: 'tampered' },
+      }),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    const privateGroup = randomUUID();
+
+    await pool.query('INSERT INTO gchat_groups(id,name) VALUES($1,$2)', [
+      privateGroup,
+      'source-only',
+    ]);
+    await pool.query('INSERT INTO gchat_group_members VALUES($1,$2),($1,$3)', [
+      privateGroup,
+      author.userId,
+      sender.userId,
+    ]);
+    await pool.query('DELETE FROM gchat_group_members WHERE group_id=$1 AND user_id=$2', [
+      group,
+      author.userId,
+    ]);
+    await resetRates();
+    const hidden = await service.forward(sender, targetDialog4.dialog_id, {
+      ...input,
+      client_message_id: randomUUID(),
+    });
+    const { message: hiddenMessage6 } = hidden;
+
+    expect(hiddenMessage6.forward).toEqual({ author: null });
+    const { rows: resolvedRows101 } = await pool.query(
+      'SELECT * FROM gchat_dialog_messages WHERE id=$1',
+      [hiddenMessage6.message_id],
+    );
+    const [hiddenRow] = resolvedRows101;
+
+    expect(hiddenRow.encryption_version).toBe(4);
+    expect(Buffer.from(hiddenRow.ciphertext).includes(Buffer.from(author.userId))).toBe(false);
+    await pool.query("UPDATE gchat_users SET role='admin' WHERE id=$1", [recipient.userId]);
+    const onwardTarget = await service.create(recipient, author.userId);
+    const { dialog: onwardTargetDialog102 } = onwardTarget;
+
+    const onward = await service.forward(recipient, onwardTargetDialog102.dialog_id, {
+      client_message_id: randomUUID(),
+      source_dialog_id: hiddenMessage6.dialog_id,
+      source_message_id: hiddenMessage6.message_id,
+      expected_source_version: 1,
+    });
+    const { message: onwardMessage105 } = onward;
+
+    expect(onwardMessage105.forward).toEqual({ author: null });
+    const { message: resolvedMessage106 } = await service.messageGetByClientId(
+      sender,
+      targetDialog4.dialog_id,
+      input.client_message_id,
+    );
+
+    expect(resolvedMessage106.message_id).toBe(forwardedItem01.message.message_id);
+    const { created: resolvedCreated107 } = await service.forward(
+      sender,
+      targetDialog4.dialog_id,
+      input,
+    );
+
+    expect(resolvedCreated107).toBe(false);
+
+    await expect(service.forward(author, targetDialog4.dialog_id, input)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+    });
+  });
+
+  it('merges independent reaction cells and protects removals from stale retries without editing text or activity', async (): Promise<void> => {
+    const [a, b] = actors;
+    const id = await dialog();
+    const { message } = await service.send(a, id, {
+      client_message_id: randomUUID(),
+      content: { kind: 'sticker', sticker_id: 'animal-pals-v1-cat' },
+    });
+    const { dialog: resolvedDialog109 } = await service.get(a, id);
+    const before = resolvedDialog109;
+    const like = {
+      client_reaction_id: randomUUID(),
+      emoji: '👍',
+      selected: true,
+      expected_version: 0,
+    };
+
+    await Promise.all([
+      service.setReaction(b, id, message.message_id, like),
+      service.setReaction(b, id, message.message_id, {
+        ...like,
+        client_reaction_id: randomUUID(),
+        emoji: '❤️',
+      }),
+    ]);
+    await service.setReaction(a, id, message.message_id, {
+      ...like,
+      client_reaction_id: randomUUID(),
+    });
+    const removed = await service.setReaction(b, id, message.message_id, {
+      ...like,
+      client_reaction_id: randomUUID(),
+      selected: false,
+      expected_version: 1,
+    });
+    const { message: removedMessage110 } = removed;
+
+    expect(removedMessage110.reaction_version).toBe(4);
+    expect(removedMessage110.reactions).toEqual([
+      { emoji: '👍', user_ids: [a.userId] },
+      { emoji: '❤', user_ids: [b.userId] },
+    ]);
+    expect(removedMessage110.version).toBe(1);
+    expect(removedMessage110.edited_at).toBeNull();
+
+    await expect(service.setReaction(b, id, message.message_id, like)).rejects.toMatchObject({
+      code: 'REACTION_VERSION_CONFLICT',
+    });
+    const page = await service.reactions(b, id, 0, 30);
+    const { messages: pageMessages115 } = page;
+
+    const { next_reaction_sequence: pageNext_reaction_sequence116 } = page;
+
+    const { has_more: pageHas_more117 } = page;
+
+    expect(pageMessages115).toHaveLength(1);
+    expect(pageNext_reaction_sequence116).toBe(4);
+    expect(pageHas_more117).toBe(false);
+    const { messages: resolvedMessages118 } = await service.reactions(b, id, 4, 30);
+
+    expect(resolvedMessages118).toEqual([]);
+    const { dialog: resolvedDialog119 } = await service.get(a, id);
+
+    expect(resolvedDialog119.last_message_at).toBe(before.last_message_at);
+    const { dialog: resolvedDialog120 } = await service.get(a, id);
+
+    expect(resolvedDialog120.last_sequence).toBe(before.last_sequence);
+    expect(
+      notices.filter((notice) => notice.event.type === 'dialog.message_reactions_available'),
+    ).toHaveLength(4);
+    expect(
+      notices
+        .filter((notice) => notice.event.type === 'dialog.message_reactions_available')
+        .every((notice) => !notice.message),
+    ).toBe(true);
+  });
+
+  it("serves strict forward/reaction HTTP operations and resolves only the actor's client key", async (): Promise<void> => {
+    const [a, b, c] = actors;
+    const source = await dialog();
+    const { dialog: target } = await service.create(b, c.userId);
+    const { message } = await service.send(a, source, {
+      client_message_id: randomUUID(),
+      content: { kind: 'text', text: 'http forward' },
+    });
+    const agent = request(app.getHttpServer());
+    const key = randomUUID();
+    const body = {
+      client_message_id: key,
+      source_dialog_id: source,
+      source_message_id: message.message_id,
+      expected_source_version: 1,
+    };
+
+    const forwarded = await agent
+      .post('/dialogs/' + target.dialog_id + '/forwards')
+      .set('Authorization', 'Bearer ' + b.token)
+      .send(body)
+      .expect(201);
+    const { body: forwardedBody11 } = forwarded;
+
+    await agent
+      .post('/dialogs/' + target.dialog_id + '/forwards')
+      .set('Authorization', 'Bearer ' + b.token)
+      .send(body)
+      .expect(200);
+
+    await agent
+      .get('/dialogs/' + target.dialog_id + '/messages/by-client-id/' + key)
+      .set('Authorization', 'Bearer ' + b.token)
+      .expect(200);
+
+    await agent
+      .get('/dialogs/' + target.dialog_id + '/messages/by-client-id/' + key)
+      .set('Authorization', 'Bearer ' + c.token)
+      .expect(404);
+
+    await agent
+      .put(
+        '/dialogs/' +
+          target.dialog_id +
+          '/messages/' +
+          forwardedBody11.message.message_id +
+          '/reactions',
+      )
+      .set('Authorization', 'Bearer ' + c.token)
+      .send({ client_reaction_id: randomUUID(), emoji: '👍', selected: true, expected_version: 0 })
+      .expect(200);
+
+    await agent
+      .put(
+        '/dialogs/' +
+          target.dialog_id +
+          '/messages/' +
+          forwardedBody11.message.message_id +
+          '/reactions',
+      )
+      .set('Authorization', 'Bearer ' + c.token)
+      .send({
+        client_reaction_id: randomUUID(),
+        emoji: 'unknown',
+        selected: true,
+        expected_version: 0,
+      })
+      .expect(400);
+
+    await agent
+      .get('/dialogs/' + target.dialog_id + '/message-reactions?after_reaction_sequence=0&extra=1')
+      .set('Authorization', 'Bearer ' + c.token)
+      .expect(400);
+  });
+  it('stores fixed reply snapshots, preserves them on edit/reaction and strips them on forward', async () => {
+    const id = await dialog();
+    const { message: original } = await service.send(actors[0], id, input('original quote'));
+    const body = {
+      ...input('answer'),
+      reply_to: { message_id: original.message_id, expected_version: 1 },
+    };
+    const { message: answer } = await service.send(actors[1], id, body);
+
+    expect(answer.reply).toEqual({
+      message_id: original.message_id,
+      sequence: original.sequence,
+      version: 1,
+      sender_id: actors[0].userId,
+      sender_display_name: 'user0',
+      content: original.content,
+    });
+    await service.edit(actors[0], id, original.message_id, {
+      client_edit_id: randomUUID(),
+      expected_version: 1,
+      content: { kind: 'text', text: 'changed original' },
+    });
+    await pool.query('UPDATE gchat_users SET display_name=$1 WHERE id=$2', [
+      'Renamed',
+      actors[0].userId,
+    ]);
+    const { message: repeated, created } = await service.send(actors[1], id, {
+      ...body,
+      reply_to: { message_id: randomUUID(), expected_version: 99 },
+    });
+
+    expect(created).toBe(false);
+    expect(repeated.reply).toEqual(answer.reply);
+    const { message: edited } = await service.edit(actors[1], id, answer.message_id, {
+      client_edit_id: randomUUID(),
+      expected_version: 1,
+      content: { kind: 'text', text: 'edited answer' },
+    });
+
+    expect(edited.reply).toEqual(answer.reply);
+    const { message: reacted } = await service.setReaction(actors[0], id, answer.message_id, {
+      client_reaction_id: randomUUID(),
+      emoji: '👍',
+      selected: true,
+      expected_version: 0,
+    });
+
+    expect(reacted.reply).toEqual(answer.reply);
+    const { dialog: target } = await service.create(actors[1], actors[2].userId);
+    const { message: forwarded } = await service.forward(actors[1], target.dialog_id, {
+      client_message_id: randomUUID(),
+      source_dialog_id: id,
+      source_message_id: answer.message_id,
+      expected_source_version: edited.version,
+    });
+
+    expect(forwarded.reply).toBeNull();
+    expect(forwarded.content).toEqual(edited.content);
+    const { rows } = await pool.query(
+      'SELECT encryption_version,ciphertext FROM gchat_dialog_messages WHERE id=$1',
+      [answer.message_id],
+    );
+
+    expect(rows[0].encryption_version).toBe(4);
+    expect(rows[0].ciphertext.includes(Buffer.from('original quote'))).toBe(false);
+  });
+
+  it('rejects foreign reply targets and stale versions, without consuming a message sequence', async () => {
+    const id = await dialog();
+    const { message: source } = await service.send(actors[0], id, input('source'));
+    const { dialog: other } = await service.create(actors[0], actors[2].userId);
+    const { message: foreign } = await service.send(actors[0], other.dialog_id, input('foreign'));
+
+    for (const target of [foreign.message_id, randomUUID()]) {
+      await expect(
+        service.send(actors[1], id, {
+          ...input('bad'),
+          reply_to: { message_id: target, expected_version: 1 },
+        }),
+      ).rejects.toMatchObject({ status: 404 });
+    }
+
+    await expect(
+      service.send(actors[1], id, {
+        ...input('stale'),
+        reply_to: { message_id: source.message_id, expected_version: 2 },
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'MESSAGE_VERSION_CONFLICT' });
+    const { message: saved } = await service.send(actors[1], id, {
+      ...input('valid'),
+      reply_to: { message_id: source.message_id, expected_version: 1 },
+    });
+
+    expect(saved.sequence).toBe(2);
+    const { message: sticker } = await service.send(actors[0], id, {
+      client_message_id: randomUUID(),
+      content: { kind: 'sticker', sticker_id: 'animal-pals-v1-cat' },
+      reply_to: { message_id: saved.message_id, expected_version: 1 },
+    });
+
+    expect(sticker.reply?.content).toEqual(saved.content);
+    const { message: nested } = await service.send(actors[1], id, {
+      ...input('reply to sticker'),
+      reply_to: { message_id: sticker.message_id, expected_version: 1 },
+    });
+
+    expect(nested.reply?.content.kind).toBe('sticker');
+    expect(nested.reply).not.toHaveProperty('reply');
+  });
+  it('validates nested reply inputs over HTTP and never accepts a client-provided quote', async () => {
+    const id = await dialog();
+    const { message: source } = await service.send(actors[0], id, input('source'));
+    const endpoint = '/dialogs/' + id + '/messages';
+    const agent = request(app.getHttpServer());
+
+    for (const reply_to of [
+      { message_id: source.message_id, expected_version: 1, text: 'forged' },
+      { message_id: source.message_id, expected_version: '1' },
+      { message_id: source.message_id, expected_version: 0 },
+      { message_id: source.message_id, expected_version: Number.MAX_SAFE_INTEGER + 1 },
+      { message_id: 'invalid', expected_version: 1 },
+    ]) {
+      await agent
+        .post(endpoint)
+        .set('Authorization', 'Bearer ' + actors[1].token)
+        .send({ ...input('answer'), reply_to })
+        .expect(400);
+    }
+
+    const result = await agent
+      .post(endpoint)
+      .set('Authorization', 'Bearer ' + actors[1].token)
+      .send({
+        ...input('valid answer'),
+        reply_to: { message_id: source.message_id.toUpperCase(), expected_version: 1 },
+      })
+      .expect(201);
+    const { body } = result;
+
+    expect(body.message.reply).toMatchObject({
+      message_id: source.message_id,
+      sender_display_name: 'user0',
+      content: { text: 'source' },
+    });
   });
 });

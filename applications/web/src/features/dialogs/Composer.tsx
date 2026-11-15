@@ -1,5 +1,5 @@
 import { stickerIds } from '@gchat/dialog-assets';
-import { ArrowUp, Smile, X } from 'lucide-react';
+import { ArrowUp, Reply, Smile, X } from 'lucide-react';
 import type { JSX } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
@@ -12,6 +12,7 @@ import {
 import { dialogError, type DialogRuntime } from '../../shared/dialogs/runtime';
 import { useNavigationProtection } from '../../shared/navigation-protection';
 import { Button } from '../../shared/ui';
+import { ReplyQuote } from './ReplyQuote';
 import { stickers } from './stickers';
 
 export function Composer({
@@ -125,7 +126,7 @@ export function Composer({
     },
   });
   useEffect((): (() => void) => runtime.protectDraft(save), [runtime, save]);
-  useEffect((): void => {
+  useLayoutEffect((): void => {
     if (draft.revision > revision.current && !dirty.current) {
       revision.current = draft.revision;
       current.current = draft.text;
@@ -180,7 +181,7 @@ export function Composer({
       })();
     };
   }, [save]);
-  useEffect((): void => {
+  useLayoutEffect((): void => {
     const textarea = field.current;
 
     if (textarea) {
@@ -217,6 +218,21 @@ export function Composer({
       setError(dialogError(cause));
     }
   }
+  useEffect(() => {
+    if (draft.reply_to && !field.current?.closest('[hidden]')) {
+      field.current?.focus({ preventScroll: true });
+    }
+  }, [draft.reply_to?.message_id]);
+
+  async function cancelReply(): Promise<void> {
+    try {
+      await runtime.chooseReply(id, null);
+      field.current?.focus({ preventScroll: true });
+    } catch (cause) {
+      setError(dialogError(cause));
+    }
+  }
+
   async function send(sticker?: string): Promise<void> {
     if (busy || sending.current || conflict) {
       return;
@@ -245,7 +261,12 @@ export function Composer({
       await save();
 
       if (sticker && isStickerId(sticker)) {
-        await runtime.send(id, { kind: 'sticker', sticker_id: sticker }, undefined, prepared);
+        await runtime.send(
+          id,
+          { kind: 'sticker', sticker_id: sticker },
+          revision.current,
+          prepared,
+        );
       } else {
         await runtime.send(id, { kind: 'text', text: value }, revision.current, prepared);
       }
@@ -287,6 +308,24 @@ export function Composer({
 
   return (
     <div className="dialog-composer-area">
+      {draft.reply_to && (
+        <div className="dialog-reply-preview" aria-label="Ответ на сообщение">
+          <span className="dialog-reply-symbol" aria-hidden="true">
+            <Reply size={22} />
+          </span>
+          <ReplyQuote reply={draft.reply_to} variant="composer" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Отменить ответ"
+            disabled={busy || conflict}
+            onClick={() => void cancelReply()}
+          >
+            <X size={20} />
+          </Button>
+        </div>
+      )}
       {error && (
         <p className="dialog-error" role="alert">
           {error}

@@ -18,6 +18,8 @@ tests:
 
 Начальная загрузка страниц диалогов запускается React Router loaders по [контракту потока данных](data-flow.md). Общий bootstrap доступен loader до React-рендера, один на экземпляр device и scope; Provider подписывается на этот же bootstrap. Его создание не ждёт монтирования страницы и не создаёт новый транспорт. Открытие storage и runtime сохраняет существующие browser/native binding, epoch и правила смены сессии.
 
+Ответы на сообщения, формат reply и обновление Web storage v4 определены в [принятом контракте ответов](../backend/modules/dialogs/message-replies.md).
+
 ## Что уже существует
 
 NativeCore владеет Auth, регистрацией устройства и WSS; Web использует wsMessage/wsState/sendWsMessage и общий REST SDK с Auth-обёрткой. Браузерное владение WSS вынесено из GChatClient в shared/runtime/transport.ts. Bootstrap запускает общий транспорт и звонковый клиент выше маршрутов, без второго соединения. Клиентских ключей истории нет: шифрование и выдача содержимого принадлежат backend.
@@ -56,6 +58,8 @@ Browser-владелец WSS пересылает другим вкладкам 
 ### Storage v1: записи, операции и атомарность
 
 Расширение storage до v2 для редактирования сообщений согласовано в [техническом контракте](../backend/modules/dialogs/message-editing.md). Он определяет миграцию схемы v1 ниже, commitEdits и совместимость bridge.
+
+Расширение storage до v3 для [действий над сообщениями](../backend/modules/dialogs/message-actions.md#кеш-и-совместимость) согласовано в техническом контракте. Оно не объявляет новые native-команды принятыми: нативная платформа остаётся deprecated, предлагаемый JS-путь использует существующий постоянный fallback в IndexedDB.
 
 одна схема версии 1 для IndexedDB и SQLite. Namespace — непрозрачный идентификатор области `(serverOrigin, accountId, deviceId)`, epoch — поколение данных этой области. Смена server/account/device выбирает другую область; logout/SESSION_INVALID увеличивает epoch и запрещает доступ к прежним поколениям. Все операции проверяют актуальную сессию, epoch и handle в момент commit, а не только до начала ожидания.
 

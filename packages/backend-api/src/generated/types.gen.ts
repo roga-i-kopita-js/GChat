@@ -113,7 +113,41 @@ export type StickerContentDto = {
     | 'animal-pals-v1-bunny';
 };
 
+export type ReplyInfoDto = {
+  message_id: string;
+  sequence: number;
+  version: number;
+  sender_id: string;
+  sender_display_name: string;
+  content: TextContentDto | StickerContentDto;
+};
+
+export type ForwardAuthorDto = {
+  id: string;
+  display_name: string;
+};
+
+export type ForwardInfoDto = {
+  author: ForwardAuthorDto | null;
+};
+
+export type ReactionDto = {
+  emoji: string;
+  user_ids: Array<string>;
+};
+
+export type OwnReactionStateDto = {
+  emoji: string;
+  selected: boolean;
+  version: number;
+  last_operation_id: string;
+};
+
 export type MessageDto = {
+  reply: ReplyInfoDto | null;
+  forward: ForwardInfoDto | null;
+  reactions: Array<ReactionDto>;
+  own_reaction_states: Array<OwnReactionStateDto>;
   sequence: number;
   version: number;
   edit_sequence: number;
@@ -121,6 +155,8 @@ export type MessageDto = {
   last_edit_id: string | null;
   content: TextContentDto | StickerContentDto;
   status: 'sent' | 'read';
+  reaction_version: number;
+  reaction_sequence: number;
   message_id: string;
   dialog_id: string;
   client_message_id: string;
@@ -159,7 +195,13 @@ export type PermissionsResponseDto = {
   dialogs: DialogPermissionsDto;
 };
 
+export type ReplyToDto = {
+  message_id: string;
+  expected_version: number;
+};
+
 export type SendMessageDto = {
+  reply_to?: ReplyToDto | null;
   content: TextContentDto | StickerContentDto;
   client_message_id: string;
 };
@@ -182,6 +224,99 @@ export type EditMessageDto = {
 export type MessageEditsResponseDto = {
   messages: Array<MessageDto>;
   next_edit_sequence: number;
+  has_more: boolean;
+};
+
+export type ForwardMessageDto = {
+  client_message_id: string;
+  source_dialog_id: string;
+  source_message_id: string;
+  expected_source_version: number;
+};
+
+export type SetReactionDto = {
+  emoji:
+    | '👍'
+    | '👎'
+    | '❤'
+    | '🔥'
+    | '🥰'
+    | '👏'
+    | '😁'
+    | '🤔'
+    | '🤯'
+    | '😱'
+    | '🤬'
+    | '😢'
+    | '🎉'
+    | '🤩'
+    | '🤮'
+    | '💩'
+    | '🙏'
+    | '👌'
+    | '🕊'
+    | '🤡'
+    | '🥱'
+    | '🥴'
+    | '😍'
+    | '🐳'
+    | '❤‍🔥'
+    | '🌚'
+    | '🌭'
+    | '💯'
+    | '🤣'
+    | '⚡'
+    | '🍌'
+    | '🏆'
+    | '💔'
+    | '🤨'
+    | '😐'
+    | '🍓'
+    | '🍾'
+    | '💋'
+    | '🖕'
+    | '😈'
+    | '😴'
+    | '😭'
+    | '🤓'
+    | '👻'
+    | '👨‍💻'
+    | '👀'
+    | '🎃'
+    | '🙈'
+    | '😇'
+    | '😨'
+    | '🤝'
+    | '✍'
+    | '🤗'
+    | '🫡'
+    | '🎅'
+    | '🎄'
+    | '☃'
+    | '💅'
+    | '🤪'
+    | '🗿'
+    | '🆒'
+    | '💘'
+    | '🙉'
+    | '🦄'
+    | '😘'
+    | '💊'
+    | '🙊'
+    | '😎'
+    | '👾'
+    | '🤷‍♂'
+    | '🤷'
+    | '🤷‍♀'
+    | '😡';
+  client_reaction_id: string;
+  selected: boolean;
+  expected_version: number;
+};
+
+export type MessageReactionsResponseDto = {
+  messages: Array<MessageDto>;
+  next_reaction_sequence: number;
   has_more: boolean;
 };
 
@@ -828,6 +963,128 @@ export type DialogsMessageEditsResponses = {
 
 export type DialogsMessageEditsResponse =
   DialogsMessageEditsResponses[keyof DialogsMessageEditsResponses];
+
+export type DialogsMessageForwardData = {
+  body: ForwardMessageDto;
+  path: {
+    dialog_id: string;
+  };
+  query?: never;
+  url: '/dialogs/{dialog_id}/forwards';
+};
+
+export type DialogsMessageForwardErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  409: ErrorResponseDto;
+  413: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsMessageForwardError =
+  DialogsMessageForwardErrors[keyof DialogsMessageForwardErrors];
+
+export type DialogsMessageForwardResponses = {
+  200: MessageResponseDto;
+  201: MessageResponseDto;
+};
+
+export type DialogsMessageForwardResponse =
+  DialogsMessageForwardResponses[keyof DialogsMessageForwardResponses];
+
+export type DialogsMessageGetByClientIdData = {
+  body?: never;
+  path: {
+    dialog_id: string;
+    client_message_id: string;
+  };
+  query?: never;
+  url: '/dialogs/{dialog_id}/messages/by-client-id/{client_message_id}';
+};
+
+export type DialogsMessageGetByClientIdErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsMessageGetByClientIdError =
+  DialogsMessageGetByClientIdErrors[keyof DialogsMessageGetByClientIdErrors];
+
+export type DialogsMessageGetByClientIdResponses = {
+  200: MessageResponseDto;
+};
+
+export type DialogsMessageGetByClientIdResponse =
+  DialogsMessageGetByClientIdResponses[keyof DialogsMessageGetByClientIdResponses];
+
+export type DialogsMessageReactionSetData = {
+  body: SetReactionDto;
+  path: {
+    dialog_id: string;
+    message_id: string;
+  };
+  query?: never;
+  url: '/dialogs/{dialog_id}/messages/{message_id}/reactions';
+};
+
+export type DialogsMessageReactionSetErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  409: ErrorResponseDto;
+  413: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsMessageReactionSetError =
+  DialogsMessageReactionSetErrors[keyof DialogsMessageReactionSetErrors];
+
+export type DialogsMessageReactionSetResponses = {
+  200: MessageResponseDto;
+};
+
+export type DialogsMessageReactionSetResponse =
+  DialogsMessageReactionSetResponses[keyof DialogsMessageReactionSetResponses];
+
+export type DialogsMessageReactionsData = {
+  body?: never;
+  path: {
+    dialog_id: string;
+  };
+  query?: {
+    limit?: number;
+    after_reaction_sequence?: number;
+  };
+  url: '/dialogs/{dialog_id}/message-reactions';
+};
+
+export type DialogsMessageReactionsErrors = {
+  400: ErrorResponseDto;
+  401: ErrorResponseDto;
+  403: ErrorResponseDto;
+  404: ErrorResponseDto;
+  429: ErrorResponseDto;
+  503: ErrorResponseDto;
+};
+
+export type DialogsMessageReactionsError =
+  DialogsMessageReactionsErrors[keyof DialogsMessageReactionsErrors];
+
+export type DialogsMessageReactionsResponses = {
+  200: MessageReactionsResponseDto;
+};
+
+export type DialogsMessageReactionsResponse =
+  DialogsMessageReactionsResponses[keyof DialogsMessageReactionsResponses];
 
 export type DialogsReadData = {
   body: ReadDialogDto;

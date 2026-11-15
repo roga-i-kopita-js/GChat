@@ -222,9 +222,9 @@ class NativeDialogStorage implements DialogStorage {
     const { list: stagingList2 } = staging;
 
     for (const dialog of await stagingList2.bind(staging)()) {
-      const { change: stagingChange4 } = staging;
+      const { change: stagingChange } = staging;
 
-      await stagingChange4.bind(staging)(dialog.dialog_id, 'markAttempt', ({ record }): void => {
+      await stagingChange.bind(staging)(dialog.dialog_id, 'markAttempt', ({ record }): void => {
         for (const pending of record.outbox) {
           if (pending.state === 'sending') {
             pending.state = 'unknown';
@@ -239,9 +239,7 @@ class NativeDialogStorage implements DialogStorage {
       this.fallback = staging;
       this.warning = 'Переписка хранится в WebView.';
     } catch (error) {
-      const { close: stagingClose } = staging;
-
-      stagingClose.bind(staging)();
+      stagingClose1.bind(staging)();
 
       throw error;
     }
@@ -337,9 +335,8 @@ class NativeDialogStorage implements DialogStorage {
           );
 
           update(value);
-          const { record: valueRecord2 } = value;
 
-          valueRecord2.revision++;
+          valueRecord.revision++;
 
           try {
             const { record: valueRecord3, messages: valueMessages2 } = value;
@@ -507,7 +504,7 @@ export async function openNativeDialogs(): Promise<DialogStorage> {
 
   const storage = new NativeDialogStorage({ ...context, purgePending });
 
-  if (context.schemaVersion === 1) {
+  if (context.schemaVersion === 1 || context.schemaVersion === 2) {
     await storage.switchToIndexedDb();
   }
 

@@ -104,6 +104,17 @@ export function createApplicationRoutes(): RouteObject[] {
                   ],
                 },
                 {
+                  path: 'dialogs/forward-recipients',
+                  lazy: {
+                    loader: async () => {
+                      const { forwardRecipientsLoader } =
+                        await import('../features/dialogs/forward-recipients');
+
+                      return forwardRecipientsLoader;
+                    },
+                  },
+                },
+                {
                   id: 'contacts',
                   path: 'dialogs/contacts',
                   handle: layoutRoute('dialogs'),

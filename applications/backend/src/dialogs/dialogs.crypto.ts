@@ -9,6 +9,7 @@ import { DatabaseService } from '../database/database.service.js';
 import { AppError } from '../error/app.error.js';
 import { ErrorService } from '../error/error.service.js';
 import { LoggerService } from '../logger/logger.service.js';
+import { envelopeValue, type MessageEnvelope } from './dialogs.envelope.js';
 import { dialogEncryptionKeys, type MessageRow } from './dialogs.schema.js';
 import { contentValue, type MessageContent } from './dialogs.validation.js';
 
@@ -71,13 +72,16 @@ export function messageAad(row: Omit<MessageRow, 'iv' | 'ciphertext' | 'authTag'
       row.clientMessageId.toLowerCase(),
       String(row.sequence),
       row.createdAt.toISOString(),
-      ...(row.encryptionVersion === 2
+      ...(row.encryptionVersion >= 2
         ? [
             String(row.version),
             row.editedAt?.toISOString() ?? null,
             String(row.editSequence),
             row.lastEditId?.toLowerCase() ?? null,
           ]
+        : []),
+      ...(row.encryptionVersion >= 3
+        ? [String(row.reactionVersion), String(row.reactionSequence)]
         : []),
     ]),
     'utf8',
@@ -109,6 +113,7 @@ export class DialogsCrypto implements OnModuleInit {
             .insert(dialogEncryptionKeys)
             .values({ keyId: id, fingerprint })
             .onConflictDoNothing({ target: dialogEncryptionKeys.keyId });
+
           const [row] = await tx
             .select()
             .from(dialogEncryptionKeys)
@@ -137,7 +142,9 @@ export class DialogsCrypto implements OnModuleInit {
                 lt(dialogEncryptionKeys.attempts, 16777216),
               ),
             )
-            .returning({ attempts: dialogEncryptionKeys.attempts });
+            .returning({
+              attempts: dialogEncryptionKeys.attempts,
+            });
 
           return returningResultFirst;
         },
@@ -161,6 +168,7 @@ export class DialogsCrypto implements OnModuleInit {
   encrypt(
     row: Omit<MessageRow, 'iv' | 'ciphertext' | 'authTag'>,
     content: MessageContent,
+    envelope?: Omit<MessageEnvelope, 'reply'> & { reply?: MessageEnvelope['reply'] },
   ): Pick<MessageRow, 'iv' | 'ciphertext' | 'authTag'> {
     const key = this.keys.get(row.encryptionKeyId);
 
@@ -173,7 +181,19 @@ export class DialogsCrypto implements OnModuleInit {
 
     cipher.setAAD(messageAad(row));
     const ciphertext = Buffer.concat([
-      cipher.update(JSON.stringify(content), 'utf8'),
+      cipher.update(
+        JSON.stringify(
+          row.encryptionVersion >= 3
+            ? {
+                content,
+                forward: envelope?.forward ?? null,
+                ...(row.encryptionVersion >= 4 ? { reply: envelope?.reply ?? null } : {}),
+                reaction_state: envelope?.reaction_state ?? [],
+              }
+            : content,
+        ),
+        'utf8',
+      ),
       cipher.final(),
     ]);
 
@@ -181,6 +201,10 @@ export class DialogsCrypto implements OnModuleInit {
   }
 
   decrypt(row: MessageRow): MessageContent {
+    return this.decryptEnvelope(row).content;
+  }
+
+  decryptEnvelope(row: MessageRow): MessageEnvelope {
     const key = this.keys.get(row.encryptionKeyId);
 
     if (!key) {
@@ -189,7 +213,8 @@ export class DialogsCrypto implements OnModuleInit {
 
     try {
       if (
-        ![1, 2].includes(row.encryptionVersion) ||
+        ![1, 2, 3, 4].includes(row.encryptionVersion) ||
+        (row.encryptionVersion < 3 && (row.reactionVersion !== 0 || row.reactionSequence !== 0)) ||
         (row.encryptionVersion === 1 &&
           (row.version !== 1 ||
             row.editSequence !== 0 ||
@@ -206,13 +231,45 @@ export class DialogsCrypto implements OnModuleInit {
       decipher.setAAD(messageAad(row));
       decipher.setAuthTag(row.authTag);
       const plaintext = Buffer.concat([decipher.update(row.ciphertext), decipher.final()]);
-      const content = contentValue(JSON.parse(plaintext.toString('utf8')), this.error);
+      const parsed: unknown = JSON.parse(plaintext.toString('utf8'));
+
+      if (row.encryptionVersion >= 3) {
+        const envelope = envelopeValue(
+          parsed,
+          this.error,
+          row.reactionVersion,
+          row.encryptionVersion,
+        );
+        const canonical =
+          row.encryptionVersion === 3
+            ? {
+                content: envelope.content,
+                forward: envelope.forward,
+                reaction_state: envelope.reaction_state,
+              }
+            : envelope;
+
+        if (
+          envelope.reply &&
+          (envelope.reply.sequence >= row.sequence || envelope.reply.message_id === row.id)
+        ) {
+          throw new Error();
+        }
+
+        if (!Buffer.from(JSON.stringify(canonical)).equals(plaintext)) {
+          throw new Error();
+        }
+
+        return envelope;
+      }
+
+      const content = contentValue(parsed, this.error);
 
       if (!Buffer.from(JSON.stringify(content)).equals(plaintext)) {
         throw new Error();
       }
 
-      return content;
+      return { content, forward: null, reply: null, reaction_state: [] };
     } catch (cause) {
       if (cause instanceof AppError && cause.code === 'SERVICE_UNAVAILABLE') {
         throw cause;

@@ -1,7 +1,7 @@
 import type { ApiResult, BackendApi } from '@gchat/backend-api';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { emptyRecord, type StoredDialog } from './model';
+import { emptyRecord, type ReplyInfo, type StoredDialog } from './model';
 import { DialogRuntime } from './runtime';
 import type { DialogStorage } from './storage';
 
@@ -9,7 +9,7 @@ function fixture(): { runtime: DialogRuntime; store: any; api: any; saved(): Sto
   let saved: StoredDialog = { record: emptyRecord(), messages: [] };
 
   saved.record.permissions = { can_send: true, can_read: true };
-  saved.record.draft = { text: 'Original', revision: 1 };
+  saved.record.draft = { text: 'Original', revision: 1, reply_to: null };
   const store: DialogStorage = {
     scope: {
       serverOrigin: 'https://test.invalid',
@@ -74,6 +74,7 @@ describe('durable dialog sends', (): void => {
 
       throw new TypeError('network');
     });
+
     await expect(
       f.runtime.send('dialog', { kind: 'text', text: 'Original' }, 1, prepared),
     ).rejects.toThrow('network');
@@ -97,6 +98,13 @@ describe('durable dialog sends', (): void => {
           edited_at: null,
           edit_sequence: 0,
           last_edit_id: null,
+          forward: null,
+          reply: null,
+          reaction_version: 0,
+          reaction_sequence: 0,
+          reactions: [],
+          own_reaction_states: [],
+          actions_verified: true,
         },
       },
     });
@@ -141,6 +149,7 @@ describe('durable dialog sends', (): void => {
         }),
     );
     f.api.dialogsSendMessage.mockRejectedValueOnce(new TypeError('network'));
+
     await expect(f.runtime.send('dialog', { kind: 'text', text: 'Original' }, 1)).rejects.toThrow(
       'network',
     );
@@ -152,16 +161,18 @@ describe('durable dialog sends', (): void => {
     const f = fixture();
 
     f.store.change.mockRejectedValueOnce(new Error('disk full'));
+
     await expect(f.runtime.send('dialog', { kind: 'text', text: 'Original' }, 1)).rejects.toThrow(
       'disk full',
     );
     expect(f.api.dialogsSendMessage).not.toHaveBeenCalled();
     expect(f.saved().record.draft.text).toBe('Original');
     f.api.dialogsSendMessage.mockRejectedValueOnce(new TypeError('network'));
+
     await expect(
       f.runtime.send('dialog', { kind: 'sticker', sticker_id: 'animal-pals-v1-cat' }),
     ).rejects.toThrow();
-    expect(f.saved().record.draft).toEqual({ text: 'Original', revision: 1 });
+    expect(f.saved().record.draft).toEqual({ text: 'Original', revision: 1, reply_to: null });
     f.runtime.stop();
   });
 });
@@ -183,6 +194,13 @@ describe('dialog list previews', (): void => {
       edited_at: null,
       edit_sequence: 0,
       last_edit_id: null,
+      forward: null,
+      reply: null,
+      reaction_version: 0,
+      reaction_sequence: 0,
+      reactions: [],
+      own_reaction_states: [],
+      actions_verified: true,
     };
     const dialog = {
       dialog_id: id,
@@ -228,9 +246,71 @@ it('does not request a scroll or start HTTP when the outbox cannot be saved', as
   const prepared = vi.fn();
 
   f.store.change.mockRejectedValueOnce(new Error('storage unavailable'));
+
   await expect(
     f.runtime.send('dialog', { kind: 'text', text: 'Original' }, 1, prepared),
   ).rejects.toThrow('storage unavailable');
   expect(prepared).not.toHaveBeenCalled();
   expect(f.api.dialogsSendMessage).not.toHaveBeenCalled();
+});
+
+describe('reply drafts and durable sends', () => {
+  const reply = (): ReplyInfo => ({
+    message_id: crypto.randomUUID(),
+    sequence: 1,
+    version: 1,
+    sender_id: crypto.randomUUID(),
+    sender_display_name: 'Peer',
+    content: { kind: 'text' as const, text: 'source' },
+  });
+
+  it('flushes typed text before selecting a reply and cancels only the selection', async () => {
+    const f = fixture();
+    const remove = f.runtime.protectDraft(async () => {
+      await f.runtime.draft('dialog', 'unsaved text', 1);
+    });
+    const target = reply();
+
+    await f.runtime.chooseReply('dialog', target);
+    remove();
+    expect(f.saved().record.draft).toMatchObject({ text: 'unsaved text', reply_to: target });
+    await f.runtime.chooseReply('dialog', null);
+    expect(f.saved().record.draft).toMatchObject({ text: 'unsaved text', reply_to: null });
+    f.runtime.stop();
+  });
+  it('prepares the quote with the text before HTTP and preserves it after an unknown result', async () => {
+    const f = fixture();
+    const target = reply();
+
+    await f.runtime.chooseReply('dialog', target);
+    f.api.dialogsSendMessage.mockRejectedValueOnce(new TypeError('network'));
+    await expect(f.runtime.send('dialog', { kind: 'text', text: 'Original' }, 2)).rejects.toThrow(
+      'network',
+    );
+    expect(f.saved().record.draft).toMatchObject({ text: '', reply_to: null });
+    expect(f.saved().record.outbox[0]).toMatchObject({ reply: target, state: 'unknown' });
+    expect(f.api.dialogsSendMessage.mock.calls[0][0].body.reply_to).toEqual({
+      message_id: target.message_id,
+      expected_version: 1,
+    });
+    f.runtime.stop();
+  });
+  it('consumes the reply for a sticker while retaining the text and does not clear it when prepare fails', async () => {
+    const f = fixture();
+    const target = reply();
+
+    await f.runtime.chooseReply('dialog', target);
+    f.store.change.mockRejectedValueOnce(new Error('disk full'));
+    await expect(
+      f.runtime.send('dialog', { kind: 'sticker', sticker_id: 'animal-pals-v1-cat' }, 2),
+    ).rejects.toThrow('disk full');
+    expect(f.saved().record.draft.reply_to).toEqual(target);
+    f.api.dialogsSendMessage.mockRejectedValueOnce(new TypeError('network'));
+    await expect(
+      f.runtime.send('dialog', { kind: 'sticker', sticker_id: 'animal-pals-v1-cat' }, 2),
+    ).rejects.toThrow('network');
+    expect(f.saved().record.draft).toMatchObject({ text: 'Original', reply_to: null });
+    expect(f.saved().record.outbox[0].reply).toEqual(target);
+    f.runtime.stop();
+  });
 });

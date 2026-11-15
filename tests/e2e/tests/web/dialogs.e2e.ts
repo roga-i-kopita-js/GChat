@@ -741,7 +741,7 @@ test('message editing preserves drafts, handles keyboard, conflicts and offline 
         maximEvaluate32.bind(maxim)(
           async ({ dialogId, messageId, expected }): Promise<boolean> => {
             const db = await new Promise<IDBDatabase>((resolve, reject): void => {
-              const request = indexedDB.open('gchat-dialogs-v1', 2);
+              const request = indexedDB.open('gchat-dialogs-v1', 4);
 
               request.onsuccess = (): void => resolve(request.result);
               request.onerror = (): void => reject(request.error);
@@ -790,11 +790,17 @@ test('message editing preserves drafts, handles keyboard, conflicts and offline 
     await touchMessage.scrollIntoViewIfNeeded();
     await touchMessage.dispatchEvent('pointerdown', {
       pointerType: 'touch',
+      isPrimary: true,
+      pointerId: 1,
       clientX: 150,
       clientY: 300,
     });
     await expect(menu).toBeVisible();
-    await touchMessage.dispatchEvent('pointerup', { pointerType: 'touch' });
+    await touchMessage.dispatchEvent('pointerup', {
+      pointerType: 'touch',
+      isPrimary: true,
+      pointerId: 1,
+    });
     await annaScreenshot.bind(anna)({ path: '/tmp/gchat-message-menu-mobile.png' });
     const touchMenuBox = await menu.boundingBox();
     const { x: touchMenuBoxX5, width: touchMenuBoxWidth6 } = touchMenuBox!;

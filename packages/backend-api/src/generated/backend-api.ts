@@ -321,6 +321,76 @@ export class BackendApi {
     );
   }
 
+  dialogsMessageForward(
+    args: Pick<Types.DialogsMessageForwardData, 'body' | 'path'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsMessageForwardResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsMessageForwardResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/forwards',
+        method: 'post',
+        protected: true,
+        emptyResponses: [],
+        parameters: [{ name: 'dialog_id', in: 'path' }],
+      },
+      args,
+    );
+  }
+
+  dialogsMessageGetByClientId(
+    args: Pick<Types.DialogsMessageGetByClientIdData, 'path'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsMessageGetByClientIdResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsMessageGetByClientIdResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/messages/by-client-id/{client_message_id}',
+        method: 'get',
+        protected: true,
+        emptyResponses: [],
+        parameters: [
+          { name: 'dialog_id', in: 'path' },
+          { name: 'client_message_id', in: 'path' },
+        ],
+      },
+      args,
+    );
+  }
+
+  dialogsMessageReactionSet(
+    args: Pick<Types.DialogsMessageReactionSetData, 'body' | 'path'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsMessageReactionSetResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsMessageReactionSetResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/messages/{message_id}/reactions',
+        method: 'put',
+        protected: true,
+        emptyResponses: [],
+        parameters: [
+          { name: 'dialog_id', in: 'path' },
+          { name: 'message_id', in: 'path' },
+        ],
+      },
+      args,
+    );
+  }
+
+  dialogsMessageReactions(
+    args: Pick<Types.DialogsMessageReactionsData, 'path' | 'query'> & { signal?: AbortSignal },
+  ): Promise<ApiResult<NormalizeVoid<Types.DialogsMessageReactionsResponse>>> {
+    return this.transport.request<NormalizeVoid<Types.DialogsMessageReactionsResponse>>(
+      {
+        path: '/dialogs/{dialog_id}/message-reactions',
+        method: 'get',
+        protected: true,
+        emptyResponses: [],
+        parameters: [
+          { name: 'dialog_id', in: 'path' },
+          { name: 'limit', in: 'query' },
+          { name: 'after_reaction_sequence', in: 'query' },
+        ],
+      },
+      args,
+    );
+  }
+
   dialogsRead(
     args: Pick<Types.DialogsReadData, 'body' | 'path'> & { signal?: AbortSignal },
   ): Promise<ApiResult<NormalizeVoid<Types.DialogsReadResponse>>> {

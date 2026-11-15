@@ -13,7 +13,10 @@ export class DialogsLimits {
     private readonly error: ErrorService,
   ) {}
 
-  async check(userId: string, group: 'send' | 'create' | 'get' | 'read'): Promise<void> {
+  async check(
+    userId: string,
+    group: 'send' | 'create' | 'get' | 'read' | 'reaction',
+  ): Promise<void> {
     let bucketSettings;
 
     if (group === 'create') {

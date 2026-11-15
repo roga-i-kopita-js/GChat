@@ -1,0 +1,8 @@
+ALTER TABLE "gchat_dialog_messages" DROP CONSTRAINT "gchat_dialog_message_version";--> statement-breakpoint
+ALTER TABLE "gchat_dialog_messages" ADD COLUMN "reaction_version" bigint DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "gchat_dialog_messages" ADD COLUMN "reaction_sequence" bigint DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "gchat_dialogs" ADD COLUMN "last_reaction_sequence" bigint DEFAULT 0 NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "gchat_dialog_message_reaction_position" ON "gchat_dialog_messages" USING btree ("dialog_id","reaction_sequence") WHERE "gchat_dialog_messages"."reaction_sequence">0;--> statement-breakpoint
+ALTER TABLE "gchat_dialog_messages" ADD CONSTRAINT "gchat_dialog_message_reaction_state" CHECK ("gchat_dialog_messages"."reaction_version" between 0 and 9007199254740991 and "gchat_dialog_messages"."reaction_sequence" between 0 and 9007199254740991 and (("gchat_dialog_messages"."reaction_version"=0 and "gchat_dialog_messages"."reaction_sequence"=0) or ("gchat_dialog_messages"."reaction_version">0 and "gchat_dialog_messages"."reaction_sequence">0)) and ("gchat_dialog_messages"."encryption_version"=3 or "gchat_dialog_messages"."reaction_version"=0));--> statement-breakpoint
+ALTER TABLE "gchat_dialog_messages" ADD CONSTRAINT "gchat_dialog_message_version" CHECK ("gchat_dialog_messages"."encryption_version" in (1,2,3) and ("gchat_dialog_messages"."encryption_version" <> 1 or "gchat_dialog_messages"."version" = 1));--> statement-breakpoint
+ALTER TABLE "gchat_dialogs" ADD CONSTRAINT "gchat_dialog_reaction_sequence" CHECK ("gchat_dialogs"."last_reaction_sequence" between 0 and 9007199254740991);

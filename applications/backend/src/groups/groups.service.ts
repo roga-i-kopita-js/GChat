@@ -50,6 +50,14 @@ export class GroupsService {
     return this.repository.lockCommonGroup(tx, firstUserId, secondUserId);
   }
 
+  lockAttributionGroup(
+    tx: DatabaseTransaction,
+    authorId: string,
+    recipientId: string,
+  ): Promise<boolean> {
+    return this.repository.lockCommonGroup(tx, authorId, recipientId);
+  }
+
   /** Checks membership only, not account activity, sessions or call availability. */
   async hasCommonGroup(firstUserId: string, secondUserId: string): Promise<boolean> {
     if (firstUserId === secondUserId) {

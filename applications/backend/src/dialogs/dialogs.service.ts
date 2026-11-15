@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
+import { normalizeReaction, reactionEmojis } from '@gchat/dialog-assets';
 import { Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, gt, lt, lte, or, sql } from 'drizzle-orm';
 
 import type { AuthIdentity } from '../auth/auth.guard.js';
-import { users } from '../auth/auth.schema.js';
+import { users as authUsers, users } from '../auth/auth.schema.js';
 import { AuthService } from '../auth/auth.service.js';
 import { isDatabaseUnavailable } from '../database/database.errors.js';
 import { DatabaseService, type DatabaseTransaction } from '../database/database.service.js';
@@ -17,12 +18,16 @@ import type {
   DialogDto,
   DialogListResponseDto,
   EditMessageDto,
+  ForwardMessageDto,
   HistoryResponseDto,
   MessageDto,
   MessageEditsResponseDto,
+  MessageReactionsResponseDto,
   PermissionsResponseDto,
   SendMessageDto,
+  SetReactionDto,
 } from './dialogs.dto.js';
+import { type MessageEnvelope, type ReplyInfo, sortReactions } from './dialogs.envelope.js';
 import { DialogsEvents } from './dialogs.events.js';
 import { DialogsLimits } from './dialogs.limits.js';
 import { dialogMessages, type DialogRow, dialogs, type MessageRow } from './dialogs.schema.js';
@@ -92,6 +97,7 @@ export class DialogsService {
     id?: string,
   ): Promise<DialogDto[]> {
     // Join the exact last sequence in the same statement as metadata/read positions.
+
     const rows = await tx
       .select({
         row: dialogs,
@@ -147,7 +153,7 @@ export class DialogsService {
         peer_id: this.peer(row, actor.userId),
         peer_display_name: name,
         has_unread_messages: unread,
-        last_message: can_read && message ? this.message(message, row) : null,
+        last_message: can_read && message ? this.message(message, row, actor.userId) : null,
         created_at: row.createdAt.toISOString(),
         last_message_at: row.lastMessageAt?.toISOString() ?? null,
         last_sequence: row.lastSequence,
@@ -159,8 +165,20 @@ export class DialogsService {
     return result;
   }
 
-  private message(row: MessageRow, dialog: DialogRow): MessageDto {
+  private message(row: MessageRow, dialog: DialogRow, actor: string): MessageDto {
     const read = row.senderId === dialog.participantLowId ? dialog.highRead : dialog.lowRead;
+    const envelope = this.crypto.decryptEnvelope(row);
+
+    if (
+      envelope.reaction_state.some(
+        (cell) => ![dialog.participantLowId, dialog.participantHighId].includes(cell.user_id),
+      ) ||
+      (envelope.reply !== null &&
+        ![dialog.participantLowId, dialog.participantHighId].includes(envelope.reply.sender_id)) ||
+      row.reactionSequence > dialog.lastReactionSequence
+    ) {
+      throw this.error.internal();
+    }
 
     return {
       message_id: row.id,
@@ -173,7 +191,27 @@ export class DialogsService {
       edited_at: row.editedAt?.toISOString() ?? null,
       edit_sequence: row.editSequence,
       last_edit_id: row.lastEditId,
-      content: this.crypto.decrypt(row),
+      content: envelope.content,
+      forward: envelope.forward,
+      reply: envelope.reply,
+      reaction_version: row.reactionVersion,
+      reaction_sequence: row.reactionSequence,
+      reactions: reactionEmojis.flatMap((emoji) => {
+        const user_ids = envelope.reaction_state
+          .filter((cell) => cell.emoji === emoji && cell.selected)
+          .map((cell) => cell.user_id)
+          .sort();
+
+        return user_ids.length ? [{ emoji, user_ids }] : [];
+      }),
+      own_reaction_states: envelope.reaction_state
+        .filter((cell) => cell.user_id === actor)
+        .map(({ emoji, selected, version, last_operation_id }) => ({
+          emoji,
+          selected,
+          version,
+          last_operation_id,
+        })),
       status: read >= row.sequence ? 'read' : 'sent',
     };
   }
@@ -210,8 +248,7 @@ export class DialogsService {
       return { deviceId, can_read: false, can_send: false };
     }
 
-    const { find: accountsFind2 } = accounts;
-    const peer = accountsFind2.bind(accounts)((a): boolean => a.id === peerId);
+    const peer = accountsFind.bind(accounts)((a): boolean => a.id === peerId);
 
     if (!peer) {
       return { deviceId, can_read: false, can_send: false };
@@ -252,11 +289,13 @@ export class DialogsService {
       }
 
       const [low, high] = [actor.userId, peerId].sort();
+
       const [inserted] = await tx
         .insert(dialogs)
         .values({ participantLowId: low!, participantHighId: high! })
         .onConflictDoNothing({ target: [dialogs.participantLowId, dialogs.participantHighId] })
         .returning();
+
       const { [0]: whereResultFirst } = await tx
         .select()
         .from(dialogs)
@@ -366,7 +405,7 @@ export class DialogsService {
       const { slice: rowsSlice2 } = rows;
 
       for (const { message, dialog } of rowsSlice2.bind(rows)(0, limit)) {
-        const dto = this.message(message, dialog);
+        const dto = this.message(message, dialog, actor.userId);
         const candidate = { messages: [...messages, dto], has_more: true };
 
         if (Buffer.byteLength(JSON.stringify(candidate)) > 524288) {
@@ -408,6 +447,7 @@ export class DialogsService {
         }
 
         const dialog = await this.own(tx, actor.userId, id, true);
+
         const [existing] = await tx
           .select()
           .from(dialogMessages)
@@ -425,11 +465,53 @@ export class DialogsService {
         const users = [dialogParticipantLowId, dialogParticipantHighId];
 
         if (existing) {
-          return { message: this.message(existing, dialog), created: false, users };
+          return { message: this.message(existing, dialog, actor.userId), created: false, users };
         }
 
         if (!reserved) {
           throw this.error.serviceUnavailable();
+        }
+
+        let reply: ReplyInfo | null = null;
+
+        if (input.reply_to) {
+          const [source] = await tx
+            .select()
+            .from(dialogMessages)
+            .where(
+              and(
+                eq(dialogMessages.dialogId, id),
+                eq(dialogMessages.id, input.reply_to.message_id),
+              ),
+            );
+
+          if (!source) {
+            throw this.error.notFound();
+          }
+
+          const original = this.message(source, dialog, actor.userId);
+
+          if (source.version !== input.reply_to.expected_version) {
+            this.conflict('MESSAGE_VERSION_CONFLICT');
+          }
+
+          const [author] = await tx
+            .select({ displayName: authUsers.displayName })
+            .from(authUsers)
+            .where(eq(authUsers.id, source.senderId));
+
+          if (!author) {
+            throw this.error.internal();
+          }
+
+          reply = {
+            message_id: source.id,
+            sequence: source.sequence,
+            version: source.version,
+            sender_id: source.senderId,
+            sender_display_name: author.displayName,
+            content: original.content,
+          };
         }
 
         const { lastSequence: dialogLastSequence } = dialog;
@@ -450,23 +532,31 @@ export class DialogsService {
         }
 
         const { deviceId: accessDeviceId } = access;
-        const { lastSequence: dialogLastSequence2 } = dialog;
+
         const metadata = {
           id: randomUUID(),
           dialogId: id,
           senderId: actor.userId,
           senderDeviceId: accessDeviceId,
           clientMessageId: input.client_message_id,
-          sequence: dialogLastSequence2 + 1,
+          sequence: dialogLastSequence + 1,
           createdAt: clock.now,
-          encryptionVersion: 2,
+          encryptionVersion: 4,
+          reactionVersion: 0,
+          reactionSequence: 0,
           version: 1,
           editedAt: null,
           editSequence: 0,
           lastEditId: null,
           encryptionKeyId: this.crypto.active,
         };
-        const encrypted = this.crypto.encrypt(metadata, content);
+        const encrypted = this.crypto.encrypt(metadata, content, {
+          content,
+          forward: null,
+          reply,
+          reaction_state: [],
+        });
+
         const [message] = await tx
           .insert(dialogMessages)
           .values({ ...metadata, ...encrypted })
@@ -481,7 +571,7 @@ export class DialogsService {
           .set({ lastSequence: metadata.sequence, lastMessageAt: metadata.createdAt })
           .where(eq(dialogs.id, id));
 
-        return { message: this.message(message, dialog), created: true, users };
+        return { message: this.message(message, dialog, actor.userId), created: true, users };
       },
     );
 
@@ -531,6 +621,7 @@ export class DialogsService {
 
     return this.transaction(async (tx): Promise<{ message: MessageDto }> => {
       const dialog = await this.readable(tx, actor, id);
+
       const [row] = await tx
         .select()
         .from(dialogMessages)
@@ -540,7 +631,7 @@ export class DialogsService {
         throw this.error.notFound();
       }
 
-      return { message: this.message(row, dialog) };
+      return { message: this.message(row, dialog, actor.userId) };
     });
   }
 
@@ -585,9 +676,13 @@ export class DialogsService {
           throw this.error.notFound();
         }
 
-        const current = this.message(row, dialog);
+        const current = this.message(row, dialog, actor.userId);
 
-        if (row.senderId !== actor.userId || current.content.kind !== 'text') {
+        if (
+          row.senderId !== actor.userId ||
+          current.content.kind !== 'text' ||
+          current.forward !== null
+        ) {
           throw this.error.forbidden();
         }
 
@@ -634,10 +729,14 @@ export class DialogsService {
           editSequence: dialogLastEditSequence5 + 1,
           editedAt: clock.now,
           lastEditId: input.client_edit_id,
-          encryptionVersion: 2,
+          encryptionVersion: 4,
           encryptionKeyId: this.crypto.active,
         };
-        const encrypted = this.crypto.encrypt(metadata, content);
+        const encrypted = this.crypto.encrypt(metadata, content, {
+          ...this.crypto.decryptEnvelope(row),
+          content,
+        });
+
         const [updated] = await tx
           .update(dialogMessages)
           .set({ ...metadata, ...encrypted })
@@ -653,7 +752,7 @@ export class DialogsService {
           .set({ lastEditSequence: metadata.editSequence })
           .where(eq(dialogs.id, id));
 
-        return { message: this.message(updated, dialog), changed: true, users };
+        return { message: this.message(updated, dialog, actor.userId), changed: true, users };
       },
     );
     const { changed: resultChanged6, users: resultUsers7, message: resultMessage8 } = result;
@@ -708,7 +807,7 @@ export class DialogsService {
       const messages: MessageDto[] = [];
 
       for (const row of rowsSlice10.bind(rows)(0, limit)) {
-        const dto = this.message(row, dialog);
+        const dto = this.message(row, dialog, actor.userId);
 
         if (
           Buffer.byteLength(
@@ -735,6 +834,488 @@ export class DialogsService {
         messages,
         has_more: hasMore,
         next_edit_sequence: hasMore ? messages[messages.length - 1]!.edit_sequence : upper,
+      };
+    });
+  }
+
+  private conflict(code: string): never {
+    throw this.error.create({
+      status: 409,
+      code,
+      message: 'Состояние сообщения изменилось. Обновите его и повторите действие.',
+    });
+  }
+
+  private async clientMessage(
+    tx: DatabaseTransaction,
+    actor: string,
+    id: string,
+    clientId: string,
+  ): Promise<MessageRow | undefined> {
+    const [row] = await tx
+      .select()
+      .from(dialogMessages)
+      .where(
+        and(
+          eq(dialogMessages.dialogId, id),
+          eq(dialogMessages.senderId, actor),
+          eq(dialogMessages.clientMessageId, clientId),
+        ),
+      );
+
+    return row;
+  }
+
+  async messageGetByClientId(
+    actor: AuthIdentity,
+    id: string,
+    clientId: string,
+  ): Promise<{ message: MessageDto }> {
+    await this.limits.check(actor.userId, 'get');
+
+    return this.transaction(async (tx) => {
+      const dialog = await this.readable(tx, actor, id);
+      const row = await this.clientMessage(tx, actor.userId, id, clientId);
+
+      if (!row) {
+        throw this.error.notFound();
+      }
+
+      return { message: this.message(row, dialog, actor.userId) };
+    });
+  }
+
+  async forward(
+    actor: AuthIdentity,
+    id: string,
+    input: ForwardMessageDto,
+  ): Promise<{ message: MessageDto; created: boolean }> {
+    await this.limits.check(actor.userId, 'send');
+    const repeat = await this.transaction(async (tx) => {
+      const initial = await this.own(tx, actor.userId, id);
+      const rights = await this.access(tx, actor, this.peer(initial, actor.userId));
+      const { can_send: rightsCan_send19 } = rights;
+
+      if (!rightsCan_send19) {
+        this.denied();
+      }
+
+      const dialog = await this.own(tx, actor.userId, id, true);
+      const row = await this.clientMessage(tx, actor.userId, id, input.client_message_id);
+
+      if (!row) {
+        return null;
+      }
+
+      const message = this.message(row, dialog, actor.userId);
+
+      if (!message.forward) {
+        this.conflict('MESSAGE_OPERATION_CONFLICT');
+      }
+
+      return message;
+    });
+
+    if (repeat) {
+      return { message: repeat, created: false };
+    }
+
+    const discovered = await this.transaction(async (tx) => {
+      const dialog = await this.readable(tx, actor, input.source_dialog_id);
+      const { id: dialogId21 } = dialog;
+
+      const [row] = await tx
+        .select()
+        .from(dialogMessages)
+        .where(
+          and(
+            eq(dialogMessages.dialogId, dialogId21),
+            eq(dialogMessages.id, input.source_message_id),
+          ),
+        );
+
+      if (!row) {
+        throw this.error.notFound();
+      }
+
+      const envelope = this.crypto.decryptEnvelope(row);
+      const origin =
+        envelope.forward === null ? row.senderId : (envelope.forward.author?.id ?? null);
+
+      return { origin, version: row.version };
+    });
+    const { origin: discoveredOrigin22 } = discovered;
+
+    const { version: discoveredVersion29 } = discovered;
+
+    const reserved = await this.crypto.reserve();
+    const result = await this.transaction(async (tx) => {
+      const targetInitial = await this.own(tx, actor.userId, id);
+      const sourceInitial = await this.own(tx, actor.userId, input.source_dialog_id);
+      const recipient = this.peer(targetInitial, actor.userId);
+      const sourcePeer = this.peer(sourceInitial, actor.userId);
+
+      await this.auth.lockAccountStates(
+        tx,
+        [
+          ...new Set([
+            actor.userId,
+            recipient,
+            sourcePeer,
+            ...(discoveredOrigin22 ? [discoveredOrigin22] : []),
+          ]),
+        ].sort(),
+      );
+      const targetRights = await this.access(tx, actor, recipient);
+      const { can_send: targetRightsCan_send24 } = targetRights;
+
+      const { deviceId: targetRightsDeviceId33 } = targetRights;
+
+      if (!targetRightsCan_send24) {
+        this.denied();
+      }
+
+      const sourceRights = await this.access(tx, actor, sourcePeer, true);
+      const { can_read: sourceRightsCan_read27 } = sourceRights;
+
+      const disclose = discoveredOrigin22
+        ? await this.groups.lockAttributionGroup(tx, discoveredOrigin22, recipient)
+        : false;
+      const locked = new Map<string, DialogRow>();
+
+      for (const dialogId of [...new Set([id, input.source_dialog_id])].sort()) {
+        locked.set(dialogId, await this.own(tx, actor.userId, dialogId, true));
+      }
+
+      const target = locked.get(id)!;
+      const existing = await this.clientMessage(tx, actor.userId, id, input.client_message_id);
+
+      if (existing) {
+        const message = this.message(existing, target, actor.userId);
+
+        if (!message.forward) {
+          this.conflict('MESSAGE_OPERATION_CONFLICT');
+        }
+
+        return { message, created: false, recipients: [actor.userId, recipient] };
+      }
+
+      if (!sourceRightsCan_read27) {
+        this.denied();
+      }
+
+      const [source] = await tx
+        .select()
+        .from(dialogMessages)
+        .where(
+          and(
+            eq(dialogMessages.dialogId, input.source_dialog_id),
+            eq(dialogMessages.id, input.source_message_id),
+          ),
+        );
+
+      if (!source) {
+        throw this.error.notFound();
+      }
+
+      if (
+        source.version !== input.expected_source_version ||
+        source.version !== discoveredVersion29
+      ) {
+        this.conflict('MESSAGE_VERSION_CONFLICT');
+      }
+
+      const envelope = this.crypto.decryptEnvelope(source);
+      const origin =
+        envelope.forward === null ? source.senderId : (envelope.forward.author?.id ?? null);
+
+      if (origin !== discoveredOrigin22) {
+        throw this.error.internal();
+      }
+
+      if (!reserved || target.lastSequence >= Number.MAX_SAFE_INTEGER) {
+        throw this.error.serviceUnavailable();
+      }
+
+      const [clock] = await tx
+        .select({
+          now: sql<Date>`date_trunc('milliseconds',clock_timestamp())`.mapWith(dialogs.createdAt),
+        })
+        .from(dialogs)
+        .where(eq(dialogs.id, id));
+
+      if (!clock) {
+        throw this.error.internal();
+      }
+
+      const [author] =
+        disclose && origin
+          ? await tx
+              .select({ id: users.id, displayName: users.displayName })
+              .from(users)
+              .where(eq(users.id, origin))
+          : [];
+      const payload: MessageEnvelope = {
+        content: envelope.content,
+        forward: { author: author ? { id: author.id, display_name: author.displayName } : null },
+        reply: null,
+        reaction_state: [],
+      };
+      const metadata = {
+        id: randomUUID(),
+        dialogId: id,
+        senderId: actor.userId,
+        senderDeviceId: targetRightsDeviceId33,
+        clientMessageId: input.client_message_id,
+        sequence: target.lastSequence + 1,
+        createdAt: clock.now,
+        version: 1,
+        editedAt: null,
+        editSequence: 0,
+        lastEditId: null,
+        reactionVersion: 0,
+        reactionSequence: 0,
+        encryptionVersion: 4,
+        encryptionKeyId: this.crypto.active,
+      };
+
+      const [saved] = await tx
+        .insert(dialogMessages)
+        .values({ ...metadata, ...this.crypto.encrypt(metadata, payload.content, payload) })
+        .returning();
+
+      if (!saved) {
+        throw this.error.internal();
+      }
+
+      await tx
+        .update(dialogs)
+        .set({ lastSequence: metadata.sequence, lastMessageAt: metadata.createdAt })
+        .where(eq(dialogs.id, id));
+
+      return {
+        message: this.message(saved, target, actor.userId),
+        created: true,
+        recipients: [actor.userId, recipient],
+      };
+    });
+    const { created, message, recipients } = result;
+
+    if (created) {
+      this.events.publish({
+        users: recipients,
+        message,
+        event: {
+          type: 'dialog.messages_available',
+          payload: { dialog_id: id, last_sequence: message.sequence },
+        },
+      });
+    }
+
+    return result;
+  }
+
+  async setReaction(
+    actor: AuthIdentity,
+    id: string,
+    messageId: string,
+    input: SetReactionDto,
+  ): Promise<{ message: MessageDto }> {
+    const emoji = normalizeReaction(input.emoji);
+
+    if (!emoji) {
+      throw this.error.validation({ fields: [{ field: 'emoji', code: 'INVALID' }] });
+    }
+
+    await this.limits.check(actor.userId, 'reaction');
+    const reserved = await this.crypto.reserve();
+    const result = await this.transaction(async (tx) => {
+      const initial = await this.own(tx, actor.userId, id);
+      const rights = await this.access(tx, actor, this.peer(initial, actor.userId));
+      const { can_send: rightsCan_send36 } = rights;
+
+      if (!rightsCan_send36) {
+        this.denied();
+      }
+
+      const dialog = await this.own(tx, actor.userId, id, true);
+      const { participantLowId: dialogParticipantLowId38 } = dialog;
+
+      const { participantHighId: dialogParticipantHighId39 } = dialog;
+
+      const { lastReactionSequence: dialogLastReactionSequence40 } = dialog;
+
+      const [row] = await tx
+        .select()
+        .from(dialogMessages)
+        .where(and(eq(dialogMessages.dialogId, id), eq(dialogMessages.id, messageId)));
+
+      if (!row) {
+        throw this.error.notFound();
+      }
+
+      const current = this.message(row, dialog, actor.userId);
+      const payload = this.crypto.decryptEnvelope(row);
+      const cell = payload.reaction_state.find(
+        (value) => value.user_id === actor.userId && value.emoji === emoji,
+      );
+      const unchanged = {
+        message: current,
+        changed: false,
+        users: [dialogParticipantLowId38, dialogParticipantHighId39],
+      };
+
+      if (cell?.last_operation_id === input.client_reaction_id) {
+        if (cell.selected !== input.selected) {
+          this.conflict('REACTION_VERSION_CONFLICT');
+        }
+
+        return unchanged;
+      }
+
+      if ((cell?.version ?? 0) !== input.expected_version) {
+        this.conflict('REACTION_VERSION_CONFLICT');
+      }
+
+      if ((cell?.selected ?? false) === input.selected) {
+        return unchanged;
+      }
+
+      if (
+        !reserved ||
+        row.reactionVersion >= Number.MAX_SAFE_INTEGER ||
+        dialogLastReactionSequence40 >= Number.MAX_SAFE_INTEGER ||
+        (cell?.version ?? 0) >= Number.MAX_SAFE_INTEGER
+      ) {
+        throw this.error.serviceUnavailable();
+      }
+
+      const next = {
+        user_id: actor.userId,
+        emoji,
+        selected: input.selected,
+        version: (cell?.version ?? 0) + 1,
+        last_operation_id: input.client_reaction_id,
+      };
+
+      payload.reaction_state = sortReactions([
+        ...payload.reaction_state.filter((value) => value !== cell),
+        next,
+      ]);
+      const metadata = {
+        ...row,
+        encryptionVersion: 4,
+        encryptionKeyId: this.crypto.active,
+        reactionVersion: row.reactionVersion + 1,
+        reactionSequence: dialogLastReactionSequence40 + 1,
+      };
+
+      const [updated] = await tx
+        .update(dialogMessages)
+        .set({ ...metadata, ...this.crypto.encrypt(metadata, payload.content, payload) })
+        .where(eq(dialogMessages.id, row.id))
+        .returning();
+
+      if (!updated) {
+        throw this.error.internal();
+      }
+
+      await tx
+        .update(dialogs)
+        .set({ lastReactionSequence: metadata.reactionSequence })
+        .where(eq(dialogs.id, id));
+
+      return {
+        message: this.message(
+          updated,
+          { ...dialog, lastReactionSequence: metadata.reactionSequence },
+          actor.userId,
+        ),
+        changed: true,
+        users: [dialogParticipantLowId38, dialogParticipantHighId39],
+      };
+    });
+    const { changed, message, users: recipients } = result;
+
+    if (changed) {
+      this.events.publish({
+        users: recipients,
+        event: {
+          type: 'dialog.message_reactions_available',
+          payload: { dialog_id: id, last_reaction_sequence: message.reaction_sequence },
+        },
+      });
+    }
+
+    return { message };
+  }
+
+  async reactions(
+    actor: AuthIdentity,
+    id: string,
+    after: number,
+    limit: number,
+  ): Promise<MessageReactionsResponseDto> {
+    await this.limits.check(actor.userId, 'get');
+
+    return this.transaction(async (tx) => {
+      const dialog = await this.readable(tx, actor, id);
+      const { lastReactionSequence: dialogLastReactionSequence46 } = dialog;
+
+      const upper = dialogLastReactionSequence46;
+
+      if (after > upper) {
+        throw this.error.validation({
+          fields: [{ field: 'after_reaction_sequence', code: 'INVALID' }],
+        });
+      }
+
+      const rows = await tx
+        .select()
+        .from(dialogMessages)
+        .where(
+          and(
+            eq(dialogMessages.dialogId, id),
+            gt(dialogMessages.reactionSequence, after),
+            lte(dialogMessages.reactionSequence, upper),
+          ),
+        )
+        .orderBy(asc(dialogMessages.reactionSequence))
+        .limit(limit + 1);
+      const { slice: rowsSlice48 } = rows;
+
+      const { length: rowsLength49 } = rows;
+
+      const messages: MessageDto[] = [];
+
+      for (const row of rowsSlice48.bind(rows)(0, limit)) {
+        const dto = this.message(row, dialog, actor.userId);
+
+        if (
+          Buffer.byteLength(
+            JSON.stringify({
+              messages: [...messages, dto],
+              next_reaction_sequence: upper,
+              has_more: false,
+            }),
+          ) > 524288
+        ) {
+          if (!messages.length) {
+            throw this.error.internal();
+          }
+
+          break;
+        }
+
+        messages.push(dto);
+      }
+
+      const has_more = rowsLength49 > messages.length;
+
+      return {
+        messages,
+        has_more,
+        next_reaction_sequence: has_more ? messages.at(-1)!.reaction_sequence : upper,
       };
     });
   }

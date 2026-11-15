@@ -18,6 +18,13 @@
   --ui-secondary-hover: color-mix(in srgb, var(--ui-secondary-surface) 94%, var(--ui-accent));
   --ui-secondary-text: var(--ui-text);
   --ui-accent-surface: var(--ui-secondary-surface);
+  --ui-dialog-quote-surface: color-mix(in srgb, var(--ui-accent) 8%, transparent);
+  --ui-dialog-menu-width: calc(var(--ui-control-height) * 7 + var(--ui-space-2));
+  --ui-dialog-action-width: var(--ui-dialog-menu-width);
+  --ui-dialog-swipe-slop: var(--ui-space-2);
+  --ui-dialog-swipe-threshold: var(--ui-size-48);
+  --ui-dialog-swipe-limit: var(--ui-size-64);
+  --ui-dialog-swipe-edge: var(--ui-space-6);
   --ui-danger-hover: color-mix(in srgb, var(--ui-danger) 88%, #000);
   --ui-danger-surface: color-mix(in srgb, var(--ui-danger) 8%, var(--ui-surface));
   --ui-danger-surface-hover: color-mix(in srgb, var(--ui-danger) 14%, var(--ui-surface));

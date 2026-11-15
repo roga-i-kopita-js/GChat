@@ -73,6 +73,12 @@ function fixture(): any {
       edited_at: null,
       edit_sequence: 0,
       last_edit_id: null,
+      forward: null,
+      reply: null,
+      reaction_version: 0,
+      reaction_sequence: 0,
+      reactions: [],
+      own_reaction_states: [],
       content: { kind: 'text', text: 'private' },
     },
   };
