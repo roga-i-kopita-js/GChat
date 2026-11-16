@@ -101,6 +101,59 @@ it('keeps direct context routing without adding a media stream renderer', async 
   expect(audios).toHaveLength(0);
 });
 
+it('detaches the idle renderer and reconnects the retained stream for the next sound', async () => {
+  const { context, audios, destination, stop } = fixture();
+  const output = new ContextOutput(context as unknown as AudioContext);
+  const [audio] = audios;
+
+  await output.start();
+  output.pause();
+  expect(audio.pause).toHaveBeenCalledOnce();
+  expect(audio.srcObject).toBeNull();
+  expect(stop).not.toHaveBeenCalled();
+  await output.start();
+  expect(audio.srcObject).toBe(destination.stream);
+  output.dispose();
+  await expect(output.start()).rejects.toMatchObject({ name: 'AbortError' });
+  expect(audio.srcObject).toBeNull();
+});
+
+it.each([false, true])(
+  'a late start preserves the current idle or restarted state (restart: %s)',
+  async (restart) => {
+    const { context, audios, destination } = fixture();
+    const output = new ContextOutput(context as unknown as AudioContext);
+    const [audio] = audios;
+    let complete!: () => void;
+
+    audio.play.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const pending = output.start();
+
+    output.pause();
+
+    if (restart) {
+      await output.start();
+      complete();
+      await pending;
+      expect(audio.srcObject).toBe(destination.stream);
+      expect(audio.pause).toHaveBeenCalledOnce();
+    } else {
+      const cancelled = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+
+      complete();
+      await cancelled;
+      expect(audio.srcObject).toBeNull();
+    }
+
+    output.dispose();
+  },
+);
+
 it('routes the preliminary test signal to the selected output and releases its renderer when cancelled', async () => {
   const { context, audios, selected, destination, connect, stop } = fixture();
 
@@ -114,8 +167,11 @@ it('routes the preliminary test signal to the selected output and releases its r
   );
   const preparation = new AudioPreparation(() => true);
 
-  await preparation.sound('headset');
+  const pending = preparation.sound('headset');
+
+  // Selection must start before the user's handler returns, even while resume/play is pending.
   expect(selected).toEqual(['headset']);
+  await pending;
   expect(connect).toHaveBeenCalledWith(destination);
   preparation.stop();
   const [audio] = audios;

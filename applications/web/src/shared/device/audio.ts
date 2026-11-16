@@ -175,12 +175,14 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
         throw new DeviceError('UNSUPPORTED');
       }
 
-      const devices = await this.refresh(options);
+      // The displayed list is already loaded. Re-enumerating here would leave
+      // the selecting user gesture before WebKit receives setSinkId.
+      if (!this.source.getSnapshot().outputs?.some((entry): boolean => entry.id === outputId)) {
+        const { outputs } = await this.refresh(options);
 
-      const { outputs: devicesOutputs } = devices ?? {};
-
-      if (!devicesOutputs?.some((entry): boolean => entry.id === outputId)) {
-        throw new DeviceError('DEVICE_UNAVAILABLE');
+        if (!outputs?.some((entry): boolean => entry.id === outputId)) {
+          throw new DeviceError('DEVICE_UNAVAILABLE');
+        }
       }
 
       await cancellable(

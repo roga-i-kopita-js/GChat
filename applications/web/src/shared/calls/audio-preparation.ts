@@ -91,13 +91,8 @@ export class AudioPreparation {
       const output = new ContextOutput(context);
 
       this.output = output;
-      // Resume directly in the click gesture, before awaiting device routing.
-      await output.start();
-      this.check(epoch);
-
-      if (sinkId) {
-        await output.select(sinkId);
-      }
+      // Start playback and routing in the same user gesture.
+      await Promise.all([output.start(), ...(sinkId ? [output.select(sinkId)] : [])]);
 
       this.check(epoch);
 

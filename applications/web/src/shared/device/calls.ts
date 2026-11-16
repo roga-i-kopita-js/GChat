@@ -191,10 +191,13 @@ export class DeviceCalls implements CallsService {
           throw new DeviceError('BUSY');
         }
 
+        const playback = this.client.preparePlayback?.();
         const { outcome: preparedOutcome } = await this.bridge.execute({
           command: 'call.prepareOutgoing',
           args: {},
         });
+
+        await playback;
 
         if (preparedOutcome === 'cancelled') {
           throw new DeviceError('CANCELLED');
@@ -220,7 +223,10 @@ export class DeviceCalls implements CallsService {
           throw new DeviceError('INVALID_STATE');
         }
 
+        const playback = this.client.preparePlayback?.();
+
         await this.client.accept();
+        await playback;
       },
       options,
     );
@@ -271,8 +277,7 @@ export class DeviceCalls implements CallsService {
 
     await cancellable(
       async (): Promise<void> => {
-        await this.client.enableRingtone();
-        await this.client.playAudio();
+        await Promise.all([this.client.enableRingtone(), this.client.playAudio()]);
 
         if (this.client.getSnapshot().audioBlocked) {
           throw new DeviceError('DEVICE_UNAVAILABLE');

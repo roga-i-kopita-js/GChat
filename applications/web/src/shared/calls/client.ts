@@ -19,6 +19,7 @@ import {
   pingResponse,
   sdpMessage,
 } from './protocol';
+import { Ringback } from './ringback';
 import { CallScreenWakeLock } from './screen-wake-lock';
 
 export interface ClientState {
@@ -91,21 +92,38 @@ export class GChatClient {
     this.audioPreparation.stop();
 
     try {
-      if (this.audio) {
+      const routing: Promise<void>[] = [];
+
+      if (this.audio && !this.bridgeRemoteAudio) {
         if (typeof this.audio.setSinkId !== 'function') {
           throw new DeviceError('UNSUPPORTED');
         }
 
-        await this.audio.setSinkId(id);
+        routing.push(this.audio.setSinkId(id));
       }
 
-      await this.contextOutput?.select(id);
+      if (this.contextOutput) {
+        routing.push(this.contextOutput.select(id));
+      }
+
+      // Start every renderer's selection before an await loses the user gesture.
+      await Promise.all(routing);
 
       this.outputId = id;
+
+      if (this.contextOutput) {
+        this.contextOutputId = id;
+      }
+
       this.outputBlocked = false;
     } catch (cause) {
       this.outputBlocked = true;
       this.audio?.pause();
+
+      if (this.bridgeRemoteAudio) {
+        this.contextOutput?.pause();
+      }
+
       this.set({ audioBlocked: true });
 
       throw cause;
@@ -140,6 +158,12 @@ export class GChatClient {
   private ringtone?: ReturnType<typeof setInterval>;
   private audioContext?: AudioContext;
   private contextOutput?: ContextOutput;
+  private contextOutputId = '';
+  private silencedRingback?: string;
+  private ringback = new Ringback((): void => {
+    this.set({ audioBlocked: true });
+  });
+  private bridgeRemoteAudio = false;
   private stream?: MediaStream;
   private mediaEpoch = 0;
   private pc?: RTCPeerConnection;
@@ -173,6 +197,7 @@ export class GChatClient {
   private set(patch: Partial<ClientState>): void {
     this.state = { ...this.state, ...patch };
     this.syncScreenWakeLock();
+    this.syncRingback();
 
     if (
       !this.state.owner ||
@@ -199,6 +224,33 @@ export class GChatClient {
     this.screenWakeLock.setCall(
       owner && selected && this.stream && call && call.state !== 'ended' ? call.call_id : null,
     );
+  }
+
+  private syncRingback(): void {
+    const { call, owner, selected, connection, audioBlocked } = this.state;
+
+    if (
+      call?.state === 'ringing' &&
+      owner &&
+      selected &&
+      connection === 'online' &&
+      !audioBlocked &&
+      typeof AudioContext !== 'undefined' &&
+      this.silencedRingback !== call.call_id &&
+      this.isCaller()
+    ) {
+      try {
+        const output = this.getContextOutput();
+
+        this.ringback.start(call.call_id, this.audioContext!, output, () =>
+          this.startContextOutput(),
+        );
+      } catch {
+        this.set({ audioBlocked: true });
+      }
+    } else {
+      this.ringback.stop();
+    }
   }
 
   start(): () => void {
@@ -354,6 +406,8 @@ export class GChatClient {
       if (generation !== this.connectionGeneration) {
         return;
       }
+
+      this.silencedRingback = undefined;
 
       if (current) {
         await this.update(current);
@@ -671,8 +725,12 @@ export class GChatClient {
     const audio = new Audio();
 
     this.audio = audio;
+    this.bridgeRemoteAudio = ContextOutput.needsMediaElement();
+    audio.muted = this.bridgeRemoteAudio;
 
-    if (this.outputId) {
+    if (this.bridgeRemoteAudio) {
+      this.getContextOutput();
+    } else if (this.outputId) {
       try {
         await audio.setSinkId(this.outputId);
       } catch {
@@ -690,11 +748,12 @@ export class GChatClient {
 
     this.audio.autoplay = true;
     pc.ontrack = (event): void => {
-      if (!this.audio) {
+      if (this.pc !== pc || this.audio !== audio || epoch !== this.mediaEpoch) {
         return;
       }
 
-      this.audio.srcObject = event.streams[0] ?? new MediaStream([event.track]);
+      this.contextOutput?.detach();
+      audio.srcObject = event.streams[0] ?? new MediaStream([event.track]);
       void this.playAudio();
     };
     pc.onicecandidate = (event): void => {
@@ -999,35 +1058,117 @@ export class GChatClient {
     this.set({ stats: { sent, received, relay } });
   }
 
-  async enableRingtone(): Promise<void> {
-    try {
-      this.audioContext ??= new AudioContext();
-      this.contextOutput ??= new ContextOutput(this.audioContext);
-      this.audioContext.onstatechange = (): void => {
-        this.set({ audible: this.audioContext?.state === 'running' });
-      };
-      await this.contextOutput.start();
+  private getContextOutput(): ContextOutput {
+    this.audioContext ??= new AudioContext();
 
-      if (this.outputId) {
-        await this.contextOutput.select(this.outputId);
+    if (!this.contextOutput) {
+      this.contextOutput = new ContextOutput(this.audioContext);
+      this.contextOutputId = '';
+    }
+
+    const context = this.audioContext;
+
+    context.onstatechange = (): void => {
+      if (this.audioContext !== context) {
+        return;
       }
 
-      this.set({ audible: this.audioContext.state === 'running' });
+      const audible = context.state === 'running';
+
+      this.set({
+        audible,
+        ...(!audible &&
+        ((this.bridgeRemoteAudio && this.audio?.srcObject) ||
+          (this.state.selected && this.state.call?.state === 'ringing' && this.isCaller()))
+          ? { audioBlocked: true }
+          : {}),
+      });
+    };
+
+    return this.contextOutput;
+  }
+
+  private async startContextOutput(): Promise<boolean> {
+    const output = this.getContextOutput();
+    const id = this.outputId;
+
+    await Promise.all([
+      output.start(),
+      ...(id !== this.contextOutputId ? [output.select(id)] : []),
+    ]);
+
+    if (this.contextOutput !== output) {
+      return false;
+    }
+
+    this.contextOutputId = id;
+
+    return true;
+  }
+
+  async preparePlayback(): Promise<void> {
+    const epoch = this.mediaEpoch;
+
+    try {
+      await this.startContextOutput();
+    } catch {
+      if (epoch === this.mediaEpoch) {
+        this.set({ audioBlocked: true });
+      }
+    }
+  }
+
+  async enableRingtone(): Promise<void> {
+    const epoch = this.mediaEpoch;
+
+    try {
+      if (!(await this.startContextOutput())) {
+        return;
+      }
+
+      this.set({
+        audible: this.audioContext?.state === 'running',
+        audioBlocked: false,
+      });
 
       if (this.state.call?.state === 'ringing' && !this.isCaller() && !this.ringtone) {
         this.tone();
         this.ringtone = setInterval((): void => this.tone(), 3000);
       }
     } catch {
-      this.set({ audible: false });
+      if (epoch === this.mediaEpoch) {
+        this.set({ audible: false });
+      }
     }
   }
 
   private tone(): void {
     const context = this.audioContext;
 
-    if (!context || context.state !== 'running') {
+    if (
+      !context ||
+      context.state !== 'running' ||
+      this.state.call?.state !== 'ringing' ||
+      this.isCaller()
+    ) {
       return;
+    }
+
+    const output = this.contextOutput;
+    const epoch = this.mediaEpoch;
+
+    if (output) {
+      void (async () => {
+        try {
+          await output.start();
+        } catch {
+          if (epoch === this.mediaEpoch && this.contextOutput === output) {
+            clearInterval(this.ringtone);
+            this.ringtone = undefined;
+            this.set({ audible: false });
+          }
+        }
+      })();
     }
 
     for (const frequency of [440, 480]) {
@@ -1057,11 +1198,35 @@ export class GChatClient {
       return;
     }
 
+    const audio = this.audio;
+    const stream = audio?.srcObject;
+    const epoch = this.mediaEpoch;
+    const current = (): boolean =>
+      epoch === this.mediaEpoch && this.audio === audio && audio?.srcObject === stream;
+
     try {
-      await this.audio?.play();
+      const [, started] = await Promise.all([
+        stream ? audio?.play() : undefined,
+        this.bridgeRemoteAudio ? this.startContextOutput() : true,
+      ]);
+
+      if (!current() || !started) {
+        return;
+      }
+
+      if (this.bridgeRemoteAudio && stream instanceof MediaStream) {
+        if (this.audioContext?.state !== 'running') {
+          throw new DOMException('Audio playback is suspended', 'NotAllowedError');
+        }
+
+        this.contextOutput?.attach(stream);
+      }
+
       this.set({ audioBlocked: false });
     } catch {
-      this.set({ audioBlocked: true });
+      if (current()) {
+        this.set({ audioBlocked: true });
+      }
     }
   }
 
@@ -1129,6 +1294,8 @@ export class GChatClient {
         return;
       }
 
+      this.silencedRingback = call.call_id;
+      this.ringback.stop();
       let typeValue;
 
       if (reject) {
@@ -1196,14 +1363,20 @@ export class GChatClient {
       return;
     }
 
+    this.silencedRingback = this.state.call?.call_id;
+    this.ringback.stop();
     this.set({
       error: errorMessage(cause, 'Действие не выполнено. Попробуйте ещё раз.'),
     });
   }
 
   private disposeMedia(): void {
+    this.ringback.stop();
     this.audioPreparation.stop();
     this.mediaEpoch++;
+    this.contextOutput?.detach();
+    this.contextOutput?.pause();
+    this.bridgeRemoteAudio = false;
     clearInterval(this.ringtone);
     this.ringtone = undefined;
     clearInterval(this.heartbeat);
@@ -1246,11 +1419,13 @@ export class GChatClient {
   }
 
   private releaseRingtone(): void {
+    this.ringback.stop();
     const context = this.audioContext;
 
     this.audioContext = undefined;
     this.contextOutput?.dispose();
     this.contextOutput = undefined;
+    this.contextOutputId = '';
 
     if (context) {
       context.onstatechange = null;

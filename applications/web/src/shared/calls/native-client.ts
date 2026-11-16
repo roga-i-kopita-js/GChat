@@ -28,6 +28,7 @@ export type CallsClient = Pick<
   audioPreparation?: GChatClient['audioPreparation'];
   setAudioOutput?: GChatClient['setAudioOutput'];
   testSound?: GChatClient['testSound'];
+  preparePlayback?: GChatClient['preparePlayback'];
   setMuted?(muted: boolean): Promise<void>;
 };
 

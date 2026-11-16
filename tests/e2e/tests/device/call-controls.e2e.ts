@@ -431,3 +431,46 @@ test('Safari-style media-element routing offers real outputs without AudioContex
 
   expect(routed).toBe(true);
 });
+
+test('selecting a listed output reaches the renderer before the click gesture expires', async ({
+  page,
+}) => {
+  await setup(page, 'mediaOnly');
+  await page.getByRole('button', { name: 'Аудиовыход', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Аудиовыход', exact: true });
+
+  await expect(dialog.getByRole('button', { name: 'Гарнитура', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    const enumerate = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+    const select = HTMLMediaElement.prototype.setSinkId;
+    let gesture = false;
+
+    navigator.mediaDevices.enumerateDevices = async (): Promise<MediaDeviceInfo[]> => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      return enumerate();
+    };
+    document.addEventListener(
+      'click',
+      () => {
+        gesture = true;
+        setTimeout(() => {
+          gesture = false;
+        }, 0);
+      },
+      { capture: true },
+    );
+    HTMLMediaElement.prototype.setSinkId = async function (id): Promise<void> {
+      if (!gesture) {
+        throw new DOMException('A user gesture is required', 'NotAllowedError');
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await select.call(this, id);
+    };
+  });
+  await dialog.getByRole('button', { name: 'Гарнитура', exact: true }).click();
+  await expect(dialog).toContainText('Сейчас: Гарнитура');
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  expect(await page.evaluate(() => Reflect.get(window, 'selectedOutputs'))).toContain('output-1');
+});
