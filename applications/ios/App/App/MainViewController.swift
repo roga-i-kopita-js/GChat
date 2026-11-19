@@ -10,9 +10,11 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
     let transport: SharedWebSocket
     let calls: NativeCallsCoordinator
     var onChangeServer: (() -> Void)?
+    var onThemeColor: ((UIColor) -> Void)?
     private var capacitorDelegate: WebViewDelegationHandler?
     private var plugin: GChatPlugin?
     private var retryView: UIView?
+    private var themeObservation: NSKeyValueObservation?
 
     init(server: ServerOrigin, sessions: SessionManager, transport: SharedWebSocket, calls: NativeCallsCoordinator) {
         self.server = server
@@ -26,7 +28,11 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
     required init?(coder: NSCoder) { fatalError("Use init(server:sessions:)") }
 
     override func willMove(toParent parent: UIViewController?) {
-        if parent == nil { plugin?.invalidateCycle() }
+        if parent == nil {
+            plugin?.invalidateCycle()
+            themeObservation?.invalidate()
+            themeObservation = nil
+        }
         super.willMove(toParent: parent)
     }
 
@@ -45,6 +51,13 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
 
     override func capacitorDidLoad() {
         guard let bridge, let webView else { return }
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        themeObservation = webView.observe(\.themeColor, options: [.initial, .new]) { [weak self] _, _ in
+            DispatchQueue.main.async { [weak self] in self?.syncSystemBackground() }
+        }
         capacitorDelegate = webView.navigationDelegate as? WebViewDelegationHandler
         webView.navigationDelegate = self
         webView.uiDelegate = self
@@ -57,6 +70,12 @@ final class MainViewController: CAPBridgeViewController, WKNavigationDelegate, W
         self.plugin = plugin
         bridge.registerPluginInstance(plugin)
         callsChanged()
+    }
+
+    private func syncSystemBackground() {
+        guard let webView, let url = webView.url, server.allowsDocument(url),
+              let color = webView.themeColor else { return }
+        onThemeColor?(color)
     }
 
     func callsChanged() {

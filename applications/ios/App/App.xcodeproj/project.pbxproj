@@ -21,7 +21,7 @@
 		A20000000000000000000003 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003; };
 		A20000000000000000000005 /* NativeCameraCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005; };
 		A20000000000000000000006 /* NativeMediaController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000006; };
-		A20000000000000000000007 /* NativeAudioRoutePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007; };
+		A20000000000000000000007 /* NativeAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007; };
 		A20000000000000000000008 /* NativeCallPictureInPicture.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008; };
 		A20000000000000000000010 /* NativeCallsCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010; };
 		A20000000000000000000012 /* CallSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012; };
@@ -51,7 +51,7 @@
 		A10000000000000000000003 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A10000000000000000000005 /* NativeCameraCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCameraCapture.swift; sourceTree = "<group>"; };
 		A10000000000000000000006 /* NativeMediaController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeMediaController.swift; sourceTree = "<group>"; };
-		A10000000000000000000007 /* NativeAudioRoutePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAudioRoutePicker.swift; sourceTree = "<group>"; };
+		A10000000000000000000007 /* NativeAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeAudio.swift; sourceTree = "<group>"; };
 		A10000000000000000000008 /* NativeCallPictureInPicture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeCallPictureInPicture.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* NativeCallsCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NativeCallsCoordinator.swift; path = "NativeCallsCoordinator.swift"; sourceTree = "<group>"; };
 		A10000000000000000000012 /* CallSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CallSystem.swift; path = "../../CallHarness/CallSystem.swift"; sourceTree = "<group>"; };
@@ -101,7 +101,7 @@
 				A10000000000000000000013 /* WebRTCMedia.swift */,
 				A10000000000000000000012 /* CallSystem.swift */,
 				A10000000000000000000010 /* NativeCallsCoordinator.swift */,
-				A10000000000000000000007 /* NativeAudioRoutePicker.swift */,
+				A10000000000000000000007 /* NativeAudio.swift */,
 				A10000000000000000000006 /* NativeMediaController.swift */,
 				A10000000000000000000005 /* NativeCameraCapture.swift */,
 				9582B6822FE993A50072D4E8 /* SceneDelegate.swift */,
@@ -206,7 +206,7 @@
 				A20000000000000000000013 /* WebRTCMedia.swift in Sources */,
 				A20000000000000000000012 /* CallSystem.swift in Sources */,
 				A20000000000000000000010 /* NativeCallsCoordinator.swift in Sources */,
-				A20000000000000000000007 /* NativeAudioRoutePicker.swift in Sources */,
+				A20000000000000000000007 /* NativeAudio.swift in Sources */,
 				A20000000000000000000006 /* NativeMediaController.swift in Sources */,
 				A20000000000000000000005 /* NativeCameraCapture.swift in Sources */,
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,

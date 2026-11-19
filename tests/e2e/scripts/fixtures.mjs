@@ -72,7 +72,7 @@ try {
     "SELECT id FROM gchat_groups WHERE name='близкие' ORDER BY id LIMIT 1",
   );
   const { rows: queryResultRows2 } = await database.query(
-    "INSERT INTO gchat_groups(name) VALUES('близкие') RETURNING id",
+    "INSERT INTO gchat_groups(name) VALUES('близкие') ON CONFLICT(name) DO UPDATE SET name=excluded.name RETURNING id",
   );
   const group = queryResultRows[0]?.id ?? queryResultRows2[0].id;
 

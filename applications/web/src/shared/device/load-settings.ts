@@ -15,6 +15,7 @@ export async function loadDeviceSettings(
       const [state] = await Promise.all([
         deviceInternals(device).observer.refresh(signal),
         stateCache(device.audio, AudioEvent.StateChanged).preload(),
+        device.audio.getState({ signal }),
       ]);
 
       signal.throwIfAborted();

@@ -89,7 +89,7 @@ export class GChatClient {
       throw new DeviceError('BUSY');
     }
 
-    this.audioPreparation.stop();
+    this.audioPreparation.stopSound();
 
     try {
       const routing: Promise<void>[] = [];

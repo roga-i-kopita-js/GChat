@@ -3,6 +3,7 @@ node_modules/
 **/dist/
 pnpm-lock.yaml
 
+applications/ios/.local/
 applications/web/.local/
 applications/web/test-results/
 applications/web/playwright-report/

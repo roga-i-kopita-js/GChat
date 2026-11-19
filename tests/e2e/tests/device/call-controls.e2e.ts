@@ -11,12 +11,13 @@ test.use({
 async function setup(
   page: Page,
   outputSupport: 'all' | 'select' | 'none' | 'mediaOnly' = 'select',
+  settingsSetup?: 'gated' | 'denied' | 'empty',
 ): Promise<(state: string) => void> {
   let current: Record<string, unknown> | null = null;
   let update = (_state: string): void => {};
 
   await page.addInitScript(
-    ({ caller, outputSupport }) => {
+    ({ caller, outputSupport, settingsSetup }) => {
       const now = Math.floor(Date.now() / 1000);
       const claims = {
         sub: caller,
@@ -46,8 +47,34 @@ async function setup(
         toJSON: (): object => ({}),
       }));
 
+      const microphones: { readyState: string }[] = [];
+
+      Object.assign(window, { setupMicrophones: microphones });
+
+      if (settingsSetup) {
+        navigator.mediaDevices.getUserMedia = async (): Promise<MediaStream> => {
+          if (settingsSetup === 'denied') {
+            throw new DOMException('Denied', 'NotAllowedError');
+          }
+
+          const track = Object.assign(new EventTarget(), {
+            readyState: 'live',
+            stop: (): void => {
+              track.readyState = 'ended';
+            },
+          });
+
+          microphones.push(track);
+
+          return { getTracks: () => [track] } as unknown as MediaStream;
+        };
+      }
+
       navigator.mediaDevices.enumerateDevices = async (): Promise<MediaDeviceInfo[]> =>
-        outputs as MediaDeviceInfo[];
+        (!settingsSetup ||
+        (settingsSetup === 'gated' && microphones.some((track) => track.readyState === 'live'))
+          ? outputs
+          : []) as MediaDeviceInfo[];
       // Exercise real device/client routing with a recorded hardware boundary.
       const selected: string[] = [];
 
@@ -121,7 +148,7 @@ async function setup(
         });
       }
     },
-    { caller, outputSupport },
+    { caller, outputSupport, settingsSetup },
   );
   await page.route(/^https?:\/\/[^/]+\/api\//, async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -151,6 +178,23 @@ async function setup(
   });
   await page.routeWebSocket('**/ws', (socket) => {
     update = (state): void => {
+      if (!current) {
+        current = {
+          call_id: crypto.randomUUID(),
+          caller_id: recipient,
+          recipient_id: caller,
+          created_at: new Date().toISOString(),
+          started_at: null,
+          ended_at: null,
+          end_reason: null,
+          recovery_id: null,
+          recovery_deadline: null,
+          ringing_deadline: null,
+          connecting_deadline: null,
+          version: 0,
+        };
+      }
+
       current = { ...current, state, version: Number(current?.version ?? 0) + 1 };
 
       if (state === 'ended') {
@@ -195,6 +239,13 @@ async function setup(
     });
   });
   await page.goto('/dialogs/contacts');
+
+  if (settingsSetup) {
+    await expect(page.getByRole('button', { name: 'Позвонить: Анна', exact: true })).toBeEnabled();
+
+    return (state): void => update(state);
+  }
+
   await page.getByRole('button', { name: 'Позвонить: Анна', exact: true }).click();
   await page
     .getByRole('dialog', { name: 'Позвонить?', exact: true })
@@ -294,7 +345,7 @@ test('audio output switches the call renderer, reports errors, and hides unsuppo
   await expect(dialog.getByRole('alert')).toBeVisible();
   await expect(dialog).toContainText('Сейчас: Динамики');
   await expect(dialog.getByRole('button', { name: 'Системный выбор', exact: true })).toHaveCount(0);
-  await expect(dialog).toContainText('Системный выбор в этом браузере недоступен');
+  await expect(dialog).toContainText('Выберите устройство из списка');
   await page.screenshot({ path: testInfo.outputPath('audio-output.png') });
   update('ended');
   await expect(dialog).toHaveCount(0);
@@ -474,3 +525,164 @@ test('selecting a listed output reaches the renderer before the click gesture ex
   await expect(dialog.getByRole('alert')).toHaveCount(0);
   expect(await page.evaluate(() => Reflect.get(window, 'selectedOutputs'))).toContain('output-1');
 });
+
+test('audio settings select listed browser outputs without requiring a system picker', async ({
+  page,
+}) => {
+  await setup(page, 'mediaOnly');
+  await page.goto('/settings/general/audio');
+  const settings = page.getByRole('region', { name: 'Динамики и звук', exact: true });
+  const headset = settings.getByRole('button', { name: 'Гарнитура', exact: true });
+
+  await expect(headset).toBeVisible();
+  await expect(
+    settings.getByRole('button', { name: 'Выбрать аудиовыход', exact: true }),
+  ).toHaveCount(0);
+  await headset.click();
+  await expect(headset).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => Reflect.get(window, 'selectedOutputs'))).toContain('output-1');
+  await expect(settings.getByRole('alert')).toHaveCount(0);
+});
+
+test('PWA settings reveal outputs after explicit microphone setup and retain capture across selection and sound tests', async ({
+  page,
+}) => {
+  await setup(page, 'mediaOnly', 'gated');
+  await page.goto('/settings/general/audio');
+  await expect(page.getByRole('button', { name: 'Гарнитура', exact: true })).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => Reflect.get(window, 'setupMicrophones').length))
+    .toBe(0);
+  await page.getByRole('button', { name: 'Выбрать и проверить', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Выбрать и проверить звук' });
+
+  await expect(dialog).toBeVisible();
+  await expect(dialog).not.toContainText('Для новых звонков');
+  await expect(dialog).not.toContainText('Как выберет iOS');
+  const headset = dialog.getByRole('button', { name: 'Гарнитура', exact: true });
+
+  await headset.click();
+  await expect(headset).toHaveAttribute('aria-pressed', 'true');
+
+  for (let index = 0; index < 2; index++) {
+    await dialog.getByRole('button', { name: 'Проверить звук', exact: true }).click();
+    await expect(
+      dialog.getByRole('button', { name: 'Остановить тест', exact: true }),
+    ).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Слышу', exact: true })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Остановить тест', exact: true })).toHaveCount(
+      0,
+    );
+    expect(
+      await page.evaluate(() =>
+        Reflect.get(window, 'setupMicrophones').map(
+          (track: { readyState: string }) => track.readyState,
+        ),
+      ),
+    ).toEqual(['live']);
+  }
+
+  await dialog.getByRole('button', { name: 'Проверить звук', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Остановить тест', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'Остановить тест', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Reflect.get(window, 'setupMicrophones').map(
+          (track: { readyState: string }) => track.readyState,
+        ),
+      ),
+    )
+    .toEqual(['ended']);
+  await page.getByRole('button', { name: 'Выбрать и проверить', exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Reflect.get(window, 'setupMicrophones').map(
+          (track: { readyState: string }) => track.readyState,
+        ),
+      ),
+    )
+    .toEqual(['ended', 'ended']);
+});
+
+test('PWA setup releases its microphone when an incoming call takes priority', async ({ page }) => {
+  const update = await setup(page, 'mediaOnly', 'gated');
+
+  await page.goto('/settings/general/audio');
+  await page.getByRole('button', { name: 'Выбрать и проверить', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Выбрать и проверить звук' });
+
+  await expect(dialog).toBeVisible();
+  update('ringing');
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Принять', exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      Reflect.get(window, 'setupMicrophones').map(
+        (track: { readyState: string }) => track.readyState,
+      ),
+    ),
+  ).toEqual(['ended']);
+});
+
+test('PWA setup releases capture in the background and does not restart on return', async ({
+  page,
+}) => {
+  await setup(page, 'mediaOnly', 'gated');
+  await page.goto('/settings/general/audio');
+  await page.getByRole('button', { name: 'Выбрать и проверить', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Выбрать и проверить звук' });
+
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(dialog).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      Reflect.get(window, 'setupMicrophones').map(
+        (track: { readyState: string }) => track.readyState,
+      ),
+    ),
+  ).toEqual(['ended']);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => Reflect.get(window, 'setupMicrophones').length)).toBe(1);
+});
+
+for (const mode of ['denied', 'empty'] as const) {
+  test(`PWA setup handles ${mode} without fake output choices`, async ({ page }) => {
+    await setup(page, 'mediaOnly', mode);
+    await page.goto('/settings/general/audio');
+    await page.getByRole('button', { name: 'Выбрать и проверить', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Выбрать и проверить звук' });
+
+    if (mode === 'denied') {
+      await expect(page.getByRole('alert')).toBeVisible();
+      await expect(dialog).toHaveCount(0);
+      expect(await page.evaluate(() => Reflect.get(window, 'setupMicrophones').length)).toBe(0);
+    } else {
+      await expect(dialog).toContainText('Браузер не предоставил дополнительные аудиовыходы');
+      await expect(dialog.getByRole('button', { name: /Гарнитура|Динамики/ })).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      expect(
+        await page.evaluate(() =>
+          Reflect.get(window, 'setupMicrophones').map(
+            (track: { readyState: string }) => track.readyState,
+          ),
+        ),
+      ).toEqual(['ended']);
+    }
+  });
+}

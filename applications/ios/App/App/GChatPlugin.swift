@@ -29,9 +29,9 @@ import GChatCore
         CAPPluginMethod(name: "executeDeviceCommand", returnType: CAPPluginReturnPromise)
     ] }
 
-    private lazy var device = DeviceController(presenter: { [weak self] in self?.bridge?.viewController })
+    private lazy var device = DeviceController(presenter: { [weak self] in self?.bridge?.viewController }, audioOwner: calls.audio)
     private lazy var media: NativeMediaController = {
-        let value = NativeMediaController(files: device, webView: { [weak self] in self?.webView })
+        let value = NativeMediaController(files: device, webView: { [weak self] in self?.webView }, audioOwner: calls.audio)
         value.onEvent = { [weak self] event in
             guard let self, let cycle = self.cycle, self.mediaCycle == cycle else { return }
             self.notifyListeners("mediaEvent", data: event.merging(["mediaVersion":1,"cycleId":cycle]) { _, new in new })
@@ -619,7 +619,7 @@ import GChatCore
     }
 
     func publishCalls() {
-        media.selectCall(calls.selectedCallID, audioActive: calls.connected)
+        media.selectCall(calls.selectedCallID, audioActive: calls.audioSessionActive)
         guard let cycle else { return }
         notifyListeners("callStateChanged", data: ["cycleId": cycle, "call": calls.callObject])
         notifyListeners("callRuntimeChanged", data: ["cycleId": cycle, "status": calls.runtime])

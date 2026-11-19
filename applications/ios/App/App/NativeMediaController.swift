@@ -43,16 +43,22 @@ import GChatCore
     private var previewOwner: String?
     private var previewPriority = "view"
     private var volumeControl: UIViewController?
-    private var routePicker: NativeAudioRoutePicker?
-    private var routeIDs: [String: String] = [:]
+    private let audio: NativeAudioOwner
+    private let externalAudioOwner: Bool
+    private var audioDevices: NativeAudioDevices { audio.devices }
+    private var selectingRoute = false
+    private var routeGeneration = 0
     private var observers: [NSObjectProtocol] = []
     private var volumeObserver: NSKeyValueObservation?
     var onEvent: (([String: Any]) -> Void)?
     var pictureInPictureDiagnostics: String { picture.diagnostics }
 
-    init(files: any NativeMediaFiles, webView: @escaping () -> WKWebView?, capture: any NativeCameraCapturing = NativeCameraCapture(), applicationState: @escaping () -> UIApplication.State = { UIApplication.shared.applicationState }) {
+    init(files: any NativeMediaFiles, webView: @escaping () -> WKWebView?, capture: any NativeCameraCapturing = NativeCameraCapture(), applicationState: @escaping () -> UIApplication.State = { UIApplication.shared.applicationState }, audioDevices: NativeAudioDevices? = nil, audioOwner: NativeAudioOwner? = nil) {
         self.files = files; self.webView = webView; self.capture = capture; self.applicationState = applicationState
+        self.externalAudioOwner = audioOwner != nil
+        self.audio = audioOwner ?? NativeAudioOwner(devices: audioDevices)
         super.init()
+        audio.changed = { [weak self] in self?.audioChanged() }
         preview.videoGravity = .resizeAspectFill
         surface.layer.addSublayer(preview)
         surface.relayout = { [weak self] in guard let self else { return }; self.preview.frame = self.surface.bounds }
@@ -76,7 +82,7 @@ import GChatCore
             Task { @MainActor in await self?.background() }
         })
         observers.append(NotificationCenter.default.addObserver(forName:UIApplication.didBecomeActiveNotification,object:nil,queue:.main) { [weak self] _ in
-            Task { @MainActor in self?.pipClosedInBackground = false; await self?.resumeIfAllowed() }
+            Task { @MainActor in self?.audioChanged(); self?.pipClosedInBackground = false; await self?.resumeIfAllowed() }
         })
         capture.onInterruption = { [weak self] interrupted in
             Task { @MainActor in
@@ -91,11 +97,16 @@ import GChatCore
             Task { @MainActor in self?.onEvent?(["kind": "audioChanged"]) }
         }
         observers.append(NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.onEvent?(["kind": "audioChanged"]) }
+            Task { @MainActor in self?.audioChanged() }
         })
     }
 
     deinit { for observer in observers { NotificationCenter.default.removeObserver(observer) } }
+
+    private func audioChanged() {
+        _ = audioDevices.devices(active: audio.hasRoute)
+        onEvent?(["kind": "audioChanged"])
+    }
 
     private func state() -> [String: Any] {
         var value: [String:Any] = ["facing": facing, "status": status, "recording": saving != nil ? "stopping" : recording == nil ? "idle" : "recording", "format": format as Any? ?? NSNull(), "error": cameraError.map { ["code":$0] } as Any? ?? NSNull()]
@@ -240,22 +251,34 @@ import GChatCore
             try bind(args); return ["outcome": "completed"]
         case "audio.state":
             try requireKeys(args, []); return audioState()
-        case "audio.pick":
+        case "getAudioDevices":
+            try requireKeys(args, []); return audioDevices.devices(active: audio.hasRoute)
+        case "audio.setup.begin":
             try requireKeys(args, [])
-            guard routePicker == nil else { throw DeviceCommandError("BUSY") }
-            guard let root = (webView()?.window ?? surface.window)?.rootViewController else { throw DeviceCommandError("DEVICE_UNAVAILABLE") }
-            var presenter = root
-            while let next = presenter.presentedViewController { presenter = next }
-            let picker = NativeAudioRoutePicker(); picker.allowsBuiltIn = { [weak self] in self?.voipAudioActive == true }; routePicker = picker
-            return try await withTaskCancellationHandler(operation: {
-                let selected = try await withCheckedThrowingContinuation { (continuation:CheckedContinuation<Bool,Error>) in
-                    picker.completed = { continuation.resume(with:$0) }
-                    presenter.present(picker,animated:true) { picker.presentationController?.delegate = picker }
-                }
-                self.routePicker = nil
-                try Task.checkCancellation()
-                return ["outcome":selected ? "completed" : "cancelled","output":selected ? self.audioState()["output"]! : NSNull()]
-            }, onCancel: { Task { @MainActor in picker.finish(.success(false)) } })
+            let id = try await audio.beginSetup()
+            return ["setupId": id.uuidString]
+        case "audio.setup.end":
+            try requireKeys(args, ["setupId"])
+            guard let value = args["setupId"] as? String, let id = UUID(uuidString: value) else { throw DeviceCommandError("INVALID_ARGUMENT") }
+            audio.closeSetup(id)
+            return ["outcome": "completed"]
+        case "audio.preference.set":
+            try requireKeys(args, ["outputId"])
+            guard args["outputId"] is NSNull || (args["outputId"] as? String)?.isEmpty == false else { throw DeviceCommandError("INVALID_ARGUMENT") }
+            try await audio.select(args["outputId"] as? String, save: true)
+            return ["outcome": "completed"]
+        case "selectAudioDevice":
+            try requireKeys(args, ["outputId"])
+            guard let id = args["outputId"] as? String, !id.isEmpty else { throw DeviceCommandError("INVALID_ARGUMENT") }
+            guard !selectingRoute else { throw DeviceCommandError("BUSY") }
+            selectingRoute = true
+            let generation = routeGeneration
+            defer { selectingRoute = false; onEvent?(["kind": "audioChanged"]) }
+            guard generation == routeGeneration else { throw DeviceCommandError("CANCELLED") }
+            try await audio.select(id, save: false)
+            return ["outcome": "completed"]
+        case "audio.pick":
+            try requireKeys(args, []); throw DeviceCommandError("UNSUPPORTED")
         case "audio.volume":
             try requireKeys(args, [])
             guard voipAudioActive, ownership.selectedCall != nil, AVAudioSession.sharedInstance().category == .playAndRecord else { throw DeviceCommandError("UNSUPPORTED") }
@@ -290,14 +313,23 @@ import GChatCore
     }
 
     func releaseViews() async {
-        routePicker?.finish(.success(false)); routePicker = nil; volumeControl?.dismiss(animated:false); volumeControl = nil; ownership.releaseViews(); previewOwner = nil; preview.isHidden = true
+        routeGeneration += 1
+        audio.cancelSetup()
+        volumeControl?.dismiss(animated:false); volumeControl = nil; ownership.releaseViews(); previewOwner = nil; preview.isHidden = true
         if !ownership.retained { await close() }
     }
 
     /// Called only by the actual native call owner; Web cannot manufacture a call lease.
     func selectCall(_ id: UUID?, audioActive: Bool) {
-        voipAudioActive = audioActive
-        if !audioActive { volumeControl?.dismiss(animated:false); volumeControl = nil }
+        if !externalAudioOwner { audio.updateCall(id, active: audioActive) }
+        let active = audioActive && id != nil
+        let activityChanged = voipAudioActive != active
+        let callChanged = ownership.selectedCall != id
+        voipAudioActive = active
+        if activityChanged || callChanged {
+            routeGeneration += 1
+        }
+        if !active { volumeControl?.dismiss(animated:false); volumeControl = nil }
         guard ownership.selectCall(id) else { return }
         endingGeneration += 1; let generation = endingGeneration; let previous = ending
         ending = Task { @MainActor in
@@ -381,24 +413,9 @@ import GChatCore
     }
 
     private func audioState() -> [String: Any] {
-        let audio = AVAudioSession.sharedInstance()
-        let port = audio.currentRoute.outputs.first
-        var selected: [String: Any]?
-        if let port {
-            let id = routeIDs[port.uid] ?? UUID().uuidString; routeIDs[port.uid] = id
-            let kind: String
-            switch port.portType {
-            case .builtInSpeaker: kind = "speaker"
-            case .builtInReceiver: kind = "receiver"
-            case .headphones, .headsetMic: kind = "wiredHeadphones"
-            case .bluetoothA2DP, .bluetoothHFP, .bluetoothLE: kind = "bluetooth"
-            case .usbAudio: kind = "usb"
-            case .airPlay: kind = "airPlay"
-            default: kind = "other"
-            }
-            selected = ["id":id,"name":port.portName,"kind":kind]
-        }
-        return ["volume":["level":Double(audio.outputVolume)],"output":selected as Any? ?? NSNull(),"outputs":NSNull()]
+        var value = audioDevices.devices(active: audio.hasRoute)
+        value["volume"] = ["level": Double(AVAudioSession.sharedInstance().outputVolume)]
+        return value
     }
 }
 

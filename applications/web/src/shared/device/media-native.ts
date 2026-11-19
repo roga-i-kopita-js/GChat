@@ -31,6 +31,7 @@ export class NativeMedia {
     args: object,
     schema: z.ZodType<T>,
     options: CallOptions = {},
+    onCancelledResult?: (value: T) => Promise<void>,
   ): Promise<T> {
     const state = nativeRuntime.getSnapshot();
 
@@ -72,23 +73,7 @@ export class NativeMedia {
 
     context.addEventListener('abort', cancel, { once: true });
 
-    try {
-      const raw = await cancellable(
-        (): Promise<unknown> =>
-          nativePlugin.mediaCommand({
-            mediaVersion: 1,
-            cycleId: state.cycleId,
-            requestId,
-            command,
-            args,
-          }),
-        { signal: context },
-      );
-
-      if (context.aborted || nativeRuntime.getSnapshot().cycleId !== state.cycleId) {
-        throw new DeviceError('CANCELLED');
-      }
-
+    const parse = (raw: unknown): T => {
       const envelope = z
         .strictObject({
           mediaVersion: z.literal(1),
@@ -114,6 +99,49 @@ export class NativeMedia {
       }
 
       return parsed.data;
+    };
+    let cleaned = false;
+    const cleanup = async (raw: unknown): Promise<void> => {
+      if (cleaned || !onCancelledResult || nativeRuntime.getSnapshot().cycleId !== state.cycleId) {
+        return;
+      }
+
+      cleaned = true;
+
+      try {
+        await onCancelledResult(parse(raw));
+      } catch {
+        /* Cycle cleanup also releases native resources. */
+      }
+    };
+
+    try {
+      const raw = await cancellable(
+        async (): Promise<unknown> => {
+          const result = await nativePlugin.mediaCommand({
+            mediaVersion: 1,
+            cycleId: state.cycleId,
+            requestId,
+            command,
+            args,
+          });
+
+          if (context.aborted) {
+            await cleanup(result);
+          }
+
+          return result;
+        },
+        { signal: context },
+      );
+
+      if (context.aborted || nativeRuntime.getSnapshot().cycleId !== state.cycleId) {
+        await cleanup(raw);
+
+        throw new DeviceError('CANCELLED');
+      }
+
+      return parse(raw);
     } catch (cause) {
       if (cause instanceof DeviceError) {
         throw cause;

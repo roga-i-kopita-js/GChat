@@ -29,13 +29,17 @@ import GChatCore
     private var audioEngine: AVAudioEngine?
     private var player: AVAudioPlayer?
     private var testTask: Task<Void, Never>?
-    private var ownsAudio = false
+    private let audioOwner: NativeAudioOwner
+    private var audioTestLease: UUID?
     private var observers: [NSObjectProtocol] = []
     private static let blocks = ["microphone", "camera", "geolocation", "audio", "push", "files"]
 
-    init(presenter: @escaping () -> UIViewController?) {
+    init(presenter: @escaping () -> UIViewController?, audioOwner: NativeAudioOwner? = nil) {
         self.presenter = presenter
+        self.audioOwner = audioOwner ?? NativeAudioOwner()
         super.init()
+        self.audioOwner.stopTests = { [weak self] in self?.stopTest() }
+        self.audioOwner.permissionChanged = { [weak self] in self?.touch("microphone") }
         location.delegate = self
         files.changed = { [weak self] in Task { @MainActor in self?.touch("files") } }
         for name in [UIApplication.didBecomeActiveNotification, UIApplication.willResignActiveNotification, AVAudioSession.routeChangeNotification, AVAudioSession.interruptionNotification] {
@@ -45,8 +49,8 @@ import GChatCore
                     if notification.name == AVAudioSession.routeChangeNotification,
                        let reason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
                        reason == AVAudioSession.RouteChangeReason.categoryChange.rawValue { self.touch("audio"); return }
-                    if notification.name != UIApplication.didBecomeActiveNotification { self.stopTest(); self.cancelWait() }
-                    if notification.name == AVAudioSession.routeChangeNotification { self.test = nil }
+                    if notification.name != UIApplication.didBecomeActiveNotification { self.stopTest() }
+                    if notification.name == AVAudioSession.routeChangeNotification, self.test?["status"] as? String != "cancelled" { self.test = nil }
                     self.touch(Self.blocks)
                 }
             })
@@ -138,14 +142,15 @@ import GChatCore
         return ["revision": revision, "microphone": permission("microphone"), "camera": permission("camera"), "geolocation": permission("geolocation"), "audio": ["routeName": routeName, "test": test as Any? ?? NSNull()], "push": push, "files": ["retainedCount": count]]
     }
 
-    private func startTest(_ kind: String) throws -> [String: Any] {
+    private func startTest(_ kind: String) async throws -> [String: Any] {
         guard test?["status"] as? String != "running", !dialog, UIApplication.shared.applicationState == .active else { throw DeviceCommandError("BUSY") }
         if kind == "microphone", permission("microphone")["permission"] as? String != "granted" { throw DeviceCommandError("PERMISSION_DENIED", ["settingsHint": "appSettings"]) }
         let id = UUID().uuidString
-        let session = AVAudioSession.sharedInstance()
+        let epoch = generation
+        let lease = try await audioOwner.beginTest()
+        guard epoch == generation else { audioOwner.endTest(lease); throw DeviceCommandError("CANCELLED") }
+        audioTestLease = lease
         do {
-            try session.setCategory(kind == "microphone" ? .playAndRecord : .playback, mode: .default, options: [])
-            try session.setActive(true); ownsAudio = true
             if kind == "microphone" {
                 let engine = AVAudioEngine()
                 let input = engine.inputNode; let format = input.outputFormat(forBus: 0)
@@ -183,7 +188,7 @@ import GChatCore
     private func releaseAudio() {
         player?.stop(); player = nil
         if let engine = audioEngine { engine.inputNode.removeTap(onBus: 0); engine.stop() }; audioEngine = nil
-        if ownsAudio { ownsAudio = false; try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
+        if let lease = audioTestLease { audioTestLease = nil; audioOwner.endTest(lease) }
     }
     private func stopTest() { testTask?.cancel(); testTask = nil; releaseAudio(); if test?["status"] as? String == "running" { test?["status"] = "cancelled"; touch("audio") } }
 
@@ -206,7 +211,7 @@ import GChatCore
         case "device.settings.open":
             guard let url = URL(string: UIApplication.openSettingsURLString) else { throw DeviceCommandError("UNSUPPORTED") }
             let opened = await UIApplication.shared.open(url); guard opened else { throw DeviceCommandError("UNSUPPORTED") }; return ["outcome": "completed"]
-        case "audio.test.start": return try startTest(command.string("kind"))
+        case "audio.test.start": return try await startTest(command.string("kind"))
         case "audio.test.stop": if test?["id"] as? String == command.string("testId") { stopTest() }; return ["outcome": "completed"]
         case "audio.output.select": throw DeviceCommandError("UNSUPPORTED")
         case "push.enable", "push.disable":

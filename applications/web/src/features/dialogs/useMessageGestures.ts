@@ -88,7 +88,9 @@ export function useMessageGestures(options: Options): {
       const dx = event.clientX - current.x;
       const dy = event.clientY - current.y;
 
-      if (Math.hypot(dx, dy) <= current.slop && !current.dragging) {
+      // Use the same per-axis tolerance as the direction check below. A small
+      // vertical drift must not reject a slow swipe before dx clears the slop.
+      if (Math.max(Math.abs(dx), Math.abs(dy)) <= current.slop && !current.dragging) {
         return;
       }
 

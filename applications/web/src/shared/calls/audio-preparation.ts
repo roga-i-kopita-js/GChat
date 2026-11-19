@@ -1,3 +1,5 @@
+import { DeviceError } from '../device/contract';
+import { cancellable } from '../device/events';
 import { ContextOutput } from './context-output';
 
 export function audioError(cause: unknown): string {
@@ -31,10 +33,16 @@ export class AudioPreparation {
   private epoch = 0;
   private context?: AudioContext;
   private output?: ContextOutput;
+  private closeSetup: (() => void) | null = null;
 
   constructor(private readonly available: () => boolean) {}
 
   stop(): void {
+    this.closeSetup?.();
+    this.stopSound();
+  }
+
+  stopSound(): void {
     this.epoch++;
     const context = this.context;
 
@@ -51,6 +59,74 @@ export class AudioPreparation {
     }
   }
 
+  async beginSetup(signal: AbortSignal): Promise<{ close(): void; signal: AbortSignal }> {
+    if (signal.aborted) {
+      throw new DeviceError('CANCELLED');
+    }
+
+    if (this.closeSetup || !this.available()) {
+      throw new DeviceError('BUSY');
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new DeviceError('UNSUPPORTED');
+    }
+
+    this.stopSound();
+    const controller = new AbortController();
+    let stream: MediaStream | null = null;
+    const close = (): void => {
+      if (this.closeSetup !== close) {
+        return;
+      }
+
+      this.closeSetup = null;
+      signal.removeEventListener('abort', close);
+      this.stopSound();
+
+      for (const track of stream?.getTracks() ?? []) {
+        track.removeEventListener('ended', close);
+        track.stop();
+      }
+
+      stream = null;
+      controller.abort();
+    };
+
+    this.closeSetup = close;
+    signal.addEventListener('abort', close, { once: true });
+
+    try {
+      return await cancellable(
+        async () => {
+          const acquired = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+          const { getTracks: acquiredGetTracks } = acquired;
+
+          if (controller.signal.aborted || !this.available()) {
+            for (const track of acquiredGetTracks.bind(acquired)()) {
+              track.stop();
+            }
+
+            throw new DeviceError('CANCELLED');
+          }
+
+          stream = acquired;
+
+          for (const track of stream.getTracks()) {
+            track.addEventListener('ended', close, { once: true });
+          }
+
+          return { close, signal: controller.signal };
+        },
+        { signal: controller.signal },
+      );
+    } catch (cause) {
+      close();
+
+      throw cause;
+    }
+  }
+
   private check(epoch: number): void {
     if (epoch !== this.epoch || !this.available()) {
       throw new DOMException('Проверка отменена.', 'AbortError');
@@ -58,6 +134,10 @@ export class AudioPreparation {
   }
 
   async microphone(): Promise<void> {
+    if (this.closeSetup) {
+      throw new DeviceError('BUSY');
+    }
+
     this.stop();
     const epoch = this.epoch;
 
@@ -79,7 +159,7 @@ export class AudioPreparation {
   }
 
   async sound(sinkId: string): Promise<void> {
-    this.stop();
+    this.stopSound();
     const epoch = this.epoch;
 
     this.check(epoch);
@@ -115,14 +195,14 @@ export class AudioPreparation {
         gain.disconnect();
 
         if (this.context === context) {
-          this.stop();
+          this.stopSound();
         }
       };
       oscillator.start();
       oscillator.stop(context.currentTime + 1);
     } catch (cause) {
       if (this.context === context) {
-        this.stop();
+        this.stopSound();
       }
 
       throw cause;

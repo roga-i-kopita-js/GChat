@@ -326,7 +326,21 @@ export interface AudioOutput {
   kind: AudioOutputKind;
 }
 
+export type AudioOutputPreference =
+  | { mode: 'system' }
+  | {
+      mode: 'device';
+      kind: AudioOutputKind;
+      name: string | null;
+      availability: 'available' | 'unavailable' | 'unknown';
+    };
+
+export interface AudioOutputSetup {
+  close(options?: CallOptions): Promise<void>;
+}
+
 export interface AudioState extends Versioned {
+  preference: AudioOutputPreference | null;
   volume: { level: number | null };
   output: AudioOutput | null;
   outputs: AudioOutput[] | null;
@@ -345,6 +359,8 @@ export interface AudioVolumeService {
 }
 
 export interface AudioOutputsService {
+  beginSetup(options?: CallOptions): Promise<AudioOutputSetup>;
+  setPreferred(outputId: string | null, options?: CallOptions): Promise<void>;
   list(options?: CallOptions): Promise<AudioOutput[] | null>;
   pick(options?: CallOptions): Promise<Selection<AudioOutput>>;
   select(outputId: string, options?: CallOptions): Promise<void>;

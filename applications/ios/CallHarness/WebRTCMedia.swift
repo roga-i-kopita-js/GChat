@@ -15,6 +15,7 @@ import WebRTC
     private var routeReason: UInt = 0
     private var audioEvents: [String] = []
     var connected: Bool { peer?.connectionState == .connected && audioActive }
+    var audioSessionActive: Bool { audioActive }
 
     // Configure before reporting/starting the CallKit call. CallKit owns activation.
     func prepareAudio() throws {

@@ -127,13 +127,23 @@ export function SettingsAction({
   device,
   children,
   onClick,
+  pressed,
+  disabled = false,
 }: {
   device: SettingsDevice;
   children: ReactNode;
   onClick(): void;
+  pressed?: boolean;
+  disabled?: boolean;
 }): JSX.Element {
   return (
-    <Button variant="ghost" className="settings-action" disabled={device.busy} onClick={onClick}>
+    <Button
+      variant="ghost"
+      className="settings-action"
+      disabled={device.busy || disabled}
+      aria-pressed={pressed}
+      onClick={onClick}
+    >
       {children}
       {device.busy && <LoaderCircle className="settings-spinner" size={16} aria-hidden="true" />}
     </Button>

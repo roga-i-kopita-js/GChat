@@ -3,8 +3,9 @@ import type { JSX } from 'react';
 
 import { DeviceError } from '../../shared/device/contract';
 import { deviceErrorMessage } from '../../shared/device/messages';
+import { Button } from '../../shared/ui';
 import { useCalls } from '../calls/CallsProvider';
-import { Group, SettingsAction } from './ui';
+import { Group } from './ui';
 import type { SettingsDevice } from './useSettingsDevice';
 
 export function AudioTestStatus({
@@ -15,21 +16,20 @@ export function AudioTestStatus({
   section: 'audio' | 'microphone';
 }): JSX.Element {
   const { ongoing } = useCalls();
-  const { state, run, soundAnswer, setSoundAnswer } = device;
+  const { state, soundAnswer, setSoundAnswer } = device;
   const test = state?.audio.test;
-  const action = (label: string, onClick: () => void): JSX.Element => (
-    <SettingsAction device={device} onClick={onClick}>
-      {label}
-    </SettingsAction>
-  );
 
   return (
     <>
       {test?.status === 'running' && (
         <Group>
-          {action('Остановить тест', (): void => {
-            void device.stopAudioTest();
-          })}
+          <Button
+            variant="ghost"
+            className="settings-action"
+            onClick={(): void => device.stopAudioTest()}
+          >
+            Остановить тест
+          </Button>
           <p className="settings-test-status" role="status">
             {test.kind === 'sound' ? 'Воспроизводим сигнал…' : 'Проверяем микрофон…'}
           </p>

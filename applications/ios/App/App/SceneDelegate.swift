@@ -62,6 +62,8 @@ final class ShellViewController: UIViewController {
     private var transport: SharedWebSocket?
     private var calls: NativeCallsCoordinator?
 
+    override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
+
     func becameActive() { calls?.foreground() }
 
     override func viewDidLoad() {
@@ -129,6 +131,10 @@ final class ShellViewController: UIViewController {
             }
         }
         let main = MainViewController(server: server, sessions: manager, transport: transport, calls: calls)
+        main.onThemeColor = { [weak self, weak main] color in
+            guard let self, let main, self.child === main else { return }
+            self.view.backgroundColor = color
+        }
         main.onChangeServer = { [weak self] in
             guard let self else { return }
             UserDefaults.standard.removeObject(forKey: self.serverKey)
@@ -154,9 +160,10 @@ final class ShellViewController: UIViewController {
         addChild(controller)
         controller.view.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(controller.view)
+        let bottom = controller is MainViewController ? view.bottomAnchor : view.safeAreaLayoutGuide.bottomAnchor
         NSLayoutConstraint.activate([
             controller.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            controller.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            controller.view.bottomAnchor.constraint(equalTo: bottom, constant: controller is MainViewController ? -4 : 0),
             controller.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             controller.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])

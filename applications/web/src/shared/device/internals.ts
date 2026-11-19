@@ -12,7 +12,7 @@ export interface PresentationState {
   revision: number;
   loginNavigation: 'router' | 'host';
   callingAvailable: boolean;
-  audioOutput: { pick: boolean; select: boolean };
+  audioOutput: { pick: boolean; select: boolean; setup: boolean; preference: boolean };
   supportedEnvironment: boolean;
 }
 

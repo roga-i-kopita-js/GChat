@@ -9,6 +9,7 @@ import {
   type AudioEvents,
   type AudioOutput,
   AudioOutputKind,
+  type AudioOutputSetup,
   type AudioService,
   type AudioState,
   type CallOptions,
@@ -27,8 +28,23 @@ const output = z.strictObject({
   name: z.string().nullable(),
   kind: z.nativeEnum(AudioOutputKind),
 });
+const preference = z.discriminatedUnion('mode', [
+  z.strictObject({ mode: z.literal('system') }),
+  z.strictObject({
+    mode: z.literal('device'),
+    kind: z.nativeEnum(AudioOutputKind),
+    name: z.string().nullable(),
+    availability: z.enum(['available', 'unavailable', 'unknown']),
+  }),
+]);
 const nativeAudio = z.strictObject({
+  preference,
   volume: z.strictObject({ level: z.number().min(0).max(1).nullable() }),
+  output: output.nullable(),
+  outputs: z.array(output).nullable(),
+});
+const nativeDevices = z.strictObject({
+  preference,
   output: output.nullable(),
   outputs: z.array(output).nullable(),
 });
@@ -46,12 +62,15 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
     volume: { level: null },
     output: null,
     outputs: null,
+    preference: null,
   });
   private off: (() => void) | null = null;
   private mediaHandle: PluginListenerHandle | null = null;
   private generation = 0;
   private loading: Promise<AudioState> | null = null;
   private outputId: string | null = null;
+  private nativeRead = 0;
+  private readonly setups = new Set<() => Promise<void>>();
 
   constructor(
     private readonly bridge: DeviceBridge,
@@ -63,7 +82,7 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
     super();
   }
 
-  getOutputSupport(): { pick: boolean; select: boolean } {
+  getOutputSupport(): { pick: boolean; select: boolean; setup: boolean; preference: boolean } {
     const select =
       !embedded &&
       typeof this.client.setAudioOutput === 'function' &&
@@ -71,8 +90,12 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
       typeof HTMLMediaElement.prototype.setSinkId === 'function';
 
     return {
-      pick: embedded || (select && !!navigator.mediaDevices && canPick(navigator.mediaDevices)),
-      select,
+      pick: !embedded && select && !!navigator.mediaDevices && canPick(navigator.mediaDevices),
+      select: embedded || select,
+      setup:
+        embedded ||
+        (select && !!navigator.mediaDevices?.getUserMedia && !!this.client.audioPreparation),
+      preference: embedded,
     };
   }
 
@@ -86,44 +109,90 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
     },
   };
   readonly outputs = {
+    beginSetup: async (options?: CallOptions): Promise<AudioOutputSetup> => {
+      if (!embedded) {
+        return this.beginBrowserSetup(options);
+      }
+
+      if (options?.signal?.aborted) {
+        throw new DeviceError('CANCELLED');
+      }
+
+      // Cancellation reaches native while a late successful lease is still released by ID.
+      const { setupId } = await this.media.request(
+        'audio.setup.begin',
+        {},
+        z.strictObject({ setupId: z.uuid() }),
+        options,
+        async ({ setupId }): Promise<void> => {
+          await this.media.request('audio.setup.end', { setupId }, mediaDone);
+        },
+      );
+      let closed = false;
+      const close = async (): Promise<void> => {
+        if (closed) {
+          return;
+        }
+
+        closed = true;
+        this.setups.delete(close);
+        options?.signal?.removeEventListener('abort', abort);
+        await this.media.request('audio.setup.end', { setupId }, mediaDone);
+        await this.refresh();
+      };
+      const abort = (): void => {
+        void (async (): Promise<void> => {
+          try {
+            await close();
+          } catch {}
+        })();
+      };
+
+      this.setups.add(close);
+      options?.signal?.addEventListener('abort', abort, { once: true });
+
+      try {
+        if (options?.signal?.aborted || this.signal().aborted) {
+          throw new DeviceError('CANCELLED');
+        }
+
+        await this.refresh(options);
+
+        return { close };
+      } catch (cause) {
+        try {
+          await close();
+        } catch {}
+
+        throw cause;
+      }
+    },
+    setPreferred: async (outputId: string | null, options?: CallOptions): Promise<void> => {
+      if (!embedded) {
+        throw new DeviceError('UNSUPPORTED');
+      }
+
+      if (outputId !== null && (typeof outputId !== 'string' || !outputId)) {
+        throw new DeviceError('INVALID_ARGUMENT');
+      }
+
+      await this.media.request('audio.preference.set', { outputId }, mediaDone, options);
+      await this.refresh(options);
+    },
     list: async (options?: CallOptions): Promise<AudioOutput[] | null> => {
       if (options?.signal?.aborted) {
         throw new DeviceError('CANCELLED');
       }
 
-      const { outputs: refreshResultOutputs } = await this.refresh(options);
+      const { outputs: refreshResultOutputs } = embedded
+        ? await this.refreshNative(true, options)
+        : await this.refresh(options);
 
       return refreshResultOutputs;
     },
     pick: async (options?: CallOptions): Promise<Selection<AudioOutput>> => {
       if (embedded) {
-        const value = await this.media.request(
-          'audio.pick',
-          {},
-          z.strictObject({
-            outcome: z.enum(['completed', 'cancelled']),
-            output: output.nullable(),
-          }),
-          options,
-        );
-
-        await this.refresh(options);
-
-        const { outcome: valueOutcome } = value;
-
-        if (valueOutcome === 'cancelled') {
-          return { outcome: 'cancelled' };
-        }
-
-        const { output: valueOutput } = value ?? {};
-
-        if (!valueOutput) {
-          throw new DeviceError('DEVICE_UNAVAILABLE');
-        }
-
-        const { output: valueOutput2 } = value;
-
-        return { outcome: 'completed', value: valueOutput };
+        throw new DeviceError('UNSUPPORTED');
       }
 
       if (options?.signal?.aborted || this.signal().aborted) {
@@ -163,12 +232,15 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
       };
     },
     select: async (outputId: string, options?: CallOptions): Promise<void> => {
-      if (embedded) {
-        throw new DeviceError('UNSUPPORTED');
-      }
-
       if (typeof outputId !== 'string' || !outputId) {
         throw new DeviceError('INVALID_ARGUMENT');
+      }
+
+      if (embedded) {
+        await this.media.request('selectAudioDevice', { outputId }, mediaDone, options);
+        await this.refresh(options);
+
+        return;
       }
 
       if (!this.getOutputSupport().select) {
@@ -194,6 +266,80 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
       await this.refresh(options);
     },
   };
+
+  private async beginBrowserSetup(options?: CallOptions): Promise<AudioOutputSetup> {
+    const owner = this.client.audioPreparation;
+
+    if (!this.getOutputSupport().setup || !owner) {
+      throw new DeviceError('UNSUPPORTED');
+    }
+
+    const context = AbortSignal.any([this.signal(), ...(options?.signal ? [options.signal] : [])]);
+    let released: { close(): void; signal: AbortSignal };
+
+    try {
+      released = await owner.beginSetup(context);
+    } catch (cause) {
+      throw deviceFailure(cause, 'audio', 'beginSetup');
+    }
+
+    const { close: release, signal } = released;
+    let closed = false;
+    const lost = (): void => {
+      closed = true;
+      this.setups.delete(close);
+      this.publish({ ...this.source.getSnapshot(), output: null, outputs: null });
+    };
+    const close = async (): Promise<void> => {
+      if (closed) {
+        return;
+      }
+
+      closed = true;
+      this.setups.delete(close);
+      signal.removeEventListener('abort', lost);
+      release();
+      await this.refresh();
+    };
+
+    this.setups.add(close);
+    signal.addEventListener('abort', lost, { once: true });
+
+    try {
+      if (this.loading) {
+        await cancellable((): Promise<AudioState> => this.loading!, { signal });
+      }
+
+      await this.refresh({ signal });
+
+      if (signal.aborted) {
+        throw new DeviceError('CANCELLED');
+      }
+
+      return { close };
+    } catch (cause) {
+      await close();
+
+      throw deviceFailure(cause, 'audio', 'beginSetup');
+    }
+  }
+
+  private async refreshNative(devicesOnly: boolean, options?: CallOptions): Promise<AudioState> {
+    const read = ++this.nativeRead;
+    const value = devicesOnly
+      ? await this.media.request('getAudioDevices', {}, nativeDevices, options)
+      : await this.media.request('audio.state', {}, nativeAudio, options);
+
+    if (options?.signal?.aborted || this.signal().aborted) {
+      throw new DeviceError('CANCELLED');
+    }
+
+    if (read !== this.nativeRead) {
+      return this.source.getSnapshot();
+    }
+
+    return this.publish({ ...this.source.getSnapshot(), ...value });
+  }
 
   private publish(value: Omit<AudioState, 'revision'>): AudioState {
     const old = this.source.getSnapshot();
@@ -221,17 +367,22 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
   }
 
   private refresh(options?: CallOptions): Promise<AudioState> {
+    if (embedded) {
+      return this.refreshNative(false, options);
+    }
+
     if (this.loading) {
       return cancellable((): Promise<AudioState> => this.loading!, options, this.signal());
     }
 
     const task = async (): Promise<AudioState> => {
-      if (embedded) {
-        return this.publish(await this.media.request('audio.state', {}, nativeAudio));
-      }
-
       if (!navigator.mediaDevices?.enumerateDevices) {
-        return this.publish({ volume: { level: null }, output: null, outputs: null });
+        return this.publish({
+          volume: { level: null },
+          output: null,
+          outputs: null,
+          preference: null,
+        });
       }
 
       const values = await navigator.mediaDevices.enumerateDevices();
@@ -261,6 +412,7 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
         volume: { level: null },
         output: outputs.find((item): boolean => item.id === this.outputId) ?? null,
         outputs,
+        preference: null,
       });
     };
     const pending = task();
@@ -401,6 +553,7 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
     }
 
     let id: string | undefined;
+    let terminal = false;
     let off = (): void => {};
     const context = AbortSignal.any([this.signal(), ...(options.signal ? [options.signal] : [])]);
 
@@ -424,11 +577,27 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
         (): Promise<CheckReport> =>
           new Promise((resolve, reject): void => {
             const inspect = (): void => {
-              const value = this.observer.source.getSnapshot().value?.audio.test;
+              const snapshot = this.observer.source.getSnapshot();
 
-              if (!value || value.id !== id || value.status === 'running') {
+              if (snapshot.error) {
+                reject(snapshot.error);
+
                 return;
               }
+
+              const value = snapshot.value?.audio.test;
+
+              if (!value || value.id !== id) {
+                reject(new DeviceError('CANCELLED'));
+
+                return;
+              }
+
+              if (value.status === 'running') {
+                return;
+              }
+
+              terminal = true;
 
               if (value.status === 'cancelled') {
                 reject(new DeviceError('CANCELLED'));
@@ -487,18 +656,29 @@ export class DeviceAudio extends Events<AudioEvents> implements AudioService {
     } finally {
       off();
 
-      if (id && context.aborted) {
-        await (async () => {
-          try {
-            return await this.bridge.execute({ command: 'audio.test.stop', args: { testId: id } });
-          } catch (cause) {}
-        })();
+      if (id && (context.aborted || !terminal)) {
+        try {
+          await this.bridge.execute({ command: 'audio.test.stop', args: { testId: id } });
+          await this.observer.refresh();
+        } catch {
+          /* Session teardown can make the final read unavailable. */
+        }
       }
     }
   }
 
   stop(): void {
     this.generation++;
+    this.nativeRead++;
+
+    for (const close of this.setups) {
+      void (async (): Promise<void> => {
+        try {
+          await close();
+        } catch {}
+      })();
+    }
+
     void this.mediaHandle?.remove();
     this.mediaHandle = null;
     this.off?.();

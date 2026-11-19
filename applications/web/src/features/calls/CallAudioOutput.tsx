@@ -24,17 +24,25 @@ function OutputChoices({ disabled }: { disabled: boolean }): JSX.Element {
     outputHint =
       'Этот браузер не поддерживает смену аудиовыхода из GChat. Выходом управляет ОС: проверьте системную панель звука и подключение гарнитуры. ';
   } else if (!support.pick) {
-    outputHint =
-      'Системный выбор в этом браузере недоступен. Выберите устройство из списка или проверьте системную панель звука. ';
+    outputHint = 'Выберите устройство из списка. Другие выходы доступны через настройки звука ОС. ';
   }
 
   useEffect(() => {
     const controller = new AbortController();
 
     lifetime.current = controller;
+    void (async (): Promise<void> => {
+      try {
+        await device.audio.outputs.list({ signal: controller.signal });
+      } catch (cause) {
+        if (!controller.signal.aborted) {
+          setError(deviceErrorMessage(cause));
+        }
+      }
+    })();
 
     return () => controller.abort();
-  }, []);
+  }, [device]);
 
   async function choose(id?: string): Promise<void> {
     if (running.current) {

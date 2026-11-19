@@ -1014,8 +1014,10 @@ test('settings follow the audio service output and invalidate hearing confirmati
     });
   });
   await page.goto('/settings/general/audio');
+  const currentOutput = page.locator('.settings-value').filter({ hasText: /^Тестовая гарнитура$/ });
+
   await page.getByRole('button', { name: 'Выбрать аудиовыход' }).click();
-  await expect(page.getByText('Тестовая гарнитура', { exact: true })).toBeVisible();
+  await expect(currentOutput).toBeVisible();
   await page.getByRole('button', { name: 'Проверить звук' }).click();
   await page.getByRole('button', { name: 'Слышу', exact: true }).click();
   await expect(page.getByText('Слышимость подтверждена вами.', { exact: true })).toBeVisible();
@@ -1025,9 +1027,9 @@ test('settings follow the audio service output and invalidate hearing confirmati
   });
   await page.getByRole('button', { name: 'Выбрать аудиовыход' }).click();
   await expect(page.getByText('Слышимость подтверждена вами.', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('Тестовая гарнитура', { exact: true })).toBeVisible();
+  await expect(currentOutput).toBeVisible();
   await page.getByRole('link', { name: 'Назад', exact: true }).click();
-  await expect(page.getByText('Тестовая гарнитура', { exact: true })).toBeVisible();
+  await expect(currentOutput).toBeVisible();
 
   await page.evaluate((): void => {
     Object.defineProperty(navigator.mediaDevices, 'enumerateDevices', {

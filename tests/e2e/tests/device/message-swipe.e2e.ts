@@ -89,6 +89,37 @@ test('right swipe replies once, retains the draft and returns through CSS', asyn
   expect(requests()).toBe(0);
 });
 
+test('a slow right swipe tolerates small vertical drift and does not open the menu', async ({
+  page,
+}) => {
+  await setupDialogUi(page);
+  const source = page
+    .getByRole('log')
+    .locator('article')
+    .filter({ hasText: 'Встречаемся завтра в 18:00?' });
+
+  await expect(source).toBeVisible();
+  const { move, finish } = await touch(page, source);
+
+  try {
+    for (let dx = 2; dx <= 64; dx += 2) {
+      await move(dx, 2);
+      await page.waitForTimeout(25);
+    }
+
+    await expect(source.locator('..')).toHaveAttribute('data-swipe-ready', '');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+  } finally {
+    await finish();
+  }
+
+  await expect(page.getByLabel('Ответ на сообщение', { exact: true })).toContainText(
+    'Встречаемся завтра в 18:00?',
+  );
+  await reset(source);
+  await expect(page.getByRole('menu')).toHaveCount(0);
+});
+
 test('short, leftward and cancelled swipes do not choose a reply', async ({ page }) => {
   await setupDialogUi(page);
   const source = page

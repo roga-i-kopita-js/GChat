@@ -429,7 +429,7 @@ test('dialog keeps a failed outgoing attempt in the conversation without retryin
 
   await expect(confirmation.getByRole('button', { name: 'Позвонить', exact: true })).toBeEnabled();
   await confirmation.getByRole('button', { name: 'Позвонить', exact: true }).click();
-  await expect(page.locator('.dialog-error[role="alert"]')).toBeVisible();
+  await expect(page.locator('p.dialog-error[role="alert"]')).toBeVisible();
   await expect(page).toHaveURL('/dialogs/' + dialogId);
   await expect(confirmation).toHaveCount(0);
   expect(count()).toBe(1);

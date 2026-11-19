@@ -208,7 +208,7 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
         (!value.call || value.call.state === 'ended')
       );
     },
-    stopAudio: (): void => client.audioPreparation?.stop(),
+    stopAudio: (): void => client.audioPreparation?.stopSound(),
     testMicrophone: (): Promise<void> =>
       client.audioPreparation?.microphone() ?? Promise.reject(new DeviceError('UNSUPPORTED')),
     testSound: (): Promise<void> =>
@@ -298,6 +298,10 @@ export function createDevice<TOptions extends { fetch?: HttpRequest }, TClient>(
     },
   };
   const visibility = (): void => {
+    if (document.hidden) {
+      client.audioPreparation?.stop();
+    }
+
     publish({ visibility: document.visibilityState === 'hidden' ? 'background' : 'foreground' });
 
     if (document.hidden && camera instanceof BrowserCamera) {

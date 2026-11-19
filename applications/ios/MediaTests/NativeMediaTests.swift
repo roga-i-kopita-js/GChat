@@ -316,3 +316,384 @@ private final class ControlledCapture: NativeCameraCapturing {
         _ = try await controller.execute("camera.close",args:[:])
     }
 }
+
+@MainActor private final class ControlledAudioSession: NativeAudioSessionRouting {
+    let mic = NativeAudioPort(uid: "private-mic-uid", name: "Microphone", type: .builtInMic)
+    let bluetooth = NativeAudioPort(uid: "private-bt-uid", name: "Headset", type: .bluetoothHFP)
+    var inputs: [NativeAudioPort] = []
+    var currentInputs: [NativeAudioPort] = []
+    var currentOutputs = [NativeAudioPort(uid: "private-receiver-uid", name: "iPhone", type: .builtInReceiver)]
+    var voiceSession = true
+    var hasReceiver = true
+    var preferences: [String] = []
+    var overrides: [Bool] = []
+    var permission = true
+    var permissionGate: CheckedContinuation<Bool, Never>?
+    var waitForPermission = false
+    var activationCount = 0
+    var deactivationCount = 0
+    var immediateRoute = false
+    func authorize() async -> Bool {
+        if waitForPermission { return await withCheckedContinuation { permissionGate = $0 } }
+        return permission
+    }
+    func activateSetup() throws { activationCount += 1; voiceSession = true }
+    func deactivateSetup() { deactivationCount += 1 }
+    func preferInput(_ uid: String) throws {
+        preferences.append(uid)
+        if immediateRoute, let port = inputs.first(where: { $0.uid == uid }) {
+            currentInputs = [port]
+            if port.type == .bluetoothHFP { currentOutputs = [port] }
+            else if currentOutputs.first?.type != .builtInSpeaker {
+                currentOutputs = [NativeAudioPort(uid: "receiver", name: "Phone", type: .builtInReceiver)]
+            }
+        }
+    }
+    func overrideSpeaker(_ enabled: Bool) throws {
+        overrides.append(enabled)
+        if immediateRoute {
+            currentOutputs = [NativeAudioPort(uid: enabled ? "speaker" : "receiver", name: "Phone", type: enabled ? .builtInSpeaker : .builtInReceiver)]
+        }
+    }
+    init() { inputs = [mic, bluetooth]; currentInputs = [mic] }
+}
+
+@MainActor final class NativeAudioDevicesTests: XCTestCase {
+    private func output(_ devices: [String: Any], kind: String) throws -> String {
+        let values = try XCTUnwrap(devices["outputs"] as? [[String: Any]])
+        return try XCTUnwrap(values.first(where: { $0["kind"] as? String == kind })?["id"] as? String)
+    }
+
+    func testNativeListUsesKnownDuplexRoutesAndOpaqueStableIDs() throws {
+        let session = ControlledAudioSession()
+        session.inputs.append(NativeAudioPort(uid: "unknown", name: "Unknown", type: .lineIn))
+        let audio = NativeAudioDevices(session: session)
+        let first = audio.devices(active: true)
+        let second = audio.devices(active: true)
+        XCTAssertEqual(try output(first, kind: "speaker"), try output(second, kind: "speaker"))
+        XCTAssertEqual(try output(first, kind: "receiver"), (first["output"] as? [String: Any])?["id"] as? String)
+        XCTAssertEqual((first["outputs"] as? [[String: Any]])?.count, 3)
+        let data = try JSONSerialization.data(withJSONObject: first)
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("private-"))
+        XCTAssertTrue(audio.devices(active: false)["outputs"] is NSNull)
+        session.hasReceiver = false
+        XCTAssertFalse((audio.devices(active: true)["outputs"] as? [[String: Any]])?.contains { $0["kind"] as? String == "receiver" } ?? true)
+    }
+
+    func testSelectionWaitsForActualRouteAndConfirmsPairedHeadset() async throws {
+        let session = ControlledAudioSession()
+        var waits = 0
+        let audio = NativeAudioDevices(session: session, attempts: 2, wait: {
+            waits += 1
+            session.currentInputs = [session.bluetooth]
+            session.currentOutputs = [NativeAudioPort(uid: "different-output-uid", name: "Headset", type: .bluetoothHFP)]
+        })
+        let id = try output(audio.devices(active: true), kind: "bluetooth")
+        try await audio.select(id, active: { true })
+        XCTAssertEqual(waits, 1)
+        XCTAssertEqual(session.preferences, [session.bluetooth.uid])
+        XCTAssertEqual(session.overrides, [false])
+        XCTAssertEqual((audio.devices(active: true)["output"] as? [String: Any])?["id"] as? String, id)
+    }
+
+    func testSuccessfulOverrideDoesNotConfirmAnUnchangedOutput() async throws {
+        let session = ControlledAudioSession()
+        let audio = NativeAudioDevices(session: session, attempts: 1, wait: {})
+        let id = try output(audio.devices(active: true), kind: "speaker")
+        do { try await audio.select(id, active: { true }); XCTFail("Route never changed") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "DEVICE_UNAVAILABLE") }
+        XCTAssertEqual(session.overrides, [true])
+        XCTAssertEqual((audio.devices(active: true)["output"] as? [String: Any])?["kind"] as? String, "receiver")
+    }
+
+    func testSpeakerAndReceiverSelectionsConfirmTheirActualOutput() async throws {
+        for (kind, type) in [("speaker", AVAudioSession.Port.builtInSpeaker), ("receiver", .builtInReceiver)] {
+            let session = ControlledAudioSession()
+            session.currentOutputs = [NativeAudioPort(uid: "initial", name: "Initial", type: type == .builtInSpeaker ? .builtInReceiver : .builtInSpeaker)]
+            let audio = NativeAudioDevices(session: session, attempts: 1, wait: {
+                session.currentOutputs = [NativeAudioPort(uid: "selected", name: "Selected", type: type)]
+            })
+            let id = try output(audio.devices(active: true), kind: kind)
+            try await audio.select(id, active: { true })
+            XCTAssertEqual(session.overrides, [kind == "speaker"])
+            XCTAssertEqual(session.preferences, [session.mic.uid])
+            XCTAssertEqual((audio.devices(active: true)["output"] as? [String: Any])?["id"] as? String, id)
+        }
+    }
+
+    func testSelectingTheCurrentRouteIsAlreadyConfirmedWithoutMutation() async throws {
+        let session = ControlledAudioSession()
+        let audio = NativeAudioDevices(session: session)
+        let id = try output(audio.devices(active: true), kind: "receiver")
+        try await audio.select(id, active: { true })
+        XCTAssertTrue(session.overrides.isEmpty)
+        XCTAssertTrue(session.preferences.isEmpty)
+    }
+
+    func testPreferredInputAloneDoesNotConfirmAHeadsetOutput() async throws {
+        let session = ControlledAudioSession()
+        let audio = NativeAudioDevices(session: session, attempts: 1, wait: {
+            session.currentInputs = [session.bluetooth]
+        })
+        let id = try output(audio.devices(active: true), kind: "bluetooth")
+        do { try await audio.select(id, active: { true }); XCTFail("Output still uses receiver") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "DEVICE_UNAVAILABLE") }
+    }
+
+    func testDisconnectedIDIsInvalidatedAndReconnectGetsNewID() async throws {
+        let session = ControlledAudioSession()
+        let audio = NativeAudioDevices(session: session)
+        let id = try output(audio.devices(active: true), kind: "bluetooth")
+        session.inputs = [session.mic]
+        do { try await audio.select(id, active: { true }); XCTFail("Headset disconnected") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "DEVICE_UNAVAILABLE") }
+        session.inputs.append(session.bluetooth)
+        XCTAssertNotEqual(try output(audio.devices(active: true), kind: "bluetooth"), id)
+        XCTAssertTrue(session.preferences.isEmpty)
+    }
+
+    func testInactiveSessionAndCancellationDoNotChangeAudio() async throws {
+        let session = ControlledAudioSession()
+        let audio = NativeAudioDevices(session: session)
+        let id = try output(audio.devices(active: true), kind: "speaker")
+        do { try await audio.select(id, active: { false }); XCTFail("No active call") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "INVALID_STATE") }
+        let pending = Task { @MainActor in try await audio.select(id, active: { true }) }
+        pending.cancel()
+        do { try await pending.value; XCTFail("Cancelled") } catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertTrue(session.overrides.isEmpty)
+    }
+
+    func testEndingCallWhileWaitingCancelsConfirmation() async throws {
+        let session = ControlledAudioSession()
+        var active = true
+        let audio = NativeAudioDevices(session: session, attempts: 2, wait: { active = false })
+        let id = try output(audio.devices(active: true), kind: "speaker")
+        do { try await audio.select(id, active: { active }); XCTFail("Call ended") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "CANCELLED") }
+    }
+
+    func testDispatcherRejectsConcurrentSelectionAndCancelsDisposedSelection() async throws {
+        let session = ControlledAudioSession()
+        let waiting = expectation(description: "selection waits for currentRoute")
+        var resume: CheckedContinuation<Void, Never>?
+        let audio = NativeAudioDevices(session: session, wait: {
+            await withCheckedContinuation { resume = $0; waiting.fulfill() }
+        })
+        let controller = NativeMediaController(files: CaptureFiles(), webView: { nil }, capture: ControlledCapture(), audioDevices: audio)
+        let call = UUID()
+        controller.selectCall(call, audioActive: true)
+        let devices = try await controller.execute("getAudioDevices", args: [:])
+        let id = try output(devices, kind: "speaker")
+        let pending = Task { @MainActor in try await controller.execute("selectAudioDevice", args: ["outputId": id]) }
+        await fulfillment(of: [waiting], timeout: 2)
+        do { _ = try await controller.execute("selectAudioDevice", args: ["outputId": id]); XCTFail("Concurrent selection") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "BUSY") }
+        do { _ = try await controller.execute("audio.pick", args: [:]); XCTFail("Native must not present custom UI") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "UNSUPPORTED") }
+        await controller.releaseViews()
+        resume?.resume()
+        do { _ = try await pending.value; XCTFail("Document disposed") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "CANCELLED") }
+    }
+
+    func testDispatcherValidatesArgumentsAndPublishesActivityChanges() async throws {
+        let controller = NativeMediaController(files: CaptureFiles(), webView: { nil }, capture: ControlledCapture())
+        var changes = 0
+        controller.onEvent = { if $0["kind"] as? String == "audioChanged" { changes += 1 } }
+        let call = UUID()
+        controller.selectCall(call, audioActive: false)
+        controller.selectCall(call, audioActive: true)
+        controller.selectCall(call, audioActive: true)
+        controller.selectCall(nil, audioActive: false)
+        XCTAssertEqual(changes, 3)
+        for (command, args) in [("getAudioDevices", ["extra": "value"]), ("selectAudioDevice", ["outputId": ""])] {
+            do { _ = try await controller.execute(command, args: args); XCTFail("Invalid arguments") }
+            catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "INVALID_ARGUMENT") }
+        }
+    }
+}
+
+@MainActor final class NativeAudioOwnerTests: XCTestCase {
+    private func fixture() throws -> (ControlledAudioSession, NativeAudioDevices, NativeAudioOwner, UserDefaults) {
+        let name = "gchat-audio-test-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
+        let session = ControlledAudioSession(); session.immediateRoute = true
+        let devices = NativeAudioDevices(session: session, defaults: defaults, attempts: 1, wait: {})
+        let owner = NativeAudioOwner(devices: devices, foreground: { true })
+        return (session, devices, owner, defaults)
+    }
+    private func id(_ devices: NativeAudioDevices, _ kind: String) throws -> String {
+        let values = try XCTUnwrap(devices.devices(active: true)["outputs"] as? [[String: Any]])
+        return try XCTUnwrap(values.first { $0["kind"] as? String == kind }?["id"] as? String)
+    }
+
+    func testSetupDoesNotActivateUntilExplicitBeginAndKeepsOwnershipThroughTone() async throws {
+        let (session, devices, owner, _) = try fixture()
+        XCTAssertTrue(devices.devices(active: owner.hasRoute)["outputs"] is NSNull)
+        XCTAssertEqual(session.activationCount, 0)
+        let setup = try await owner.beginSetup()
+        XCTAssertEqual(session.activationCount, 1)
+        let test = try await owner.beginTest()
+        owner.endTest(test)
+        XCTAssertEqual(session.activationCount, 1)
+        XCTAssertEqual(session.deactivationCount, 0)
+        owner.closeSetup(setup); owner.closeSetup(setup)
+        XCTAssertEqual(session.deactivationCount, 1)
+        XCTAssertFalse(owner.hasRoute)
+    }
+
+    func testPreferencePersistsAndAppliesOnceToTheNextCall() async throws {
+        let (session, devices, owner, defaults) = try fixture()
+        let setup = try await owner.beginSetup()
+        try await owner.select(id(devices, "speaker"), save: true)
+        owner.closeSetup(setup)
+        let restored = NativeAudioDevices(session: session, defaults: defaults, attempts: 1, wait: {})
+        XCTAssertEqual(restored.preference(active: false)["kind"] as? String, "speaker")
+        let next = NativeAudioOwner(devices: restored, foreground: { true })
+        session.currentOutputs = [NativeAudioPort(uid: "receiver", name: "Phone", type: .builtInReceiver)]
+        let applied = expectation(description: "saved speaker is applied after CallKit activation")
+        var observed = false
+        next.changed = {
+            if !observed, session.currentOutputs.first?.type == .builtInSpeaker {
+                observed = true; applied.fulfill()
+            }
+        }
+        let call = UUID(); next.prepareCall(); next.updateCall(call, active: true)
+        await fulfillment(of: [applied], timeout: 2)
+        let changes = session.overrides.count
+        session.currentOutputs = [NativeAudioPort(uid: "receiver", name: "Phone", type: .builtInReceiver)]
+        next.updateCall(call, active: true)
+        await Task.yield()
+        XCTAssertEqual(session.overrides.count, changes)
+        XCTAssertEqual(session.currentOutputs.first?.type, .builtInReceiver)
+    }
+
+    func testCallPreemptsSetupAndLateCloseCannotDeactivateCall() async throws {
+        let (session, _, owner, _) = try fixture()
+        let setup = try await owner.beginSetup()
+        let test = try await owner.beginTest()
+        var stops = 0; owner.stopTests = { stops += 1 }
+        owner.prepareCall(); owner.updateCall(UUID(), active: true)
+        let deactivations = session.deactivationCount
+        owner.endTest(test); owner.closeSetup(setup)
+        XCTAssertEqual(session.deactivationCount, deactivations)
+        XCTAssertEqual(deactivations, 1)
+        XCTAssertTrue(owner.hasRoute)
+        XCTAssertGreaterThanOrEqual(stops, 1)
+        do { _ = try await owner.beginTest(); XCTFail("Tone must not run during call") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "BUSY") }
+    }
+
+    func testSetupDuringCallBorrowsAudioAndDoesNotDeactivateIt() async throws {
+        let (session, _, owner, _) = try fixture()
+        owner.prepareCall(); owner.updateCall(UUID(), active: true)
+        await Task.yield()
+        let setup = try await owner.beginSetup()
+        owner.closeSetup(setup)
+        XCTAssertEqual(session.activationCount, 0)
+        XCTAssertEqual(session.deactivationCount, 0)
+        XCTAssertTrue(owner.hasRoute)
+    }
+
+    func testPermissionDenialDoesNotActivateOrChangePreference() async throws {
+        let (session, devices, owner, _) = try fixture()
+        session.permission = false
+        do { _ = try await owner.beginSetup(); XCTFail("Permission denied") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "PERMISSION_DENIED") }
+        XCTAssertEqual(session.activationCount, 0)
+        XCTAssertEqual(devices.preference(active: false)["mode"] as? String, "system")
+    }
+
+    func testIncomingWhilePermissionPromptIsPendingPreventsLateActivation() async throws {
+        let (session, _, owner, _) = try fixture()
+        session.waitForPermission = true
+        let pending = Task { @MainActor in try await owner.beginSetup() }
+        for _ in 0..<100 where session.permissionGate == nil { await Task.yield() }
+        XCTAssertNotNil(session.permissionGate)
+        owner.prepareCall()
+        session.permissionGate?.resume(returning: true)
+        do { _ = try await pending.value; XCTFail("Old setup must be cancelled") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "CANCELLED") }
+        XCTAssertEqual(session.activationCount, 0)
+        XCTAssertEqual(session.deactivationCount, 0)
+    }
+
+    func testFailedSelectionDoesNotPersistAndSystemChoiceClearsPreference() async throws {
+        let (session, devices, owner, _) = try fixture()
+        let setup = try await owner.beginSetup()
+        session.immediateRoute = false
+        do { try await owner.select(id(devices, "speaker"), save: true); XCTFail("Route not confirmed") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "DEVICE_UNAVAILABLE") }
+        XCTAssertEqual(devices.preference(active: true)["mode"] as? String, "system")
+        session.immediateRoute = true
+        try await owner.select(id(devices, "speaker"), save: true)
+        try await owner.select(nil, save: true)
+        XCTAssertEqual(devices.preference(active: true)["mode"] as? String, "system")
+        owner.closeSetup(setup)
+    }
+
+    func testMissingSavedAccessoryFallsBackAndDoesNotBlockCall() async throws {
+        let (session, devices, owner, _) = try fixture()
+        let setup = try await owner.beginSetup()
+        try await owner.select(id(devices, "bluetooth"), save: true)
+        owner.closeSetup(setup)
+        session.inputs = [session.mic]
+        let fallback = expectation(description: "fallback keeps the call usable")
+        var seen = false
+        owner.changed = { [weak owner] in
+            if let owner, owner.hasCall && owner.hasRoute && !owner.selecting && !seen,
+               session.currentOutputs.first?.type == .builtInReceiver {
+                seen = true; fallback.fulfill()
+            }
+        }
+        owner.prepareCall(); owner.updateCall(UUID(), active: true)
+        await fulfillment(of: [fallback], timeout: 2)
+        XCTAssertTrue(owner.hasRoute)
+        XCTAssertEqual(devices.preference(active: true)["availability"] as? String, "unavailable")
+    }
+    func testEndingCallRetainsPriorityUntilCallKitDeactivates() async throws {
+        let (session, _, owner, _) = try fixture()
+        owner.prepareCall(); owner.updateCall(UUID(), active: true)
+        owner.updateCall(nil, active: true)
+        do { _ = try await owner.beginSetup(); XCTFail("CallKit has not deactivated yet") }
+        catch { XCTAssertEqual((error as? DeviceCommandError)?.code, "BUSY") }
+        XCTAssertEqual(session.activationCount, 0)
+        owner.updateCall(nil, active: false)
+        let setup = try await owner.beginSetup()
+        XCTAssertEqual(session.activationCount, 1)
+        owner.closeSetup(setup)
+    }
+
+    func testBackgroundAndInterruptionReleaseSetupWithoutResuming() async throws {
+        for name in [UIApplication.didEnterBackgroundNotification, AVAudioSession.interruptionNotification] {
+            let (session, _, owner, _) = try fixture()
+            let setup = try await owner.beginSetup()
+            let released = expectation(description: "test lease released")
+            var seen = false
+            owner.changed = { [weak owner] in
+                if let owner, !owner.hasRoute, !seen { seen = true; released.fulfill() }
+            }
+            NotificationCenter.default.post(name: name, object: nil)
+            await fulfillment(of: [released], timeout: 2)
+            XCTAssertEqual(session.deactivationCount, 1)
+            owner.closeSetup(setup)
+            XCTAssertEqual(session.deactivationCount, 1)
+            XCTAssertEqual(session.activationCount, 1)
+        }
+    }
+
+    func testExplicitCallSelectionSupersedesQueuedInitialPreference() async throws {
+        let (session, devices, owner, _) = try fixture()
+        let setup = try await owner.beginSetup()
+        try await owner.select(id(devices, "speaker"), save: true)
+        owner.closeSetup(setup)
+        owner.prepareCall(); owner.updateCall(UUID(), active: true)
+        try await owner.select(id(devices, "receiver"), save: false)
+        await Task.yield()
+        XCTAssertEqual(session.currentOutputs.first?.type, .builtInReceiver)
+        XCTAssertEqual(devices.preference(active: true)["kind"] as? String, "speaker")
+    }
+
+}

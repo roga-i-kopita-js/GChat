@@ -31,14 +31,30 @@ export class DeviceObserver {
             return;
           }
 
-          this.source.set({ ...this.source.getSnapshot(), value, error: null });
+          this.publish(value);
           const { revision: valueRevision } = value;
 
           afterRevision = valueRevision;
-          const change = await this.bridge.execute({
-            command: 'device.changes.wait',
-            args: { afterRevision, timeoutMs: 30000 },
-          });
+          let change;
+
+          try {
+            change = await this.bridge.execute({
+              command: 'device.changes.wait',
+              args: { afterRevision, timeoutMs: 30000 },
+            });
+          } catch (cause) {
+            // A platform notification can cancel an outstanding wait. Re-read the
+            // current state while this observer still owns the same lifetime.
+            if (
+              cause instanceof DeviceError &&
+              cause.code === 'CANCELLED' &&
+              generation === this.generation
+            ) {
+              continue;
+            }
+
+            throw cause;
+          }
 
           if (generation !== this.generation) {
             return;
@@ -62,6 +78,18 @@ export class DeviceObserver {
     void read();
   }
 
+  private publish(value: DeviceState): DeviceState {
+    const old = this.source.getSnapshot();
+
+    if (old.value && old.value.revision > value.revision) {
+      return old.value;
+    }
+
+    this.source.set({ ...old, value, error: null });
+
+    return value;
+  }
+
   async refresh(signal?: AbortSignal): Promise<DeviceState> {
     signal?.throwIfAborted();
     const generation = this.generation;
@@ -73,9 +101,7 @@ export class DeviceObserver {
       throw new DeviceError('CANCELLED');
     }
 
-    this.source.set({ ...this.source.getSnapshot(), value, error: null });
-
-    return value;
+    return this.publish(value);
   }
 
   async stop(): Promise<void> {

@@ -7,6 +7,7 @@ import UIKit
     private let transport: SharedWebSocket
     private let server: ServerOrigin
     private let media = WebRTCMedia()
+    let audio = NativeAudioOwner()
     private let system = CallSystem()
     private var controller: DirectCallController?
     private var account: UUID?
@@ -24,7 +25,9 @@ import UIKit
         transport.onNativeInvalidSession = { [weak self] in self?.bind(nil) }
         system.onPrepareAudio = { [weak self] in
             guard let self else { throw NativeError.unavailable }
-            try self.media.prepareAudio()
+            self.audio.prepareCall()
+            do { try self.media.prepareAudio() }
+            catch { self.audio.updateCall(nil, active: false); throw error }
         }
         system.onAnswer = { [weak self] in
             guard let self, let controller = self.controller, let call = controller.state.call else { throw NativeError.unavailable }
@@ -56,6 +59,7 @@ import UIKit
     var phase: DirectCallPhase? { controller?.state.phase }
     var muted: Bool { controller?.muted ?? false }
     var connected: Bool { media.connected }
+    var audioSessionActive: Bool { media.audioSessionActive }
     var selectedCallID: UUID? { hasLocalCall && controller?.selected == true ? call?.call_id : nil }
     var incoming: Bool { call?.state == .ringing && call?.recipient_id == account }
     var hasLocalCall: Bool {
@@ -106,6 +110,7 @@ import UIKit
         media.close()
         media.audioActivated(false, session: AVAudioSession.sharedInstance())
         system.update(call: nil, phase: nil, accountID: UUID(), selected: false, connected: false, unavailable: false)
+        audio.updateCall(nil, active: false)
         onChange?()
     }
 
@@ -133,6 +138,7 @@ import UIKit
             system.update(call: controller.state.call, phase: controller.state.phase, accountID: account,
                 selected: controller.selected, connected: media.connected, unavailable: controller.unavailableOnDevice)
         }
+        audio.updateCall(hasLocalCall ? call?.call_id : nil, active: media.audioSessionActive)
         onChange?()
     }
 
